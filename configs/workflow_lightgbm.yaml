@@ -1,0 +1,117 @@
+# Run from the sample_project root:
+#   export QLIB_DATA_URI=/absolute/path/to/data/qlib/cn_tushare_v1
+#   qrun configs/workflow_lightgbm.yaml
+
+sys:
+  path:
+    - ./src
+
+qlib_init:
+  provider_uri: "{{ QLIB_DATA_URI }}"
+  region: cn
+
+experiment_name: tushare_alpha158_lgb
+market: &market all
+benchmark: &benchmark SH000300
+
+data_handler_config: &data_handler_config
+  start_time: "2012-01-01"
+  end_time: "2026-08-04"
+  fit_start_time: "2012-01-01"
+  fit_end_time: "2019-12-31"
+  instruments: *market
+  shared_processors:
+    - class: AshareUniverseFilter
+      module_path: tushare_qlib.processors
+      kwargs:
+        min_listed_days: 120
+        min_circ_mv_yuan: 2000000000
+        min_money_20d_yuan: 20000000
+        exclude_st: true
+        allow_unknown_st: true
+  infer_processors:
+    - class: ProcessInf
+    - class: RobustZScoreNorm
+      kwargs:
+        fields_group: feature
+        clip_outlier: true
+    - class: Fillna
+      kwargs:
+        fields_group: feature
+  learn_processors:
+    - class: DropnaLabel
+    - class: CSRankNorm
+      kwargs:
+        fields_group: label
+
+task:
+  model:
+    class: LGBModel
+    module_path: qlib.contrib.model.gbdt
+    kwargs:
+      loss: mse
+      learning_rate: 0.03
+      num_leaves: 63
+      max_depth: 8
+      colsample_bytree: 0.8
+      subsample: 0.8
+      lambda_l1: 10.0
+      lambda_l2: 50.0
+      num_threads: 12
+      early_stopping_rounds: 100
+      num_boost_round: 2000
+  dataset:
+    class: DatasetH
+    module_path: qlib.data.dataset
+    kwargs:
+      handler:
+        class: TushareAlpha158Daily
+        module_path: tushare_qlib.custom_handler
+        kwargs: *data_handler_config
+      segments:
+        train: ["2012-01-01", "2019-12-31"]
+        valid: ["2020-01-01", "2021-12-31"]
+        test: ["2022-01-01", "2026-08-04"]
+  record:
+    - class: SignalRecord
+      module_path: qlib.workflow.record_temp
+      kwargs:
+        model: <MODEL>
+        dataset: <DATASET>
+    - class: SigAnaRecord
+      module_path: qlib.workflow.record_temp
+      kwargs:
+        ana_long_short: true
+        ann_scaler: 252
+    - class: PortAnaRecord
+      module_path: qlib.workflow.record_temp
+      kwargs:
+        config:
+          strategy:
+            class: TopkDropoutStrategy
+            module_path: qlib.contrib.strategy
+            kwargs:
+              signal: <PRED>
+              topk: 30
+              n_drop: 5
+              hold_thresh: 5
+              only_tradable: true
+              forbid_all_trade_at_limit: true
+          executor:
+            class: SimulatorExecutor
+            module_path: qlib.backtest.executor
+            kwargs:
+              time_per_step: day
+              generate_portfolio_metrics: true
+          backtest:
+            start_time: "2022-01-01"
+            end_time: "2026-08-04"
+            account: 100000000
+            benchmark: *benchmark
+            exchange_kwargs:
+              # Approximation. Calibrate against your broker and historical fee regime.
+              limit_threshold: 0.095
+              deal_price: close
+              open_cost: 0.00035
+              close_cost: 0.00085
+              min_cost: 5

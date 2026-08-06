@@ -1,0 +1,40 @@
+execution:
+  # Directory for source selection files (resolved against project_root)
+  selection_dir: ./data/output
+  # Directory for generated trade plans
+  output_dir: ./data/output
+  # Selection file pattern and parsing
+  selection_glob: "selection_*.csv"
+  top_n: 10
+  min_score: 0.16
+  rebalance_threshold: 0.005
+
+  # Weight control
+  max_position: 0.12
+  max_exposure: 0.90
+
+  # Minimum position for a ticker to be emitted in the plan. Set 0 to keep all.
+  min_position: 0.0
+
+  # Optional: force all missing current members to sell.
+  force_sell_removed: true
+
+  # If false, execution will only contain BUY/SELL actions.
+  allow_weight_update: true
+
+  # Output columns for the generated trade plan
+  output_columns:
+    - trade_date
+    - signal_date
+    - instrument
+    - action
+    - target_weight
+    - current_weight
+    - weight_delta
+    - score
+    - trigger
+    - topn_threshold
+    - min_score_threshold
+    - rebalance_threshold
+    - max_position
+    - max_exposure

@@ -1,0 +1,61 @@
+project_root: ./data
+start_date: "20160101"
+end_date: "20260804"
+
+# Keep the rate configurable because Tushare entitlement and traffic rules vary by points and endpoint.
+tushare:
+  calls_per_minute: 180
+  max_attempts: 6
+  base_sleep_seconds: 2.0
+  optional_endpoints:
+    moneyflow: true
+    stock_st: true
+    suspend_d: true
+    stk_limit: true
+
+qlib:
+  repo_path: ${QLIB_REPO}
+  dataset_dir: ${QLIB_DATA_URI}
+  frequency: day
+  dataset_version: cn_tushare_v1
+  include_fields:
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - money
+    - vwap
+    - factor
+    - change
+    - paused
+    - turnover_rate
+    - turnover_rate_f
+    - volume_ratio
+    - pe
+    - pe_ttm
+    - pb
+    - ps
+    - ps_ttm
+    - dv_ratio
+    - dv_ttm
+    - total_share
+    - float_share
+    - free_share
+    - total_mv
+    - circ_mv
+    - net_mf_amount
+    - big_net_amount
+    - up_limit
+    - down_limit
+    - is_limit_up
+    - is_limit_down
+    - is_st
+    - listed_days
+
+universe:
+  min_listed_days: 120
+  min_circ_mv_yuan: 2000000000
+  min_money_20d_yuan: 20000000
+  exclude_st: true
+  allow_unknown_st: true

@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+import math
+import shutil
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from loguru import logger
+
+from .settings import Settings
+from .store import PartitionStore
+from .symbols import ts_to_qlib
+
+
+BASIC_PERCENT_FIELDS = ["turnover_rate", "turnover_rate_f", "dv_ratio", "dv_ttm"]
+SHARE_10K_FIELDS = ["total_share", "float_share", "free_share"]
+MV_10K_FIELDS = ["total_mv", "circ_mv"]
+MONEYFLOW_10K_FIELDS = ["buy_lg_amount", "sell_lg_amount", "buy_elg_amount", "sell_elg_amount", "net_mf_amount"]
+MONEYFLOW_HAND_FIELDS = ["buy_lg_vol", "sell_lg_vol", "buy_elg_vol", "sell_elg_vol", "net_mf_vol"]
+
+
+def _rename_daily_basic(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    return df.drop(columns=["close"], errors="ignore")
+
+
+def _active_master(master: pd.DataFrame, trade_date: pd.Timestamp) -> pd.DataFrame:
+    listed = master["list_date"].notna() & (master["list_date"] <= trade_date)
+    not_delisted = master["delist_date"].isna() | (master["delist_date"] >= trade_date)
+    return master.loc[listed & not_delisted].copy()
+
+
+def build_curated_day(settings: Settings, trade_date: str, force: bool = False) -> Path:
+    out_dir = settings.paths.curated / f"trade_date={trade_date}"
+    out_path = out_dir / "data.parquet"
+    if out_path.exists() and not force:
+        return out_path
+
+    raw = PartitionStore(settings.paths.raw)
+    master = pd.read_parquet(settings.paths.metadata / "stock_master.parquet")
+    master["list_date"] = pd.to_datetime(master["list_date"])
+    master["delist_date"] = pd.to_datetime(master["delist_date"])
+    dt = pd.Timestamp(trade_date)
+    active = _active_master(master, dt)[["ts_code", "name", "list_date", "delist_date", "market", "exchange"]]
+    frame = active.copy()
+    frame["trade_date"] = trade_date
+
+    daily = raw.read("daily", trade_date)
+    adj = raw.read("adj_factor", trade_date)
+    basic = _rename_daily_basic(raw.read("daily_basic", trade_date))
+    moneyflow = raw.read("moneyflow", trade_date)
+    limit_df = raw.read("stk_limit", trade_date).drop(columns=["pre_close"], errors="ignore")
+    suspend = raw.read("suspend_d", trade_date)
+    st = raw.read("stock_st", trade_date)
+
+    for source in (daily, adj, basic, moneyflow, limit_df):
+        if not source.empty:
+            frame = frame.merge(source, on=["ts_code", "trade_date"], how="left", validate="one_to_one")
+
+    suspended_codes = set(suspend.loc[suspend.get("suspend_type", pd.Series(dtype=str)) == "S", "ts_code"]) \
+        if not suspend.empty else set()
+    st_codes = set(st["ts_code"]) if not st.empty else set()
+    frame["known_suspended"] = frame["ts_code"].isin(suspended_codes).astype(float)
+    frame["paused"] = (frame["close"].isna() | frame["ts_code"].isin(suspended_codes)).astype(float)
+    frame["is_st"] = frame["ts_code"].isin(st_codes).astype(float) if raw.exists("stock_st", trade_date) else np.nan
+    frame["symbol"] = frame["ts_code"].map(ts_to_qlib)
+    frame["date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp = out_path.with_suffix(".parquet.tmp")
+    frame.to_parquet(tmp, index=False)
+    tmp.replace(out_path)
+    logger.info("Curated {}: active={}, traded={}, paused={}", trade_date, len(frame), frame["close"].notna().sum(),
+                int(frame["paused"].sum()))
+    return out_path
+
+
+def build_all_curated(settings: Settings, start_date: str | None = None, end_date: str | None = None) -> None:
+    raw = PartitionStore(settings.paths.raw)
+    dates = raw.list_dates("daily")
+    for trade_date in dates:
+        if start_date and trade_date < start_date:
+            continue
+        if end_date and trade_date > end_date:
+            continue
+        build_curated_day(settings, trade_date)
+
+
+def _load_open_calendar(settings: Settings) -> pd.DatetimeIndex:
+    cal = pd.read_parquet(settings.paths.metadata / "trade_calendar.parquet")
+    values = pd.to_datetime(cal.loc[cal["is_open"].astype(int) == 1, "cal_date"]).sort_values().unique()
+    return pd.DatetimeIndex(values)
+
+
+def _trading_age(date_values: pd.Series, list_date: pd.Timestamp, calendar: pd.DatetimeIndex) -> np.ndarray:
+    list_idx = int(calendar.searchsorted(list_date, side="left"))
+    date_idx = calendar.searchsorted(pd.DatetimeIndex(date_values), side="left")
+    return np.maximum(date_idx - list_idx, 0).astype(float)
+
+
+def normalize_symbol(df: pd.DataFrame, calendar: pd.DatetimeIndex, base_adj_close: float | None = None) -> tuple[pd.DataFrame, float]:
+    df = df.sort_values("date").copy()
+    traded = df["close"].notna() & df["adj_factor"].notna() & (df["close"] > 0) & (df["adj_factor"] > 0)
+    if base_adj_close is None:
+        if not traded.any():
+            raise ValueError(f"No traded row for {df['symbol'].iloc[0]}")
+        first = df.loc[traded].iloc[0]
+        base_adj_close = float(first["close"] * first["adj_factor"])
+    if not math.isfinite(base_adj_close) or base_adj_close <= 0:
+        raise ValueError("base_adj_close must be positive")
+
+    factor = df["adj_factor"] / base_adj_close
+    for col in ("open", "high", "low", "close"):
+        df[col] = df[col] * factor
+    # Tushare volume is in hands. Qlib adjusted volume is raw shares / factor.
+    df["volume"] = df["vol"] * 100.0 / factor
+    df["money"] = df["amount"] * 1000.0
+    df["factor"] = factor
+    df["change"] = df["pct_chg"] / 100.0
+    df["vwap"] = df["money"] / df["volume"]
+    df["up_limit"] = df["up_limit"] * factor if "up_limit" in df else np.nan
+    df["down_limit"] = df["down_limit"] * factor if "down_limit" in df else np.nan
+
+    for field in BASIC_PERCENT_FIELDS:
+        if field in df:
+            df[field] = df[field] / 100.0
+    for field in SHARE_10K_FIELDS:
+        if field in df:
+            df[field] = df[field] * 10000.0
+    for field in MV_10K_FIELDS:
+        if field in df:
+            df[field] = df[field] * 10000.0
+    for field in MONEYFLOW_10K_FIELDS:
+        if field in df:
+            df[field] = df[field] * 10000.0
+    for field in MONEYFLOW_HAND_FIELDS:
+        if field in df:
+            df[field] = df[field] * 100.0
+
+    if all(c in df for c in ("buy_lg_amount", "sell_lg_amount", "buy_elg_amount", "sell_elg_amount")):
+        df["big_net_amount"] = (
+            df["buy_lg_amount"].fillna(0) + df["buy_elg_amount"].fillna(0)
+            - df["sell_lg_amount"].fillna(0) - df["sell_elg_amount"].fillna(0)
+        )
+    else:
+        df["big_net_amount"] = np.nan
+
+    if "limit_status" in df:
+        df["is_limit_up"] = df["limit_status"].isin([2, 3]).astype(float)
+        df["is_limit_down"] = df["limit_status"].isin([5, 6]).astype(float)
+    else:
+        raw_close = df["close"] / factor
+        raw_up = df["up_limit"] / factor
+        raw_down = df["down_limit"] / factor
+        df["is_limit_up"] = (raw_close >= raw_up - 0.005).astype(float)
+        df["is_limit_down"] = (raw_close <= raw_down + 0.005).astype(float)
+
+    list_date = pd.Timestamp(df["list_date"].dropna().iloc[0])
+    df["listed_days"] = _trading_age(df["date"], list_date, calendar)
+
+    # Qlib convention: market fields are NaN on suspended dates. Keep state/filter fields available.
+    market_fields = ["open", "high", "low", "close", "volume", "money", "vwap", "factor", "change", "up_limit", "down_limit"]
+    paused = df["paused"].fillna(1).astype(bool)
+    df.loc[paused, market_fields] = np.nan
+
+    keep = [
+        "date", "symbol", "open", "high", "low", "close", "volume", "money", "vwap", "factor", "change",
+        "paused", "turnover_rate", "turnover_rate_f", "volume_ratio", "pe", "pe_ttm", "pb", "ps", "ps_ttm",
+        "dv_ratio", "dv_ttm", "total_share", "float_share", "free_share", "total_mv", "circ_mv",
+        "net_mf_amount", "big_net_amount", "up_limit", "down_limit", "is_limit_up", "is_limit_down", "is_st",
+        "listed_days",
+    ]
+    for col in keep:
+        if col not in df:
+            df[col] = np.nan
+    return df[keep], base_adj_close
+
+
+def _curated_glob(settings: Settings) -> str:
+    return str((settings.paths.curated / "trade_date=*" / "data.parquet").resolve())
+
+
+def export_full_staging(settings: Settings, force: bool = False) -> Path:
+    import duckdb
+
+    stage = settings.paths.staging_full
+    if stage.exists() and force:
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True, exist_ok=True)
+    calendar = _load_open_calendar(settings)
+    con = duckdb.connect()
+    glob = _curated_glob(settings)
+    symbols = [row[0] for row in con.execute("SELECT DISTINCT symbol FROM read_parquet(?) ORDER BY symbol", [glob]).fetchall()]
+    bases = []
+    for i, symbol in enumerate(symbols, 1):
+        target = stage / f"{symbol}.parquet"
+        if target.exists() and not force:
+            continue
+        raw_df = con.execute("SELECT * FROM read_parquet(?) WHERE symbol=? ORDER BY date", [glob, symbol]).df()
+        norm, base = normalize_symbol(raw_df, calendar)
+        norm.to_parquet(target, index=False)
+        bases.append({"symbol": symbol, "base_adj_close": base})
+        if i % 200 == 0 or i == len(symbols):
+            logger.info("Staging full: {}/{}", i, len(symbols))
+    base_path = settings.paths.metadata / "normalization_base.parquet"
+    pd.DataFrame(bases).to_parquet(base_path, index=False)
+    return stage
+
+
+def export_incremental_staging(settings: Settings, trade_dates: list[str], force: bool = True) -> Path:
+    stage = settings.paths.staging_update
+    if stage.exists() and force:
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True, exist_ok=True)
+    calendar = _load_open_calendar(settings)
+    base_path = settings.paths.metadata / "normalization_base.parquet"
+    bases = pd.read_parquet(base_path).set_index("symbol")["base_adj_close"].to_dict() if base_path.exists() else {}
+    frames = [pd.read_parquet(settings.paths.curated / f"trade_date={d}" / "data.parquet") for d in trade_dates]
+    all_df = pd.concat(frames, ignore_index=True)
+    new_bases = []
+    for symbol, group in all_df.groupby("symbol", sort=True):
+        norm, base = normalize_symbol(group, calendar, bases.get(symbol))
+        norm.to_parquet(stage / f"{symbol}.parquet", index=False)
+        if symbol not in bases:
+            new_bases.append({"symbol": symbol, "base_adj_close": base})
+    if new_bases:
+        merged = pd.concat([pd.DataFrame([{"symbol": k, "base_adj_close": v} for k, v in bases.items()]),
+                            pd.DataFrame(new_bases)], ignore_index=True).drop_duplicates("symbol", keep="last")
+        merged.to_parquet(base_path, index=False)
+    return stage
