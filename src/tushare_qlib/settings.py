@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,14 +9,26 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+_ENV_PATTERN = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
+
 
 def _expand_env(value: Any) -> Any:
     if isinstance(value, str):
-        return os.path.expandvars(value)
+        expanded = os.path.expandvars(value)
+        unresolved = _ENV_PATTERN.findall(expanded)
+        if unresolved:
+            raise RuntimeError(f"Unresolved environment variables: {', '.join(unresolved)}")
+        return expanded
     if isinstance(value, list):
         return [_expand_env(v) for v in value]
     if isinstance(value, dict):
         return {k: _expand_env(v) for k, v in value.items()}
+    return value
+
+
+def _require_mapping(value: Any, name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be a mapping")
     return value
 
 
@@ -28,6 +41,9 @@ class Paths:
     staging_update: Path
     metadata: Path
     output: Path
+    quality: Path
+    state: Path
+    models: Path
 
     @classmethod
     def from_root(cls, root: Path) -> "Paths":
@@ -39,6 +55,9 @@ class Paths:
             staging_update=root / "staging" / "update",
             metadata=root / "metadata",
             output=root / "output",
+            quality=root / "quality",
+            state=root / "state",
+            models=root / "models",
         )
 
     def mkdirs(self) -> None:
@@ -51,27 +70,66 @@ class Settings:
     config_path: Path
     data: dict[str, Any]
     paths: Paths
-    tushare_token: str
-    qlib_repo: Path
+    tushare_token: str | None
+    qlib_repo: Path | None
     qlib_data_uri: Path
 
     @classmethod
-    def load(cls, config_path: str | Path) -> "Settings":
+    def load(
+        cls,
+        config_path: str | Path,
+        *,
+        require_tushare: bool = False,
+        require_qlib_repo: bool = False,
+        create_dirs: bool = True,
+    ) -> "Settings":
         load_dotenv()
         config_path = Path(config_path).expanduser().resolve()
         with config_path.open("r", encoding="utf-8") as fp:
-            data = _expand_env(yaml.safe_load(fp))
+            loaded = yaml.safe_load(fp)
+        data = _expand_env(_require_mapping(loaded, "root config"))
 
-        project_root = Path(data["project_root"])
+        if "project_root" not in data:
+            raise ValueError("project_root is required")
+        if "qlib" not in data:
+            raise ValueError("qlib config is required")
+        _require_mapping(data["qlib"], "qlib")
+        _require_mapping(data.get("tushare", {}), "tushare")
+
+        project_root = Path(str(data["project_root"])).expanduser()
         if not project_root.is_absolute():
             project_root = (config_path.parent.parent / project_root).resolve()
         paths = Paths.from_root(project_root)
-        paths.mkdirs()
+        if create_dirs:
+            paths.mkdirs()
 
-        token = os.getenv("TUSHARE_TOKEN", "").strip()
-        if not token:
+        token = os.getenv("TUSHARE_TOKEN", "").strip() or None
+        if require_tushare and not token:
             raise RuntimeError("TUSHARE_TOKEN is not set. Copy .env.example to .env and fill the token.")
 
-        qlib_repo = Path(data["qlib"]["repo_path"]).expanduser().resolve()
-        qlib_data_uri = Path(data["qlib"]["dataset_dir"]).expanduser().resolve()
+        qlib_cfg = data["qlib"]
+        repo_raw = str(qlib_cfg.get("repo_path", "")).strip()
+        qlib_repo = Path(repo_raw).expanduser().resolve() if repo_raw else None
+        if require_qlib_repo and (qlib_repo is None or not qlib_repo.exists()):
+            raise RuntimeError("QLIB_REPO is not configured or does not exist")
+
+        dataset_raw = str(qlib_cfg.get("dataset_dir", "")).strip()
+        if not dataset_raw:
+            raise ValueError("qlib.dataset_dir is required")
+        qlib_data_uri = Path(dataset_raw).expanduser()
+        if not qlib_data_uri.is_absolute():
+            qlib_data_uri = (config_path.parent.parent / qlib_data_uri).resolve()
+        else:
+            qlib_data_uri = qlib_data_uri.resolve()
+
         return cls(config_path, data, paths, token, qlib_repo, qlib_data_uri)
+
+    def require_token(self) -> str:
+        if not self.tushare_token:
+            raise RuntimeError("TUSHARE_TOKEN is required for this command")
+        return self.tushare_token
+
+    def require_qlib_repo(self) -> Path:
+        if self.qlib_repo is None or not self.qlib_repo.exists():
+            raise RuntimeError("QLIB_REPO is required and must exist for this command")
+        return self.qlib_repo

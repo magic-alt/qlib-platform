@@ -1,28 +1,42 @@
 [build-system]
-requires = []
-build-backend = "local_build_meta"
-backend-path = ["."]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "tushare-qlib-a-share"
-version = "0.1.0"
-description = "Tushare Pro to Microsoft Qlib data pipeline for A-share research"
-requires-python = ">=3.10"
+version = "0.2.0"
+description = "Auditable Tushare Pro to Qlib research pipeline with production trade-plan and LEAN bridge"
+requires-python = ">=3.10,<3.13"
 dependencies = [
-  "tushare>=1.4.0",
-  "pandas>=2.0",
+  "pandas>=2.0,<3.0",
   "numpy>=1.24,<2.0",
-  "pyarrow>=14",
-  "duckdb>=1.0",
-  "PyYAML>=6",
-  "python-dotenv>=1.0",
-  "tenacity>=8.2",
-  "loguru>=0.7",
-  "lightgbm>=4.0",
+  "pyarrow>=14,<20",
+  "duckdb>=1.0,<2.0",
+  "PyYAML>=6,<7",
+  "python-dotenv>=1.0,<2.0",
+  "loguru>=0.7,<1.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.8"]
+data = [
+  "tushare>=1.4.0,<2.0",
+  "tenacity>=8.2,<10",
+]
+qlib = [
+  "lightgbm>=4.0,<5.0",
+]
+all = [
+  "tushare>=1.4.0,<2.0",
+  "tenacity>=8.2,<10",
+  "lightgbm>=4.0,<5.0",
+]
+dev = [
+  "pytest>=8,<9",
+  "pytest-cov>=5,<7",
+  "ruff>=0.8,<1",
+  "mypy>=1.11,<2",
+  "types-PyYAML>=6.0",
+]
 
 [project.scripts]
 tq = "tushare_qlib.cli:main"
@@ -30,5 +44,23 @@ tq = "tushare_qlib.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
 [tool.ruff]
 line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+warn_return_any = true
+check_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = true
