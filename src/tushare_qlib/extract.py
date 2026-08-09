@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import pandas as pd
 from loguru import logger
 
 from .client import RetryPolicy, TushareClient
+from .mysql_source import MysqlClient, build_connection_kwargs, build_mysql_endpoints, fetch_lean_benchmark, lean_mysql_preflight
 from .quality import assert_quality, validate_raw_day, write_report
 from .settings import Settings
 from .store import PartitionStore
@@ -35,31 +38,120 @@ class Endpoint:
 
 
 class Extractor:
+    def _is_mysql_source(self, settings: Settings) -> bool:
+        source = settings.data.get("data_source", {})
+        if not isinstance(source, Mapping):
+            return False
+        kind = str(source.get("kind", "tushare")).strip().lower()
+        if kind in {"mysql", "lean_mysql", "lean-platform", "lean_platform"}:
+            return True
+        if kind == "auto":
+            return bool(source.get("mysql"))
+        return False
+
     def __init__(self, settings: Settings):
         cfg = settings.data["tushare"]
         calls = int(os.getenv("TUSHARE_CALLS_PER_MINUTE", cfg.get("calls_per_minute", 180)))
         self.settings = settings
-        self.client = TushareClient(
-            settings.require_token(),
-            calls_per_minute=calls,
-            retry_policy=RetryPolicy(
-                int(cfg.get("max_attempts", 6)),
-                float(cfg.get("base_sleep_seconds", 2.0)),
-                float(cfg.get("max_sleep_seconds", 60.0)),
-                float(cfg.get("jitter_ratio", 0.15)),
-            ),
-        )
         self.store = PartitionStore(settings.paths.raw)
+        self.source_is_mysql = self._is_mysql_source(settings)
         optional = cfg.get("optional_endpoints", {})
+        mysql_endpoint_cfg: dict[str, dict[str, Any]] = {}
+
+        policy = RetryPolicy(
+            int(cfg.get("max_attempts", 6)),
+            float(cfg.get("base_sleep_seconds", 2.0)),
+            float(cfg.get("max_sleep_seconds", 60.0)),
+            float(cfg.get("jitter_ratio", 0.15)),
+        )
+        if self.source_is_mysql:
+            source_cfg = settings.data.get("data_source", {})
+            mysql_cfg = source_cfg.get("mysql") if isinstance(source_cfg, Mapping) else None
+            if not isinstance(mysql_cfg, Mapping):
+                raise ValueError("data_source.kind=mysql requires data_source.mysql configuration")
+            mysql_endpoint_cfg = build_mysql_endpoints(mysql_cfg, optional_endpoints=optional)
+            self.client = MysqlClient(
+                connection=build_connection_kwargs(mysql_cfg),
+                endpoint_queries={name: value["query"] for name, value in mysql_endpoint_cfg.items()},
+                default_params={
+                    "source": str(mysql_cfg.get("source", "tushare")).strip(),
+                    "universe": str(mysql_cfg.get("universe", "CSI300")).strip(),
+                },
+                retry_policy=policy,
+            )
+        else:
+            self.client = TushareClient(
+                settings.require_token(),
+                calls_per_minute=calls,
+                retry_policy=policy,
+            )
         self.endpoints = [
-            Endpoint("daily", DAILY_FIELDS, True),
-            Endpoint("adj_factor", ADJ_FIELDS, True),
-            Endpoint("daily_basic", BASIC_FIELDS, True),
-            Endpoint("moneyflow", MONEYFLOW_FIELDS, False, bool(optional.get("moneyflow", True))),
-            Endpoint("stk_limit", LIMIT_FIELDS, False, bool(optional.get("stk_limit", True))),
-            Endpoint("suspend_d", SUSPEND_FIELDS, False, bool(optional.get("suspend_d", True))),
-            Endpoint("stock_st", ST_FIELDS, False, bool(optional.get("stock_st", True))),
+            Endpoint(
+                "daily",
+                DAILY_FIELDS,
+                True,
+                enabled=(
+                    bool(optional.get("daily", True))
+                    if isinstance(optional, Mapping)
+                    else True
+                ),
+            ),
+            Endpoint(
+                "adj_factor",
+                ADJ_FIELDS,
+                True,
+                enabled=(
+                    bool(optional.get("adj_factor", True))
+                    if isinstance(optional, Mapping)
+                    else True
+                ),
+            ),
+            Endpoint(
+                "daily_basic",
+                BASIC_FIELDS,
+                True,
+                enabled=(
+                    bool(optional.get("daily_basic", True))
+                    if isinstance(optional, Mapping)
+                    else True
+                ),
+            ),
+            Endpoint(
+                "moneyflow",
+                MONEYFLOW_FIELDS,
+                False,
+                enabled=(bool(optional.get("moneyflow", True)) if isinstance(optional, Mapping) else True),
+            ),
+            Endpoint(
+                "stk_limit",
+                LIMIT_FIELDS,
+                False,
+                enabled=(bool(optional.get("stk_limit", True)) if isinstance(optional, Mapping) else True),
+            ),
+            Endpoint(
+                "suspend_d",
+                SUSPEND_FIELDS,
+                False,
+                enabled=(bool(optional.get("suspend_d", True)) if isinstance(optional, Mapping) else True),
+            ),
+            Endpoint(
+                "stock_st",
+                ST_FIELDS,
+                False,
+                enabled=(bool(optional.get("stock_st", True)) if isinstance(optional, Mapping) else True),
+            ),
         ]
+
+        if self.source_is_mysql and mysql_endpoint_cfg:
+            for idx, endpoint in enumerate(self.endpoints):
+                configured = mysql_endpoint_cfg.get(endpoint.name)
+                if configured:
+                    self.endpoints[idx] = Endpoint(
+                        endpoint.name,
+                        endpoint.fields,
+                        bool(configured["required"]),
+                        bool(configured.get("enabled", endpoint.enabled)),
+                    )
 
     def fetch_stock_master(self) -> pd.DataFrame:
         fields = (
@@ -166,3 +258,29 @@ class Extractor:
         for i, trade_date in enumerate(dates, 1):
             logger.info("Backfill {}/{}: {}", i, len(dates), trade_date)
             self.fetch_day(trade_date, force=force)
+
+    def source_preflight(self, start_date: str, end_date: str) -> dict[str, Any]:
+        if not self.source_is_mysql:
+            raise ValueError("source-preflight currently requires data_source.kind=lean_mysql")
+        source_cfg = self.settings.data.get("data_source", {})
+        mysql_cfg = source_cfg.get("mysql") if isinstance(source_cfg, Mapping) else None
+        if not isinstance(mysql_cfg, Mapping):
+            raise ValueError("data_source.mysql configuration is required")
+        return lean_mysql_preflight(mysql_cfg, start_date, end_date)
+
+    def sync_benchmark(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+        source_cfg = self.settings.data.get("data_source", {})
+        mysql_cfg = source_cfg.get("mysql") if isinstance(source_cfg, Mapping) else None
+        if not isinstance(mysql_cfg, Mapping):
+            raise ValueError("sync-benchmark requires data_source.mysql configuration")
+        frame = fetch_lean_benchmark(mysql_cfg, symbol, start_date, end_date)
+        if frame.empty:
+            raise RuntimeError(f"Lean MySQL has no index benchmark {symbol} for {start_date}..{end_date}")
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
+        if frame["trade_date"].duplicated().any():
+            raise ValueError(f"duplicate benchmark dates for {symbol}; configure one canonical source")
+        target = self.settings.paths.metadata / "benchmarks" / f"{symbol.upper()}.parquet"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(target, index=False)
+        logger.info("Saved benchmark {}: {} rows -> {}", symbol, len(frame), target)
+        return frame

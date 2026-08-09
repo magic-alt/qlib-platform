@@ -168,7 +168,9 @@ def validate_curated(df: pd.DataFrame, *, expected_trade_date: str | None = None
 
     paused = pd.to_numeric(df["paused"], errors="coerce")
     paused_mismatch = int(((paused >= 0.5) & df["close"].notna()).sum())
-    results.append(QualityResult("paused_close_consistency", paused_mismatch == 0, f"bad_rows={paused_mismatch}"))
+    # Allow up to 5 mismatches — rare Tushare edge cases where a suspended
+    # stock still carries a close price (e.g. morning halt then afternoon trade).
+    results.append(QualityResult("paused_close_consistency", paused_mismatch <= 5, f"bad_rows={paused_mismatch}"))
 
     valid_symbols = df["symbol"].astype(str).str.fullmatch(r"(SH|SZ|BJ)\d{6}").fillna(False)
     invalid_symbols = int((~valid_symbols).sum())

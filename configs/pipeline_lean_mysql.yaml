@@ -1,11 +1,11 @@
-project_root: ./data
-start_date: "20230801"
-end_date: "20260806"
+project_root: ./data/lean_mysql
+start_date: "20160808"
+end_date: "20260730"
 calendar_end_date: "20261231"
 
 data_source:
   # Use `tushare` for API pulls or `lean_mysql` to read from lean-platform MySQL.
-  kind: tushare
+  kind: lean_mysql
   mysql:
     # `lean_canonical_v1` reads lean-platform's governed canonical tables.
     schema: lean_canonical_v1
@@ -42,7 +42,7 @@ tushare:
 
 qlib:
   repo_path: ${QLIB_REPO}
-  dataset_dir: ${QLIB_DATA_URI}
+  dataset_dir: ./data/qlib/lean_mysql_csi300_10y
   frequency: day
   dataset_version: cn_tushare_v1
   export:

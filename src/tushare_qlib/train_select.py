@@ -10,11 +10,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .client import TushareClient
 from .settings import Settings
 from .store import PartitionStore
 
-_AUTO_BENCHMARK_CANDIDATES = ("SH000300", "SH000905", "SZ399001", "SZ399006", "SZ000001")
+_DEFAULT_BENCHMARK = "SH000300"
 
 
 def _configure_mlflow_tracking(settings: Settings) -> None:
@@ -38,10 +37,13 @@ def _default_splits_from_data(settings: Settings) -> tuple[tuple[str, str], tupl
     n = len(dates)
     train_end_idx = (n * 6) // 10 - 1
     valid_end_idx = (n * 8) // 10 - 1
+    # Test ends one day before the last calendar entry so the backtest
+    # strategy can peek at the next trading day for its final step.
+    test_end_idx = n - 2
     return (
         (dates[0].strftime("%Y-%m-%d"), dates[train_end_idx].strftime("%Y-%m-%d")),
         (dates[train_end_idx + 1].strftime("%Y-%m-%d"), dates[valid_end_idx].strftime("%Y-%m-%d")),
-        (dates[valid_end_idx + 1].strftime("%Y-%m-%d"), dates[-1].strftime("%Y-%m-%d")),
+        (dates[valid_end_idx + 1].strftime("%Y-%m-%d"), dates[test_end_idx].strftime("%Y-%m-%d")),
     )
 
 
@@ -77,26 +79,25 @@ def _to_tushare_index_code(code: str) -> str | None:
     return value if re.fullmatch(r"\d{6}\.(SH|SZ|BJ)", value) else None
 
 
-def _fetch_index_benchmark_series(
-    code: str, start_time: str, end_time: str, token: str | None, calendar: pd.DatetimeIndex
-) -> pd.Series | None:
-    ts_code = _to_tushare_index_code(code)
-    if not ts_code or not token:
-        return None
-    result = TushareClient(token).fetch(
-        "index_daily",
-        required=False,
-        ts_code=ts_code,
-        fields="trade_date,close",
-        start_date=pd.Timestamp(start_time).strftime("%Y%m%d"),
-        end_date=pd.Timestamp(end_time).strftime("%Y%m%d"),
-    )
-    frame = result.data
-    if frame.empty or not {"trade_date", "close"}.issubset(frame.columns):
-        return None
-    frame["trade_date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d", errors="coerce")
-    close = frame.dropna(subset=["trade_date"]).set_index("trade_date")["close"].astype(float).sort_index()
-    return close.pct_change().reindex(calendar).fillna(0.0).rename("benchmark")
+def _load_local_benchmark_series(settings: Settings, code: str, calendar: pd.DatetimeIndex) -> pd.Series:
+    path = settings.paths.metadata / "benchmarks" / f"{code.upper()}.parquet"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Local benchmark is required: {path}. Run `tq --config {settings.config_path} sync-benchmark`."
+        )
+    frame = pd.read_parquet(path)
+    required = {"trade_date", "close"}
+    if not required.issubset(frame.columns):
+        raise ValueError(f"benchmark file missing columns: {sorted(required - set(frame.columns))}")
+    dates = pd.to_datetime(frame["trade_date"], errors="coerce")
+    close = pd.Series(pd.to_numeric(frame["close"], errors="coerce").to_numpy(), index=dates).dropna().sort_index()
+    if close.index.duplicated().any():
+        raise ValueError(f"duplicate benchmark dates in {path}")
+    selected = close.reindex(calendar)
+    if selected.isna().any():
+        missing = selected[selected.isna()].index[:5].strftime("%Y-%m-%d").tolist()
+        raise ValueError(f"benchmark does not cover backtest calendar; missing={missing}")
+    return selected.pct_change().fillna(0.0).rename("benchmark")
 
 
 def _resolve_benchmark(settings: Settings, benchmark: str | None, start_time: str, end_time: str) -> Any:
@@ -105,28 +106,10 @@ def _resolve_benchmark(settings: Settings, benchmark: str | None, start_time: st
     calendar = pd.DatetimeIndex(D.calendar(start_time=start_time, end_time=end_time, freq="day"))
     if calendar.empty:
         raise RuntimeError("Qlib calendar is empty; benchmark cannot be resolved")
-    candidates: list[str] = []
-    for item in ([benchmark] if benchmark else []) + list(_AUTO_BENCHMARK_CANDIDATES):
-        if item and item not in candidates:
-            candidates.append(item)
-    try:
-        available = set(D.list_instruments({"market": "all", "filter_pipe": []}, start_time=start_time, end_time=end_time, as_list=True))
-    except Exception:
-        available = set()
-    for candidate in candidates:
-        normalized = _normalize_stock_code_for_qlib(candidate)
-        if normalized in available:
-            return normalized
-        series = _fetch_index_benchmark_series(candidate, start_time, end_time, settings.tushare_token, calendar)
-        if series is not None and not series.empty:
-            return series
-    research = settings.data.get("research", {})
-    allow_zero = bool(research.get("allow_zero_benchmark", False)) if isinstance(research, dict) else False
-    if allow_zero:
-        return pd.Series(0.0, index=calendar, name="benchmark")
-    raise RuntimeError(
-        f"No benchmark resolved from {candidates}. Zero-return fallback is disabled because it invalidates excess-return metrics."
-    )
+    code = _normalize_stock_code_for_qlib(benchmark or str(settings.data.get("research", {}).get("benchmark", _DEFAULT_BENCHMARK)))
+    if code != _DEFAULT_BENCHMARK:
+        raise ValueError(f"Only the certified index benchmark {_DEFAULT_BENCHMARK} is accepted, got {code}")
+    return _load_local_benchmark_series(settings, code, calendar)
 
 
 def build_dataset(
@@ -161,7 +144,11 @@ def build_dataset(
             }
         ],
         infer_processors=[
-            {"class": "ProcessInf"},
+            {
+                "class": "ProcessInfSingleThread",
+                "module_path": "tushare_qlib.processors",
+                "kwargs": {"n_jobs": 1},
+            },
             {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
             {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
         ],
@@ -201,6 +188,7 @@ def train_backtest_select(
     benchmark: str | None = None,
     topn: int = 30,
     experiment_name: str = "tushare_alpha158_lgb",
+    run_kind: str = "fixed_split",
 ) -> Path:
     try:
         import qlib
@@ -247,7 +235,11 @@ def train_backtest_select(
         R.save_objects(**{"params.pkl": model, "dataset": dataset})
         SignalRecord(model=model, dataset=dataset, recorder=recorder).generate()
         SigAnaRecord(recorder=recorder, ana_long_short=True, ann_scaler=252).generate()
-        benchmark_cfg = _resolve_benchmark(settings, benchmark, test[0], test[1])
+        pred = recorder.load_object("pred.pkl")
+        pred_dates = pred.index.get_level_values("datetime")
+        oos_start = pd.Timestamp(pred_dates.min()).strftime("%Y-%m-%d")
+        oos_end = pd.Timestamp(pred_dates.max()).strftime("%Y-%m-%d")
+        benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
         PortAnaRecord(
             recorder=recorder,
             config={
@@ -269,13 +261,15 @@ def train_backtest_select(
                     "kwargs": {"time_per_step": "day", "generate_portfolio_metrics": True},
                 },
                 "backtest": {
-                    "start_time": test[0],
-                    "end_time": test[1],
+                    "start_time": oos_start,
+                    "end_time": oos_end,
                     "account": int(research.get("backtest_account", 100_000_000)),
                     "benchmark": benchmark_cfg,
                     "exchange_kwargs": {
-                        "limit_threshold": float(research.get("limit_threshold", 0.095)),
+                        "limit_threshold": ("$is_limit_up > 0", "$is_limit_down > 0"),
                         "deal_price": str(research.get("deal_price", "open")),
+                        "volume_threshold": ("current", f"$volume * {float(research.get('max_participation_rate', 0.05))}"),
+                        "trade_unit": int(research.get("trade_unit", 100)),
                         "open_cost": float(research.get("open_cost", 0.00035)),
                         "close_cost": float(research.get("close_cost", 0.00085)),
                         "min_cost": float(research.get("min_cost", 5)),
@@ -284,7 +278,6 @@ def train_backtest_select(
             },
         ).generate()
 
-        pred = model.predict(dataset, segment="test")
         score = pred.iloc[:, 0] if isinstance(pred, pd.DataFrame) else pred
         latest = pd.Timestamp(score.index.get_level_values("datetime").max())
         selected = score.xs(latest, level="datetime").sort_values(ascending=False).head(topn)
@@ -293,6 +286,7 @@ def train_backtest_select(
         model_id = str(getattr(recorder, "id", "unversioned"))
         output = selected.rename("score").reset_index().rename(columns={selected.index.name or "index": "instrument"})
         output["volatility"] = output["instrument"].map(volatility)
+        output["target_weight"] = 1.0 / len(output) if len(output) else 0.0
         output.insert(0, "trade_date", _next_trade_date(settings, latest))
         output.insert(0, "signal_date", latest.strftime("%Y-%m-%d"))
         output["model_id"] = model_id
@@ -301,4 +295,57 @@ def train_backtest_select(
         output["signal_id"] = hashlib.sha256(payload).hexdigest()[:24]
         path = settings.paths.output / f"selection_{latest:%Y%m%d}.csv"
         output.to_csv(path, index=False, encoding="utf-8-sig")
+        report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
+        artifact_dir = settings.paths.output / "research" / model_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        pred_path = artifact_dir / "oos_predictions.parquet"
+        report_path = artifact_dir / "portfolio_report.parquet"
+        pred.to_parquet(pred_path)
+        report.to_parquet(report_path)
+        metrics: dict[str, float] = {}
+        for column in ("return", "bench", "cost"):
+            if column in report:
+                values = pd.to_numeric(report[column], errors="coerce").dropna()
+                metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
+        manifest = {
+            "schemaVersion": "1.0",
+            "externalRunId": model_id,
+            "runKind": run_kind,
+            "name": f"Qlib {run_kind} {oos_start}..{oos_end}",
+            "dataset": {
+                "fingerprint": _dataset_id(settings),
+                "source": "lean_mysql" if not settings.uses_tushare_source() else "tushare",
+                "universe": "CSI300" if not settings.uses_tushare_source() else "all",
+                "startDate": train[0],
+                "endDate": oos_end,
+            },
+            "model": {"name": "Alpha158-LGBM", "fingerprint": model_id},
+            "folds": [{"key": run_kind, "train": list(train), "valid": list(valid), "test": [oos_start, oos_end]}],
+            "execution": {
+                "benchmark": benchmark or str(research.get("benchmark", _DEFAULT_BENCHMARK)),
+                "signalLagDays": int(research.get("signal_lag_days", 1)),
+                "dealPrice": str(research.get("deal_price", "open")),
+                "tradeUnit": int(research.get("trade_unit", 100)),
+                "maxParticipationRate": float(research.get("max_participation_rate", 0.05)),
+            },
+            "metrics": metrics,
+            "artifacts": [
+                {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
+                {"name": report_path.name, "localPath": str(report_path), "rows": len(report)},
+            ],
+            "latestTargets": {
+                "signalDate": latest.strftime("%Y-%m-%d"),
+                "tradeDate": _next_trade_date(settings, latest),
+                "targets": [
+                    {
+                        "instrument": str(row.instrument),
+                        "targetWeight": float(row.target_weight),
+                        "score": float(row.score),
+                    }
+                    for row in output.itertuples(index=False)
+                ],
+            },
+        }
+        manifest_path = artifact_dir / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         return path

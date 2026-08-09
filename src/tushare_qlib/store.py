@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -10,6 +12,27 @@ from typing import Any, Iterable
 import pandas as pd
 
 _TERMINAL_STATUSES = {"success", "empty", "permission_denied", "disabled"}
+
+
+def _atomic_replace(src: Path, dst: Path, retries: int = 3) -> None:
+    """Atomic replace with fallback retry for macOS APFS race conditions."""
+    if not src.exists():
+        raise FileNotFoundError(f"Source file does not exist: {src}")
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)
+            return
+        except FileNotFoundError:
+            if attempt < retries - 1:
+                time.sleep(0.1)
+                if not src.exists():
+                    raise
+                continue
+            # Fallback: copy then remove
+            shutil.copy2(src, dst)
+            if src.exists():
+                src.unlink()
+            return
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -63,8 +86,26 @@ class PartitionStore:
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / "data.parquet"
         tmp = target.with_suffix(".parquet.tmp")
-        df.to_parquet(tmp, index=False)
-        os.replace(tmp, target)
+        for _write_attempt in range(3):
+            df.to_parquet(tmp, index=False)
+            if tmp.exists():
+                break
+            time.sleep(0.1)
+        else:
+            # Direct write fallback if tmp file keeps disappearing
+            df.to_parquet(target, index=False)
+            actual_status = status or ("empty" if df.empty else "success")
+            meta: dict[str, Any] = {
+                "dataset": dataset, "trade_date": trade_date, "status": actual_status,
+                "rows": int(len(df)), "columns": [str(c) for c in df.columns],
+                "bytes": target.stat().st_size, "sha256": sha256_file(target),
+                "written_at_utc": datetime.now(timezone.utc).isoformat(),
+            }
+            if metadata:
+                meta.update(metadata)
+            self._write_manifest(dataset, trade_date, meta)
+            return target
+        _atomic_replace(tmp, target)
         actual_status = status or ("empty" if df.empty else "success")
         meta: dict[str, Any] = {
             "dataset": dataset,
@@ -110,7 +151,7 @@ class PartitionStore:
         path = self.manifest_path(dataset, trade_date)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, path)
+        _atomic_replace(tmp, path)
         return path
 
     def read(self, dataset: str, trade_date: str) -> pd.DataFrame:

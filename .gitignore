@@ -9,6 +9,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv311/
 venv/
 env/
 .env
@@ -20,6 +21,7 @@ dist/
 .ipynb_checkpoints/
 .idea/
 .vscode/
+.qoder
 
 data/
 mlruns/

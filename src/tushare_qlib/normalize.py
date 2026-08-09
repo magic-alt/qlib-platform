@@ -13,7 +13,7 @@ from loguru import logger
 
 from .quality import assert_quality, validate_curated, validate_normalized, write_report
 from .settings import Settings
-from .store import PartitionStore, sha256_file
+from .store import PartitionStore, _atomic_replace, sha256_file
 from .symbols import ts_to_qlib
 
 BASIC_PERCENT_FIELDS = ["turnover_rate", "turnover_rate_f", "dv_ratio", "dv_ttm"]
@@ -91,7 +91,7 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp = out_path.with_suffix(".parquet.tmp")
     frame.to_parquet(tmp, index=False)
-    os.replace(tmp, out_path)
+    _atomic_replace(tmp, out_path)
     manifest = {
         "trade_date": trade_date,
         "rows": len(frame),
@@ -293,12 +293,20 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
             existing_bases = dict(zip(existing_df["symbol"], existing_df["base_adj_close"], strict=False))
     bases = dict(existing_bases)
 
+    skipped: list[str] = []
     for i, symbol in enumerate(symbols, 1):
         target = stage / f"{symbol}.parquet"
         if target.exists() and not force and symbol in bases:
             continue
         raw_df = con.execute("SELECT * FROM read_parquet(?) WHERE symbol=? ORDER BY date", [glob, symbol]).df()
-        norm, base = normalize_symbol(raw_df, calendar, existing_bases.get(symbol))
+        try:
+            norm, base = normalize_symbol(raw_df, calendar, existing_bases.get(symbol))
+        except ValueError as exc:
+            if not raw_df["close"].notna().any():
+                skipped.append(symbol)
+                logger.warning("Skip symbol without any traded row in full stage: {}", symbol)
+                continue
+            raise
         report = validate_normalized(norm, symbol)
         assert_quality(report)
         norm.to_parquet(target, index=False)

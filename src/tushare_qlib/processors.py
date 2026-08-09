@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from qlib.data.dataset.processor import Processor
+from qlib.utils.paral import datetime_groupby_apply
 
 
 class AshareUniverseFilter(Processor):
@@ -46,3 +48,29 @@ class AshareUniverseFilter(Processor):
 
     def readonly(self) -> bool:
         return True
+
+
+class ProcessInfSingleThread(Processor):
+    """Process infinity values with single-threaded datetime-group application."""
+
+    def __init__(self, fields_group=None, n_jobs: int = 1):
+        self.fields_group = fields_group
+        self.n_jobs = n_jobs
+
+    def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
+        def replace_inf(data: pd.DataFrame) -> pd.DataFrame:
+            def process_inf(group_df: pd.DataFrame) -> pd.DataFrame:
+                for col in group_df.columns:
+                    group_df[col] = group_df[col].replace(
+                        [np.inf, -np.inf], group_df[col][~np.isinf(group_df[col])].mean()
+                    )
+                return group_df
+
+            data = datetime_groupby_apply(data, process_inf, n_jobs=self.n_jobs)
+            data.sort_index(inplace=True)
+            return data
+
+        return replace_inf(df)
+
+    def readonly(self) -> bool:
+        return False

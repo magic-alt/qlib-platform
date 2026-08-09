@@ -21,6 +21,7 @@ dependencies = [
 data = [
   "tushare>=1.4.0,<2.0",
   "tenacity>=8.2,<10",
+  "pymysql>=1.1,<2.0",
 ]
 qlib = [
   "lightgbm>=4.0,<5.0",
@@ -28,6 +29,7 @@ qlib = [
 all = [
   "tushare>=1.4.0,<2.0",
   "tenacity>=8.2,<10",
+  "pymysql>=1.1,<2.0",
   "lightgbm>=4.0,<5.0",
 ]
 dev = [

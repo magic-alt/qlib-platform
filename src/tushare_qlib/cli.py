@@ -18,6 +18,13 @@ def parser() -> argparse.ArgumentParser:
     b.add_argument("--start")
     b.add_argument("--end")
     b.add_argument("--force", action="store_true")
+    sp = sub.add_parser("source-preflight")
+    sp.add_argument("--start")
+    sp.add_argument("--end")
+    sb = sub.add_parser("sync-benchmark")
+    sb.add_argument("--symbol", default="SH000300")
+    sb.add_argument("--start")
+    sb.add_argument("--end")
     c = sub.add_parser("curate")
     c.add_argument("--start")
     c.add_argument("--end")
@@ -38,6 +45,12 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("--test", nargs=2, metavar=("START", "END"))
     ts.add_argument("--benchmark")
     ts.add_argument("--topn", type=int, default=30)
+    rr = sub.add_parser("research-run")
+    rr.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
+    rr.add_argument("--start")
+    rr.add_argument("--end")
+    rr.add_argument("--benchmark", default="SH000300")
+    rr.add_argument("--topn", type=int, default=30)
 
     tp = sub.add_parser("build-trade-plan")
     tp.add_argument("--execution-config", default="configs/trading_execution_template.yaml")
@@ -57,6 +70,12 @@ def parser() -> argparse.ArgumentParser:
     rg = sub.add_parser("research-gate")
     rg.add_argument("metrics_json")
     rg.add_argument("--output")
+    ra = sub.add_parser("research-audit")
+    ra.add_argument("run_dir")
+    ra.add_argument("--output")
+    lr = sub.add_parser("lean-register")
+    lr.add_argument("manifest")
+    lr.add_argument("--base-url")
 
     pa = sub.add_parser("project-audit")
     pa.add_argument("--root", default=".")
@@ -89,6 +108,22 @@ def main() -> None:
         report = audit_project(args.root)
         path = write_audit(report, args.output)
         print(json.dumps({"score": report["score"], "passed": report["passed"], "report": str(path)}, ensure_ascii=False))
+        return
+
+    if args.command == "research-audit":
+        from .backtest_audit import audit_mlflow_run, write_audit
+
+        report = audit_mlflow_run(args.run_dir)
+        path = write_audit(report, args.output)
+        print(json.dumps({"passed": report["passed"], "report": str(path)}, ensure_ascii=False))
+        if not report["passed"]:
+            raise SystemExit(2)
+        return
+
+    if args.command == "lean-register":
+        from .lean_integration import register_manifest
+
+        print(json.dumps(register_manifest(args.manifest, base_url=args.base_url), ensure_ascii=False))
         return
 
     if args.command == "build-trade-plan":
@@ -148,21 +183,22 @@ def main() -> None:
         blocked.to_csv(out / f"blocked_orders_{args.trade_date.replace('-', '')}.csv", index=False)
         return
 
-    settings = Settings.load(
-        args.config,
-        require_tushare=args.command in {"init-metadata", "backfill"},
-        require_qlib_repo=args.command in {"dump-full", "dump-update"},
-    )
+    settings = Settings.load(args.config, require_tushare=False, require_qlib_repo=args.command in {"dump-full", "dump-update"})
 
-    if args.command in {"init-metadata", "backfill"}:
+    if args.command in {"init-metadata", "backfill", "source-preflight", "sync-benchmark"}:
         from .extract import Extractor
 
         ext = Extractor(settings)
         if args.command == "init-metadata":
             ext.fetch_stock_master()
             ext.fetch_calendar(settings.data["start_date"], settings.data.get("calendar_end_date", settings.data["end_date"]))
-        else:
+        elif args.command == "backfill":
             ext.backfill(args.start or settings.data["start_date"], args.end or settings.data["end_date"], args.force)
+        elif args.command == "source-preflight":
+            print(json.dumps(ext.source_preflight(args.start or settings.data["start_date"], args.end or settings.data["end_date"]), ensure_ascii=False, default=str))
+        else:
+            frame = ext.sync_benchmark(args.symbol, args.start or settings.data["start_date"], args.end or settings.data["end_date"])
+            print(json.dumps({"symbol": args.symbol, "rows": len(frame)}, ensure_ascii=False))
     elif args.command in {"curate", "curate-day", "stage-full", "stage-update"}:
         from .normalize import build_all_curated, build_curated_day, export_full_staging, export_incremental_staging
 
@@ -179,13 +215,20 @@ def main() -> None:
 
         path = dump_full(settings, single_thread=args.single_thread) if args.command == "dump-full" else dump_update(settings, single_thread=args.single_thread)
         print(path)
-    elif args.command == "train-select":
+    elif args.command in {"train-select", "research-run"}:
         from .train_select import train_backtest_select
 
-        train = tuple(args.train) if args.train else None
-        valid = tuple(args.valid) if args.valid else None
-        test = tuple(args.test) if args.test else None
-        print(train_backtest_select(settings, train=train, valid=valid, test=test, benchmark=args.benchmark, topn=args.topn))
+        if args.command == "research-run" and args.mode == "walk-forward":
+            from .walk_forward import run_walk_forward
+
+            print(run_walk_forward(settings, start_date=args.start or settings.data["start_date"], end_date=args.end or settings.data["end_date"], benchmark=args.benchmark, topn=args.topn))
+        elif args.command == "research-run":
+            print(train_backtest_select(settings, benchmark=args.benchmark, topn=args.topn))
+        else:
+            train = tuple(args.train) if args.train else None
+            valid = tuple(args.valid) if args.valid else None
+            test = tuple(args.test) if args.test else None
+            print(train_backtest_select(settings, train=train, valid=valid, test=test, benchmark=args.benchmark, topn=args.topn))
     else:
         raise AssertionError(args.command)
 

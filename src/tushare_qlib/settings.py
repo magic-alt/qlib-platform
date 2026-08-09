@@ -129,6 +129,17 @@ class Settings:
             raise RuntimeError("TUSHARE_TOKEN is required for this command")
         return self.tushare_token
 
+    def uses_tushare_source(self) -> bool:
+        source_cfg = self.data.get("data_source", {})
+        if not isinstance(source_cfg, dict):
+            return True
+        kind = str(source_cfg.get("kind", "tushare")).strip().lower()
+        if kind == "auto":
+            return "mysql" not in source_cfg
+        if kind in {"mysql", "lean_mysql", "lean-platform", "lean_platform"}:
+            return False
+        return True
+
     def require_qlib_repo(self) -> Path:
         if self.qlib_repo is None or not self.qlib_repo.exists():
             raise RuntimeError("QLIB_REPO is required and must exist for this command")

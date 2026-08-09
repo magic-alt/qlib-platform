@@ -34,6 +34,16 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 
 在 `.env` 配置 `TUSHARE_TOKEN`、`QLIB_REPO` 和 `QLIB_DATA_URI`。
 
+如果你已有 lean-platform 的 MySQL 数据库，可切换为数据库模式：
+
+```bash
+cp .env.example .env
+# 配置 LEAN_MYSQL_*（或 LEAN_MYSQL_DSN）
+sed -i '' 's/^  kind: tushare/  kind: lean_mysql/' configs/pipeline.yaml
+```
+
+数据库模式下，`backfill/curate/stage/dump` 流程仍复用同一套本地标准化与 Qlib 打包流程，不需要重新从 Tushare 下载。
+
 ## 2. 先做一次增量验证（推荐）
 
 先做缩短验证周期的冒烟验证，命令如下（示例 `20250101-20260805`）：
@@ -47,7 +57,7 @@ tq --config configs/pipeline.yaml dump-full
 
 若上述步骤通过，再执行全量构建（与日常首次一致）：
 
-## 2. 首次全量构建
+## 3. 首次全量构建
 
 ```bash
 tq --config configs/pipeline.yaml init-metadata
@@ -74,6 +84,35 @@ tq --config configs/pipeline.yaml train-select
 
 选股结果位于 `data/output/selection_YYYYMMDD.csv`。
 
+### 4.1 SH000300 基准回测结果解读（最新一次）
+
+本次使用 `--benchmark SH000300`，仅调整基准，不改仓位/模型参数的情况下跑通了 3 年滚动样本，产出文件：
+
+`data/output/selection_20260804.csv`
+
+主要指标含义（qrun / qlib 输出）：
+
+- `IC`: 0.007245675923387125。表示预测分数与下期收益的平均相关性接近 0，说明在截面层面方向性预测能力很弱。
+- `ICIR`: 0.04548204309194314。`IC / IC_std` 的信息比率，值很低，说明 IC 不稳定，信号可重复性较差。
+- `Rank IC`: 0.04895135627373251。基于排序相关性的指标，也很低，说明“排序能力”偏弱。
+- `Rank ICIR`: 0.2587141872486941。分位排序信息比率偏低，策略边界更偏近随机。
+- `Long-Avg Ann Return`: -0.08653338113799691。仅做多池子年度化收益为负。
+- `Long-Avg Ann Sharpe`: -0.35390926148386115。只做多组合年化收益风险比为负，说明收益不够抵消波动。
+- `Long-Short Ann Return`: 0.09958028909750283。多空组合年度化收益为正，说明空头对冲后有一定净 alpha 空间。
+- `Long-Short Ann Sharpe`: 0.8357154429232966。多空组合的风险调整收益较好（>0.8，可作为可用信号起点）。
+
+基准（SH000300）对照：
+
+- 年化收益: 0.073153
+- 信息比率: 0.433658
+- 最大回撤: -0.110666
+
+结合解释：
+
+- 该次结果没有做到明显超额收益（仅看 IC/ICIR），但多空结构在风险调整后存在一定正收益。
+- 如果目标是做长期跟踪基准，当前特征/参数下更像“中性化套利型”而非单边强势择时。
+- 可优先优化方向：提高因子信息密度（调参或新特征）、控制换手、检查交易成本敏感性，并增加更长/多段市场周期验证，避免 2022~2026 区间过拟合。
+
 ## 5. 每日增量
 
 以 20260805 为例：
@@ -94,4 +133,4 @@ tq --config configs/pipeline.yaml train-select
 - `index_weight` 是月度快照，构造指数 PIT 股票池时应明确其时间分辨率。
 - 示例手续费只是可配置假设，不代表任何券商的真实费率。
 - 生产回测建议按历史费用制度分段，而不是用单一费率覆盖全部年份。
-- `dump_update` 仅用于在现有字段集合上追加新交易日；新增字段或修复历史数据应构建新版本数据集。
+- `dump-update` 仅用于在现有字段集合上追加新交易日；新增字段或修复历史数据应构建新版本数据集。
