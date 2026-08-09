@@ -12,6 +12,7 @@ import pandas as pd
 
 from .settings import Settings
 from .store import PartitionStore
+from .topk_dropout import TopkDropoutPolicy
 
 _DEFAULT_BENCHMARK = "SH000300"
 
@@ -125,7 +126,7 @@ def build_dataset(
 
     universe = universe or {}
     handler = TushareAlpha158Daily(
-        instruments="all",
+        instruments=universe.get("instruments", "all"),
         start_time=train[0],
         end_time=test[1],
         fit_start_time=train[0],
@@ -168,6 +169,16 @@ def _dataset_id(settings: Settings) -> str:
     return "unversioned"
 
 
+def _universe_manifest(universe: dict[str, object]) -> tuple[str, list[str] | None]:
+    """Return a readable universe label plus static members, when supplied."""
+
+    instruments = universe.get("instruments", "all")
+    if isinstance(instruments, (list, tuple, pd.Index)):
+        members = [str(instrument) for instrument in instruments]
+        return str(universe.get("label", f"static_{len(members)}")), members
+    return str(instruments), None
+
+
 def _selection_volatility(instruments: list[str], latest: pd.Timestamp) -> pd.Series:
     from qlib.data import D
 
@@ -177,6 +188,191 @@ def _selection_volatility(instruments: list[str], latest: pd.Timestamp) -> pd.Se
         return pd.Series(index=instruments, data=np.nan)
     close = prices.iloc[:, 0].unstack("instrument") if prices.index.names[0] == "datetime" else prices.iloc[:, 0].unstack("datetime").T
     return close.pct_change().tail(20).std().reindex(instruments)
+
+
+def _signal_id(model_id: str, dataset_id: str, signal_date: pd.Timestamp) -> str:
+    payload = f"{model_id}|{dataset_id}|{signal_date.isoformat()}".encode()
+    return hashlib.sha256(payload).hexdigest()[:24]
+
+
+def _selection_output(
+    selected: pd.Series,
+    *,
+    signal_date: pd.Timestamp,
+    trade_date: str,
+    model_id: str,
+    dataset_id: str,
+    volatility: pd.Series,
+) -> pd.DataFrame:
+    output = selected.rename("score").reset_index().rename(columns={selected.index.name or "index": "instrument"})
+    output.insert(1, "score_rank", np.arange(1, len(output) + 1, dtype=int))
+    output["is_model_topk"] = True
+    output["volatility"] = output["instrument"].map(volatility)
+    output["target_weight"] = 1.0 / len(output) if len(output) else 0.0
+    output.insert(0, "trade_date", trade_date)
+    output.insert(0, "signal_date", signal_date.strftime("%Y-%m-%d"))
+    output["model_id"] = model_id
+    output["dataset_id"] = dataset_id
+    output["signal_id"] = _signal_id(model_id, dataset_id, signal_date)
+    return output
+
+
+def _selection_volatility_by_date(selections: dict[pd.Timestamp, pd.Series]) -> dict[pd.Timestamp, pd.Series]:
+    """Calculate 20-day volatility for every selected instrument in one Qlib query."""
+    from qlib.data import D
+
+    dates = pd.DatetimeIndex(selections).sort_values()
+    instruments = sorted({str(instrument) for selected in selections.values() for instrument in selected.index})
+    prices = D.features(
+        instruments,
+        ["$close"],
+        start_time=dates.min() - pd.Timedelta(days=60),
+        end_time=dates.max(),
+        freq="day",
+    )
+    if prices.empty:
+        return {date: pd.Series(index=selected.index, data=np.nan) for date, selected in selections.items()}
+    close = (
+        prices.iloc[:, 0].unstack("instrument")
+        if prices.index.names[0] == "datetime"
+        else prices.iloc[:, 0].unstack("datetime").T
+    )
+    rolling_volatility = close.pct_change(fill_method=None).rolling(20).std()
+    return {
+        date: rolling_volatility.loc[date].reindex(selected.index)
+        if date in rolling_volatility.index
+        else pd.Series(index=selected.index, data=np.nan)
+        for date, selected in selections.items()
+    }
+
+
+def _export_daily_selections(
+    settings: Settings,
+    score: pd.Series,
+    *,
+    model_id: str,
+    topn: int,
+) -> tuple[Path, pd.DataFrame]:
+    """Export the top-ranked instruments for every OOS signal date.
+
+    The latest file remains the command result for compatibility with downstream
+    execution, while preceding dates make the complete backtest signal history
+    directly consumable from ``data/output``.
+    """
+    if not isinstance(score.index, pd.MultiIndex) or "datetime" not in score.index.names:
+        raise ValueError("score must have a MultiIndex containing datetime")
+
+    dates = pd.DatetimeIndex(score.index.get_level_values("datetime").unique()).sort_values()
+    if dates.empty:
+        raise ValueError("cannot export selections from an empty score series")
+    calendar = _official_calendar(settings)
+    dataset_id = _dataset_id(settings)
+    selections = {
+        signal_date: score.xs(signal_date, level="datetime").sort_values(ascending=False).head(topn)
+        for signal_date in dates
+    }
+    volatility_by_date = _selection_volatility_by_date(selections)
+    latest_path: Path | None = None
+    latest_output: pd.DataFrame | None = None
+
+    for signal_date in dates:
+        future = calendar[calendar > signal_date]
+        if future.empty:
+            raise ValueError(f"official calendar has no open day after {signal_date.date()}")
+        selected = selections[signal_date]
+        output = _selection_output(
+            selected,
+            signal_date=signal_date,
+            trade_date=future[0].strftime("%Y-%m-%d"),
+            model_id=model_id,
+            dataset_id=dataset_id,
+            volatility=volatility_by_date[signal_date],
+        )
+        path = settings.paths.output / f"selection_{signal_date:%Y%m%d}.csv"
+        output.to_csv(path, index=False, encoding="utf-8-sig")
+        latest_path = path
+        latest_output = output
+
+    assert latest_path is not None and latest_output is not None
+    return latest_path, latest_output
+
+
+def _export_daily_signal_scores(
+    settings: Settings,
+    score: pd.Series,
+    *,
+    model_id: str,
+    policy: TopkDropoutPolicy | None = None,
+) -> dict[pd.Timestamp, Path]:
+    """Persist the full cross-section required to reproduce TopkDropout decisions.
+
+    ``selection_*.csv`` intentionally remains a compact TopN artifact.  The
+    matching parquet files are the authoritative score inputs for the exact
+    strategy path because current broker holdings may rank outside the TopN.
+    """
+
+    if not isinstance(score.index, pd.MultiIndex) or "datetime" not in score.index.names:
+        raise ValueError("score must have a MultiIndex containing datetime")
+    policy = policy or TopkDropoutPolicy()
+    policy.validate()
+    dataset_id = _dataset_id(settings)
+    output_dir = settings.paths.output / "signals"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    calendar = _official_calendar(settings)
+    paths: dict[pd.Timestamp, Path] = {}
+    for signal_date in pd.DatetimeIndex(score.index.get_level_values("datetime").unique()).sort_values():
+        future = calendar[calendar > signal_date]
+        if future.empty:
+            raise ValueError(f"official calendar has no open day after {signal_date.date()}")
+        ranked = score.xs(signal_date, level="datetime").sort_values(ascending=False)
+        frame = ranked.rename("score").reset_index().rename(columns={ranked.index.name or "index": "instrument"})
+        frame.insert(0, "score_rank", np.arange(1, len(frame) + 1, dtype=int))
+        frame.insert(0, "trade_date", future[0].strftime("%Y-%m-%d"))
+        frame.insert(0, "signal_date", signal_date.strftime("%Y-%m-%d"))
+        frame["model_id"] = model_id
+        frame["dataset_id"] = dataset_id
+        frame["signal_id"] = _signal_id(model_id, dataset_id, signal_date)
+        frame["strategy_topk"] = policy.topk
+        frame["strategy_n_drop"] = policy.n_drop
+        frame["strategy_hold_thresh"] = policy.hold_thresh
+        frame["strategy_risk_degree"] = policy.risk_degree
+        frame["strategy_only_tradable"] = policy.only_tradable
+        frame["strategy_forbid_all_trade_at_limit"] = policy.forbid_all_trade_at_limit
+        path = output_dir / f"signal_scores_{signal_date:%Y%m%d}.parquet"
+        frame.to_parquet(path, index=False)
+        paths[signal_date] = path
+    return paths
+
+
+def _backtest_quote_status(settings: Settings, score: pd.Series) -> pd.DataFrame:
+    """Load the point-in-time tradability fields used by the daily Qlib exchange."""
+
+    from qlib.data import D
+
+    dates = pd.DatetimeIndex(score.index.get_level_values("datetime").unique()).sort_values()
+    calendar = _official_calendar(settings)
+    trade_dates = pd.DatetimeIndex([calendar[calendar > date][0] for date in dates if len(calendar[calendar > date])])
+    if trade_dates.empty:
+        return pd.DataFrame(columns=["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"])
+    instruments = sorted(score.index.get_level_values("instrument").astype(str).unique())
+    raw = D.features(
+        instruments,
+        ["$close", "$is_limit_up", "$is_limit_down"],
+        start_time=trade_dates.min(),
+        end_time=trade_dates.max(),
+        freq="day",
+    )
+    if raw.empty:
+        raise RuntimeError("cannot audit TopkDropout without Qlib trade-status fields")
+    frame = raw.reset_index().rename(columns={"datetime": "trade_date"})
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.normalize()
+    frame["paused"] = pd.to_numeric(frame["$close"], errors="coerce").isna().astype(float)
+    for column in ("is_limit_up", "is_limit_down"):
+        frame[column] = pd.to_numeric(frame[f"${column}"], errors="coerce").fillna(1.0)
+    return frame.loc[
+        frame["trade_date"].isin(trade_dates),
+        ["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"],
+    ]
 
 
 def train_backtest_select(
@@ -200,16 +396,27 @@ def train_backtest_select(
         raise RuntimeError("Install the qlib optional dependencies: pip install -e '.[qlib]'") from exc
 
     _configure_mlflow_tracking(settings)
-    qlib.init(provider_uri=str(settings.qlib_data_uri), region=REG_CN, expression_cache=None, dataset_cache=None)
+    # Alpha158 materializes a wide cross-sectional frame.  Keeping Qlib's
+    # feature preparation single-process avoids duplicate worker copies while
+    # leaving LightGBM's configured training parallelism unchanged.
+    qlib.init(
+        provider_uri=str(settings.qlib_data_uri),
+        region=REG_CN,
+        expression_cache=None,
+        dataset_cache=None,
+        kernels=1,
+    )
     if train is None or valid is None or test is None:
         train, valid, test = _default_splits_from_data(settings)
     if not (pd.Timestamp(train[1]) < pd.Timestamp(valid[0]) <= pd.Timestamp(valid[1]) < pd.Timestamp(test[0])):
         raise ValueError("train/valid/test windows must be strictly chronological and non-overlapping")
 
     research = settings.data.get("research", {}) if isinstance(settings.data.get("research", {}), dict) else {}
+    universe = dict(settings.data.get("universe", {}))
     seed = int(research.get("random_seed", 42))
+    topk_policy = TopkDropoutPolicy(topk=topn, n_drop=max(1, topn // 6), hold_thresh=5)
     np.random.seed(seed)
-    dataset = build_dataset(train=train, valid=valid, test=test, universe=settings.data.get("universe", {}))
+    dataset = build_dataset(train=train, valid=valid, test=test, universe=universe)
     model = LGBModel(
         loss="mse",
         learning_rate=0.03,
@@ -248,11 +455,12 @@ def train_backtest_select(
                     "module_path": "qlib.contrib.strategy",
                     "kwargs": {
                         "signal": "<PRED>",
-                        "topk": topn,
-                        "n_drop": max(1, topn // 6),
-                        "hold_thresh": 5,
-                        "only_tradable": True,
-                        "forbid_all_trade_at_limit": True,
+                        "topk": topk_policy.topk,
+                        "n_drop": topk_policy.n_drop,
+                        "hold_thresh": topk_policy.hold_thresh,
+                        "only_tradable": topk_policy.only_tradable,
+                        "forbid_all_trade_at_limit": topk_policy.forbid_all_trade_at_limit,
+                        "risk_degree": topk_policy.risk_degree,
                     },
                 },
                 "executor": {
@@ -263,7 +471,7 @@ def train_backtest_select(
                 "backtest": {
                     "start_time": oos_start,
                     "end_time": oos_end,
-                    "account": int(research.get("backtest_account", 100_000_000)),
+                    "account": int(research.get("backtest_account", 500_000)),
                     "benchmark": benchmark_cfg,
                     "exchange_kwargs": {
                         "limit_threshold": ("$is_limit_up > 0", "$is_limit_down > 0"),
@@ -279,46 +487,54 @@ def train_backtest_select(
         ).generate()
 
         score = pred.iloc[:, 0] if isinstance(pred, pd.DataFrame) else pred
-        latest = pd.Timestamp(score.index.get_level_values("datetime").max())
-        selected = score.xs(latest, level="datetime").sort_values(ascending=False).head(topn)
-        instruments = selected.index.astype(str).tolist()
-        volatility = _selection_volatility(instruments, latest)
         model_id = str(getattr(recorder, "id", "unversioned"))
-        output = selected.rename("score").reset_index().rename(columns={selected.index.name or "index": "instrument"})
-        output["volatility"] = output["instrument"].map(volatility)
-        output["target_weight"] = 1.0 / len(output) if len(output) else 0.0
-        output.insert(0, "trade_date", _next_trade_date(settings, latest))
-        output.insert(0, "signal_date", latest.strftime("%Y-%m-%d"))
-        output["model_id"] = model_id
-        output["dataset_id"] = _dataset_id(settings)
-        payload = f"{model_id}|{_dataset_id(settings)}|{latest.isoformat()}".encode()
-        output["signal_id"] = hashlib.sha256(payload).hexdigest()[:24]
-        path = settings.paths.output / f"selection_{latest:%Y%m%d}.csv"
-        output.to_csv(path, index=False, encoding="utf-8-sig")
+        latest = pd.Timestamp(score.index.get_level_values("datetime").max())
         report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
         artifact_dir = settings.paths.output / "research" / model_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         pred_path = artifact_dir / "oos_predictions.parquet"
         report_path = artifact_dir / "portfolio_report.parquet"
+        audit_path = artifact_dir / "strategy_audit.parquet"
+        holdings_path = artifact_dir / "holdings.parquet"
         pred.to_parquet(pred_path)
         report.to_parquet(report_path)
+        from .backtest_report import ReportArtifacts, export_holding_snapshots, write_backtest_report
+        from .strategy_audit import build_strategy_audit
+
+        positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
+        holdings = export_holding_snapshots(positions)
+        holdings.to_parquet(holdings_path, index=False)
+        audit = build_strategy_audit(
+            score,
+            positions,
+            recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl"),
+            _backtest_quote_status(settings, score),
+            policy=topk_policy,
+        )
+        audit.to_parquet(audit_path, index=False)
+        signal_paths = _export_daily_signal_scores(settings, score, model_id=model_id, policy=topk_policy)
+        path, output = _export_daily_selections(settings, score, model_id=model_id, topn=topn)
         metrics: dict[str, float] = {}
         for column in ("return", "bench", "cost"):
             if column in report:
                 values = pd.to_numeric(report[column], errors="coerce").dropna()
                 metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
+        universe_name, universe_members = _universe_manifest(universe)
+        dataset_manifest: dict[str, object] = {
+            "fingerprint": _dataset_id(settings),
+            "source": "lean_mysql" if not settings.uses_tushare_source() else "tushare",
+            "universe": universe_name,
+            "startDate": train[0],
+            "endDate": oos_end,
+        }
+        if universe_members is not None:
+            dataset_manifest["universeMembers"] = universe_members
         manifest = {
-            "schemaVersion": "1.0",
+            "schemaVersion": "1.1",
             "externalRunId": model_id,
             "runKind": run_kind,
             "name": f"Qlib {run_kind} {oos_start}..{oos_end}",
-            "dataset": {
-                "fingerprint": _dataset_id(settings),
-                "source": "lean_mysql" if not settings.uses_tushare_source() else "tushare",
-                "universe": "CSI300" if not settings.uses_tushare_source() else "all",
-                "startDate": train[0],
-                "endDate": oos_end,
-            },
+            "dataset": dataset_manifest,
             "model": {"name": "Alpha158-LGBM", "fingerprint": model_id},
             "folds": [{"key": run_kind, "train": list(train), "valid": list(valid), "test": [oos_start, oos_end]}],
             "execution": {
@@ -327,11 +543,19 @@ def train_backtest_select(
                 "dealPrice": str(research.get("deal_price", "open")),
                 "tradeUnit": int(research.get("trade_unit", 100)),
                 "maxParticipationRate": float(research.get("max_participation_rate", 0.05)),
+                "topkDropout": topk_policy.__dict__,
             },
             "metrics": metrics,
             "artifacts": [
                 {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
                 {"name": report_path.name, "localPath": str(report_path), "rows": len(report)},
+                {"name": audit_path.name, "localPath": str(audit_path), "rows": len(audit)},
+                {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(holdings)},
+                *ReportArtifacts(
+                    markdown_path=artifact_dir / "backtest_report.md",
+                    pdf_path=artifact_dir / "backtest_report.pdf",
+                    assets_dir=artifact_dir / "report_assets",
+                ).manifest_entries(),
             ],
             "latestTargets": {
                 "signalDate": latest.strftime("%Y-%m-%d"),
@@ -344,8 +568,10 @@ def train_backtest_select(
                     }
                     for row in output.itertuples(index=False)
                 ],
+                "scorePath": str(signal_paths[latest]),
             },
         }
         manifest_path = artifact_dir / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_backtest_report(settings, artifact_dir)
         return path

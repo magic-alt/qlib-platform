@@ -51,6 +51,9 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--end")
     rr.add_argument("--benchmark", default="SH000300")
     rr.add_argument("--topn", type=int, default=30)
+    rp = sub.add_parser("research-report")
+    rp.add_argument("run_dir")
+    rp.add_argument("--positions-file")
 
     tp = sub.add_parser("build-trade-plan")
     tp.add_argument("--execution-config", default="configs/trading_execution_template.yaml")
@@ -89,6 +92,22 @@ def parser() -> argparse.ArgumentParser:
     eo.add_argument("--portfolio-value", type=float, required=True)
     eo.add_argument("--cash", type=float, required=True)
     eo.add_argument("--output-dir", default="./data/output")
+
+    rh = sub.add_parser("reconcile-holdings")
+    rh.add_argument("positions")
+    rh.add_argument("--fills")
+    rh.add_argument("--as-of-date", required=True)
+    rh.add_argument("--initial-holdings")
+    rh.add_argument("--ledger-path")
+    rh.add_argument("--output-dir", default="./data/output")
+
+    to = sub.add_parser("build-topk-orders")
+    to.add_argument("signal_file")
+    to.add_argument("positions")
+    to.add_argument("quotes")
+    to.add_argument("--trade-date")
+    to.add_argument("--cash", type=float, required=True)
+    to.add_argument("--output-dir", default="./data/output")
     return p
 
 
@@ -98,6 +117,23 @@ def _first_value(frame: pd.DataFrame, column: str, fallback: str | None) -> str:
     if column in frame and frame[column].notna().any():
         return str(frame[column].dropna().iloc[0])
     raise ValueError(f"{column} must be supplied in file or CLI")
+
+
+def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -> dict[str, str]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifacts = {
+        str(item.get("name")): str(item.get("localPath"))
+        for item in manifest.get("artifacts", [])
+        if isinstance(item, dict) and item.get("name") and item.get("localPath")
+    }
+    payload = {
+        "runId": str(manifest.get("externalRunId", manifest_path.parent.name)),
+        "reportMarkdown": artifacts.get("backtest_report.md", str(manifest_path.parent / "backtest_report.md")),
+        "reportPdf": artifacts.get("backtest_report.pdf", str(manifest_path.parent / "backtest_report.pdf")),
+    }
+    if latest_selection is not None:
+        payload["latestSelection"] = str(latest_selection)
+    return payload
 
 
 def main() -> None:
@@ -185,6 +221,89 @@ def main() -> None:
 
     settings = Settings.load(args.config, require_tushare=False, require_qlib_repo=args.command in {"dump-full", "dump-update"})
 
+    if args.command == "research-report":
+        from .backtest_report import write_backtest_report
+
+        run_dir = Path(args.run_dir).expanduser().resolve()
+        write_backtest_report(settings, run_dir, positions_file=args.positions_file)
+        print(json.dumps(_report_payload(run_dir / "manifest.json"), ensure_ascii=False))
+        return
+
+    if args.command == "reconcile-holdings":
+        from .holdings_ledger import reconcile_holdings
+
+        ledger = Path(args.ledger_path).expanduser().resolve() if args.ledger_path else settings.paths.root / "state" / "topk_holdings.parquet"
+        state = reconcile_holdings(
+            pd.read_csv(args.positions),
+            pd.read_csv(args.fills) if args.fills else None,
+            as_of_date=args.as_of_date,
+            calendar_path=settings.paths.metadata / "trade_calendar.parquet",
+            ledger_path=ledger,
+            initial_holdings=pd.read_csv(args.initial_holdings) if args.initial_holdings else None,
+        )
+        out = Path(args.output_dir).expanduser().resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        key = pd.Timestamp(args.as_of_date).strftime("%Y%m%d")
+        state.to_csv(out / f"holdings_state_{key}.csv", index=False)
+        print(json.dumps({"rows": len(state), "ledger": str(ledger), "state": str(out / f"holdings_state_{key}.csv")}, ensure_ascii=False))
+        return
+
+    if args.command == "build-topk-orders":
+        from .execution import ExecutionPolicy, build_topk_orders
+        from .topk_dropout import TopkDropoutPolicy
+
+        signal = pd.read_parquet(args.signal_file)
+        required = {"signal_date", "trade_date", "instrument", "score"}
+        missing = required - set(signal.columns)
+        if missing:
+            raise ValueError(f"signal_file missing columns: {sorted(missing)}")
+        signal_dates = pd.to_datetime(signal["signal_date"], errors="raise").dt.normalize().unique()
+        trade_dates = pd.to_datetime(signal["trade_date"], errors="raise").dt.normalize().unique()
+        if len(signal_dates) != 1 or len(trade_dates) != 1:
+            raise ValueError("signal_file must contain exactly one signal_date and trade_date")
+        signal_date = pd.Timestamp(signal_dates[0]).strftime("%Y-%m-%d")
+        implied_trade_date = pd.Timestamp(trade_dates[0]).strftime("%Y-%m-%d")
+        trade_date = args.trade_date or implied_trade_date
+        if pd.Timestamp(trade_date).normalize() != pd.Timestamp(implied_trade_date).normalize():
+            raise ValueError("--trade-date must match the signal artifact's trade_date")
+        execution = settings.data.get("execution", {})
+        strategy_config = execution.get("topk_dropout", {}) if isinstance(execution, dict) else {}
+        strategy_policy = TopkDropoutPolicy.from_mapping(strategy_config if isinstance(strategy_config, dict) else {})
+        artifact_policy_columns = {
+            "topk": "strategy_topk",
+            "n_drop": "strategy_n_drop",
+            "hold_thresh": "strategy_hold_thresh",
+            "risk_degree": "strategy_risk_degree",
+            "only_tradable": "strategy_only_tradable",
+            "forbid_all_trade_at_limit": "strategy_forbid_all_trade_at_limit",
+        }
+        if set(artifact_policy_columns.values()).issubset(signal.columns):
+            artifact_policy = {
+                key: signal[column].dropna().iloc[0] for key, column in artifact_policy_columns.items()
+            }
+            strategy_policy = TopkDropoutPolicy.from_mapping(artifact_policy)
+        execution_policy = ExecutionPolicy.from_mapping(execution if isinstance(execution, dict) else {})
+        model_id = str(signal["model_id"].dropna().iloc[0]) if "model_id" in signal and signal["model_id"].notna().any() else "unversioned"
+        decision, orders, blocked = build_topk_orders(
+            signal.set_index("instrument")["score"],
+            pd.read_csv(args.positions),
+            pd.read_csv(args.quotes),
+            signal_date=signal_date,
+            trade_date=trade_date,
+            cash=args.cash,
+            strategy_policy=strategy_policy,
+            execution_policy=execution_policy,
+            model_id=model_id,
+        )
+        out = Path(args.output_dir).expanduser().resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        key = pd.Timestamp(trade_date).strftime("%Y%m%d")
+        decision.to_csv(out / f"strategy_decision_{key}.csv", index=False)
+        orders.to_csv(out / f"orders_{key}.csv", index=False)
+        blocked.to_csv(out / f"blocked_orders_{key}.csv", index=False)
+        print(json.dumps({"decision_rows": len(decision), "orders": len(orders), "blocked": len(blocked)}, ensure_ascii=False))
+        return
+
     if args.command in {"init-metadata", "backfill", "source-preflight", "sync-benchmark"}:
         from .extract import Extractor
 
@@ -221,14 +340,27 @@ def main() -> None:
         if args.command == "research-run" and args.mode == "walk-forward":
             from .walk_forward import run_walk_forward
 
-            print(run_walk_forward(settings, start_date=args.start or settings.data["start_date"], end_date=args.end or settings.data["end_date"], benchmark=args.benchmark, topn=args.topn))
+            manifest_path = run_walk_forward(
+                settings,
+                start_date=args.start or settings.data["start_date"],
+                end_date=args.end or settings.data["end_date"],
+                benchmark=args.benchmark,
+                topn=args.topn,
+            )
+            print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
         elif args.command == "research-run":
-            print(train_backtest_select(settings, benchmark=args.benchmark, topn=args.topn))
+            selection = train_backtest_select(settings, benchmark=args.benchmark, topn=args.topn)
+            model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
+            manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+            print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
         else:
             train = tuple(args.train) if args.train else None
             valid = tuple(args.valid) if args.valid else None
             test = tuple(args.test) if args.test else None
-            print(train_backtest_select(settings, train=train, valid=valid, test=test, benchmark=args.benchmark, topn=args.topn))
+            selection = train_backtest_select(settings, train=train, valid=valid, test=test, benchmark=args.benchmark, topn=args.topn)
+            model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
+            manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+            print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
     else:
         raise AssertionError(args.command)
 

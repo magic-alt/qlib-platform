@@ -93,7 +93,7 @@ research:
   min_history_days: 700
   random_seed: 42
   num_threads: 8
-  backtest_account: 100000000
+  backtest_account: 500000
   allow_zero_benchmark: false
   deal_price: open
   limit_threshold: 0.095
@@ -115,6 +115,15 @@ research:
     require_unique_artifact: true
 
 execution:
+  # Exact Qlib-style strategy mode, consumed by `tq build-topk-orders`.
+  # The standard `build-trade-plan` route below remains the legacy risk-weighted mode.
+  topk_dropout:
+    topk: 30
+    n_drop: 5
+    hold_thresh: 5
+    only_tradable: true
+    forbid_all_trade_at_limit: true
+    risk_degree: 0.95
   board_lot: 100
   max_participation_rate: 0.05
   commission_rate: 0.00025

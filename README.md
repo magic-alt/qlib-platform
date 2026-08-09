@@ -82,9 +82,58 @@ qrun configs/workflow_lightgbm.yaml
 tq --config configs/pipeline.yaml train-select
 ```
 
-选股结果位于 `data/output/selection_YYYYMMDD.csv`。
+选股结果位于 `data/output/selection_YYYYMMDD.csv`。该文件仍只表示模型 TopN；每个信号日同时会写入
+`data/output/signals/signal_scores_YYYYMMDD.parquet`，这是 TopkDropout 精确决策所需的全股票池分数与排名。
+回测运行还会在 `data/output/research/<model_id>/strategy_audit.parquet` 输出“候选 → 指令 → 成交 → 持仓”的审计链。
 
-### 4.1 SH000300 基准回测结果解读（最新一次）
+每次通过 `tq` 一体化流程运行的回测还会在同一运行目录生成可直接阅读的：
+
+- `backtest_report.md`：含图表、期末仓位、最新目标组合和全部逐笔委托/成交明细；
+- `backtest_report.pdf`：适合归档与分享的分页版本；
+- `report_assets/`：Markdown 引用的权益、盈亏、仓位、持仓权重和交易活动图表。
+
+命令行会优先打印这两个报告路径。已完成的固定切分运行可补生成报告：
+
+```bash
+tq --config configs/pipeline.yaml research-report data/output/research/<run_id>
+```
+
+若旧运行未导出 `holdings.parquet`，命令会自动查找本地 MLflow 的 Qlib 仓位快照；存在多个候选时传入
+`--positions-file path/to/positions_normal_1day.pkl`。
+
+### 4.1 TopkDropout 实盘决策与持仓对账
+
+`TopkDropoutStrategy(topk=30, n_drop=5, hold_thresh=5)` 每日重算排名，但不是每日清仓重买 Top30。
+精确模式用 T−1 分数、券商 T−1 仓位和 T 日报价生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
+风险配权路径。
+
+先以券商仓位快照和成交回报更新本地持有期账本：
+
+```bash
+tq --config configs/pipeline.yaml reconcile-holdings broker_positions.csv \
+  --fills broker_fills.csv --as-of-date 2026-08-08
+```
+
+仓位 CSV 必须包含 `instrument,quantity,available_quantity`；成交 CSV 必须包含
+`fill_id,trade_date,instrument,side,quantity,fill_price`。首次导入的既有仓位没有可追溯买入成交时，额外传入
+`--initial-holdings`（字段：`instrument,opened_trade_date`）。未能解释的券商持仓会失败关闭，避免错误绕过
+`hold_thresh`。
+
+在交易日读取完整分数、对账后仓位、报价和可用现金生成决策及订单：
+
+```bash
+tq --config configs/pipeline.yaml build-topk-orders \
+  data/output/signals/signal_scores_20260808.parquet \
+  data/output/holdings_state_20260808.csv trade_quotes.csv \
+  --cash 1000000
+```
+
+该命令生成 `strategy_decision_YYYYMMDD.csv`、`orders_YYYYMMDD.csv` 和
+`blocked_orders_YYYYMMDD.csv`。报价需包含 `instrument,price,paused,is_limit_up,is_limit_down`；可选
+`adv20_volume` 以 `ADV20 × max_participation_rate` 约束实盘委托。回测仍使用当日实际成交量，因此审计文件应作为
+两种流动性口径的对照，而不是把回测成交量当作开盘前可知信息。
+
+### 4.2 SH000300 基准回测结果解读（最新一次）
 
 本次使用 `--benchmark SH000300`，仅调整基准，不改仓位/模型参数的情况下跑通了 3 年滚动样本，产出文件：
 

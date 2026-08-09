@@ -97,6 +97,7 @@ task:
               hold_thresh: 5
               only_tradable: true
               forbid_all_trade_at_limit: true
+              risk_degree: 0.95
           executor:
             class: SimulatorExecutor
             module_path: qlib.backtest.executor
@@ -106,12 +107,16 @@ task:
           backtest:
             start_time: "2022-01-01"
             end_time: "2026-08-04"
-            account: 100000000
+            account: 500000
             benchmark: *benchmark
             exchange_kwargs:
               # Approximation. Calibrate against your broker and historical fee regime.
+              # qrun's safe YAML loader cannot express Qlib's tuple-based
+              # per-side limit expressions; use the A-share approximation.
               limit_threshold: 0.095
-              deal_price: close
+              deal_price: open
+              volume_threshold: [current, "$volume * 0.05"]
+              trade_unit: 100
               open_cost: 0.00035
               close_cost: 0.00085
               min_cost: 5
