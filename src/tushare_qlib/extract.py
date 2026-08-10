@@ -27,6 +27,8 @@ MONEYFLOW_FIELDS = (
 LIMIT_FIELDS = "ts_code,trade_date,pre_close,up_limit,down_limit"
 SUSPEND_FIELDS = "ts_code,trade_date,suspend_timing,suspend_type"
 ST_FIELDS = "ts_code,name,trade_date,type,type_name"
+INDEX_DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
+INDEX_DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
 
 
 @dataclass(frozen=True)
@@ -269,18 +271,29 @@ class Extractor:
         return lean_mysql_preflight(mysql_cfg, start_date, end_date)
 
     def sync_benchmark(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        source_cfg = self.settings.data.get("data_source", {})
-        mysql_cfg = source_cfg.get("mysql") if isinstance(source_cfg, Mapping) else None
-        if not isinstance(mysql_cfg, Mapping):
-            raise ValueError("sync-benchmark requires data_source.mysql configuration")
-        frame = fetch_lean_benchmark(mysql_cfg, symbol, start_date, end_date)
+        normalized_symbol = symbol.strip().upper()
+        if self.source_is_mysql:
+            source_cfg = self.settings.data.get("data_source", {})
+            mysql_cfg = source_cfg.get("mysql") if isinstance(source_cfg, Mapping) else None
+            if not isinstance(mysql_cfg, Mapping):
+                raise ValueError("sync-benchmark requires data_source.mysql configuration")
+            frame = fetch_lean_benchmark(mysql_cfg, normalized_symbol, start_date, end_date)
+        else:
+            if len(normalized_symbol) == 8 and normalized_symbol[:2] in {"SH", "SZ", "BJ"} and normalized_symbol[2:].isdigit():
+                ts_code = f"{normalized_symbol[2:]}.{normalized_symbol[:2]}"
+            elif len(normalized_symbol) == 9 and normalized_symbol[:6].isdigit() and normalized_symbol[6:] in {".SH", ".SZ", ".BJ"}:
+                ts_code = normalized_symbol
+            else:
+                raise ValueError(f"unsupported benchmark symbol: {symbol}")
+            frame = self.client.call("index_daily", required=True, ts_code=ts_code, start_date=start_date, end_date=end_date, fields=INDEX_DAILY_FIELDS)
         if frame.empty:
-            raise RuntimeError(f"Lean MySQL has no index benchmark {symbol} for {start_date}..{end_date}")
+            raise RuntimeError(f"benchmark source has no index {normalized_symbol} for {start_date}..{end_date}")
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
         if frame["trade_date"].duplicated().any():
             raise ValueError(f"duplicate benchmark dates for {symbol}; configure one canonical source")
-        target = self.settings.paths.metadata / "benchmarks" / f"{symbol.upper()}.parquet"
+        frame = frame.sort_values("trade_date").reset_index(drop=True)
+        target = self.settings.paths.metadata / "benchmarks" / f"{normalized_symbol}.parquet"
         target.parent.mkdir(parents=True, exist_ok=True)
         frame.to_parquet(target, index=False)
-        logger.info("Saved benchmark {}: {} rows -> {}", symbol, len(frame), target)
+        logger.info("Saved benchmark {}: {} rows -> {}", normalized_symbol, len(frame), target)
         return frame

@@ -4,6 +4,7 @@ import json
 import math
 import os
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -257,7 +258,55 @@ def normalize_symbol(
 
 
 def _curated_glob(settings: Settings) -> str:
-    return str((settings.paths.curated / "trade_date=*" / "data.parquet").resolve())
+    return (settings.paths.curated / "trade_date=*" / "data.parquet").resolve().as_posix()
+
+
+def _benchmark_staging_frame(settings: Settings, calendar: pd.DatetimeIndex) -> pd.DataFrame:
+    path = settings.paths.metadata / "benchmarks" / "SH000300.parquet"
+    if not path.exists():
+        raise FileNotFoundError(f"benchmark data is required for Qlib export: {path}")
+    frame = pd.read_parquet(path).copy()
+    required = {"trade_date", "close"}
+    missing = required - set(frame.columns)
+    if missing:
+        raise ValueError(f"benchmark file missing columns: {sorted(missing)}")
+    frame["date"] = pd.to_datetime(frame["trade_date"], errors="raise")
+    frame = frame.loc[frame["date"].isin(calendar)].sort_values("date").drop_duplicates("date", keep="last")
+    close = pd.to_numeric(frame["close"], errors="coerce")
+    if close.isna().any() or (close <= 0).any():
+        raise ValueError("benchmark close must be present and positive")
+    for column in ("open", "high", "low"):
+        frame[column] = pd.to_numeric(frame[column], errors="coerce") if column in frame else close
+        frame[column] = frame[column].fillna(close)
+    for raw_column, output_column, scale in (("vol", "volume", 100.0), ("amount", "money", 1000.0)):
+        frame[output_column] = pd.to_numeric(frame[raw_column], errors="coerce") * scale if raw_column in frame else np.nan
+    frame["vwap"] = frame["money"] / frame["volume"]
+    frame["factor"] = 1.0
+    frame["change"] = pd.to_numeric(frame["pct_chg"], errors="coerce") / 100.0 if "pct_chg" in frame else np.nan
+    frame["paused"] = 0.0
+    frame["symbol"] = "SH000300"
+    for column in settings.data["qlib"]["include_fields"]:
+        if column not in frame:
+            frame[column] = np.nan
+    return frame[["date", "symbol", *settings.data["qlib"]["include_fields"]]]
+
+
+def _remove_staging_tree(path: Path) -> None:
+    for attempt in range(5):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(1)
+
+
+def _write_stage_parquet(frame: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".parquet.tmp")
+    frame.to_parquet(temporary, index=False)
+    _atomic_replace(temporary, path)
 
 
 def _write_staging_manifest(stage: Path, mode: str) -> Path:
@@ -282,8 +331,20 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
     stage.mkdir(parents=True, exist_ok=True)
     calendar = _load_open_calendar(settings)
     con = duckdb.connect()
+    con.execute("SET threads=1")
+    con.execute("SET preserve_insertion_order=false")
+    con.execute("SET memory_limit='8GB'")
+    spill_dir = stage / ".duckdb_spill"
+    spill_dir.mkdir(parents=True, exist_ok=True)
+    con.execute(f"SET temp_directory='{str(spill_dir).replace('\\', '/')} '")
     glob = _curated_glob(settings)
-    symbols = [row[0] for row in con.execute("SELECT DISTINCT symbol FROM read_parquet(?) ORDER BY symbol", [glob]).fetchall()]
+    raw_by_symbol = stage / ".curated_by_symbol"
+    source_sql = glob.replace("'", "''")
+    target_sql = str(raw_by_symbol).replace("\\", "/").replace("'", "''")
+    con.execute(
+        f"COPY (SELECT * FROM read_parquet('{source_sql}')) TO '{target_sql}' (FORMAT PARQUET, PARTITION_BY (symbol))"
+    )
+    symbols = sorted(path.name.split("=", 1)[1] for path in raw_by_symbol.glob("symbol=*"))
 
     base_path = settings.paths.metadata / "normalization_base.parquet"
     existing_bases: dict[str, float] = {}
@@ -298,7 +359,11 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
         target = stage / f"{symbol}.parquet"
         if target.exists() and not force and symbol in bases:
             continue
-        raw_df = con.execute("SELECT * FROM read_parquet(?) WHERE symbol=? ORDER BY date", [glob, symbol]).df()
+        partition = raw_by_symbol / f"symbol={symbol}"
+        files = sorted(partition.glob("*.parquet"))
+        if not files:
+            raise FileNotFoundError(f"curated symbol partition missing: {partition}")
+        raw_df = pd.read_parquet(files).sort_values("date")
         try:
             norm, base = normalize_symbol(raw_df, calendar, existing_bases.get(symbol))
         except ValueError as exc:
@@ -309,10 +374,14 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
             raise
         report = validate_normalized(norm, symbol)
         assert_quality(report)
-        norm.to_parquet(target, index=False)
+        _write_stage_parquet(norm, target)
         bases[symbol] = base
         if i % 200 == 0 or i == len(symbols):
             logger.info("Staging full: {}/{}", i, len(symbols))
+    con.close()
+    shutil.rmtree(raw_by_symbol)
+    shutil.rmtree(spill_dir, ignore_errors=True)
+    _write_stage_parquet(_benchmark_staging_frame(settings, calendar), stage / "SH000300.parquet")
     pd.DataFrame([{"symbol": k, "base_adj_close": v} for k, v in sorted(bases.items())]).to_parquet(base_path, index=False)
     _write_staging_manifest(stage, "full")
     return stage
@@ -347,9 +416,15 @@ def export_incremental_staging(settings: Settings, trade_dates: list[str], force
             raise exc
         report = validate_normalized(norm, symbol)
         assert_quality(report)
-        norm.to_parquet(stage / f"{symbol}.parquet", index=False)
+        _write_stage_parquet(norm, stage / f"{symbol}.parquet")
         if symbol not in bases:
             new_bases.append({"symbol": symbol, "base_adj_close": base})
+    benchmark = _benchmark_staging_frame(settings, calendar)
+    selected_dates = pd.to_datetime(normalized_dates, format="%Y%m%d")
+    benchmark = benchmark.loc[benchmark["date"].isin(selected_dates)]
+    if benchmark.empty:
+        raise ValueError(f"benchmark does not cover incremental dates: {normalized_dates}")
+    _write_stage_parquet(benchmark, stage / "SH000300.parquet")
     if new_bases:
         merged = pd.concat(
             [

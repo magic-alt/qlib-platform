@@ -11,17 +11,19 @@
 ## 1. 安装
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install --break-system-packages --no-deps -e .[dev]
-cp .env.example .env
+python3.12 -m venv .venv
+# macOS: .venv/bin/python -m pip install -e '.[all,dev]'
+# Windows PowerShell: .\.venv\Scripts\python.exe -m pip install -e '.[all,dev]'
+# Install the fixed Qlib checkout into this same environment:
+# <venv-python> -m pip install -e <path-to-qlib>
+# macOS: cp .env.example .env
+# Windows PowerShell: Copy-Item .env.example .env
 ```
 
 如 `tq` 命令未生效，可直接用仓库内入口：
 
 ```bash
-./tq --config configs/pipeline.yaml --help
-python3 -m tushare_qlib --config configs/pipeline.yaml --help
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml --help
 ```
 
 克隆 Qlib 源码并固定版本：
@@ -37,9 +39,8 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 如果你已有 lean-platform 的 MySQL 数据库，可切换为数据库模式：
 
 ```bash
-cp .env.example .env
 # 配置 LEAN_MYSQL_*（或 LEAN_MYSQL_DSN）
-sed -i '' 's/^  kind: tushare/  kind: lean_mysql/' configs/pipeline.yaml
+# 将 configs/pipeline.yaml 中的 data_source.kind 改为 lean_mysql
 ```
 
 数据库模式下，`backfill/curate/stage/dump` 流程仍复用同一套本地标准化与 Qlib 打包流程，不需要重新从 Tushare 下载。
@@ -49,10 +50,11 @@ sed -i '' 's/^  kind: tushare/  kind: lean_mysql/' configs/pipeline.yaml
 先做缩短验证周期的冒烟验证，命令如下（示例 `20250101-20260805`）：
 
 ```bash
-tq --config configs/pipeline.yaml backfill --start 20250101 --end 20260805
-tq --config configs/pipeline.yaml curate --start 20250101 --end 20260805
-tq --config configs/pipeline.yaml stage-full --force
-tq --config configs/pipeline.yaml dump-full
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full --single-thread
 ```
 
 若上述步骤通过，再执行全量构建（与日常首次一致）：
@@ -60,11 +62,12 @@ tq --config configs/pipeline.yaml dump-full
 ## 3. 首次全量构建
 
 ```bash
-tq --config configs/pipeline.yaml init-metadata
-tq --config configs/pipeline.yaml backfill --start 20160101 --end 20260804
-tq --config configs/pipeline.yaml curate
-tq --config configs/pipeline.yaml stage-full --force
-tq --config configs/pipeline.yaml dump-full
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml init-metadata
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full --single-thread
 ```
 
 ## 4. 训练、回测和选股

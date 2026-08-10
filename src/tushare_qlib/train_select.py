@@ -17,10 +17,14 @@ from .topk_dropout import TopkDropoutPolicy
 _DEFAULT_BENCHMARK = "SH000300"
 
 
+def _sqlite_tracking_uri(path: Path) -> str:
+    return f"sqlite:///{path.resolve().as_posix()}"
+
+
 def _configure_mlflow_tracking(settings: Settings) -> None:
     if "MLFLOW_TRACKING_URI" not in os.environ:
         db = settings.paths.state / "mlflow.db"
-        os.environ["MLFLOW_TRACKING_URI"] = f"sqlite:///{db.resolve()}"
+        os.environ["MLFLOW_TRACKING_URI"] = _sqlite_tracking_uri(db)
     if "MLFLOW_DEFAULT_ARTIFACT_ROOT" not in os.environ:
         os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"] = str((settings.paths.models / "mlruns").resolve())
 
@@ -393,7 +397,7 @@ def train_backtest_select(
         from qlib.workflow import R
         from qlib.workflow.record_temp import PortAnaRecord, SigAnaRecord, SignalRecord
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise RuntimeError("Install the qlib optional dependencies: pip install -e '.[qlib]'") from exc
+        raise RuntimeError("Install the fixed Qlib checkout into the active environment before running this command.") from exc
 
     _configure_mlflow_tracking(settings)
     # Alpha158 materializes a wide cross-sectional frame.  Keeping Qlib's

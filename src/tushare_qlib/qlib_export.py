@@ -108,6 +108,31 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
     }
 
 
+def _smoke_test_dataset_subprocess(dataset_dir: Path) -> dict[str, object]:
+    marker = "__TQ_SMOKE_RESULT__="
+    script = (
+        "import json, sys; from pathlib import Path; "
+        "from tushare_qlib.qlib_export import smoke_test_dataset; "
+        f"print('{marker}' + json.dumps(smoke_test_dataset(Path(sys.argv[1]))))"
+    )
+    completed = subprocess.run([sys.executable, "-c", script, str(dataset_dir)], check=False, capture_output=True, text=True)
+    if completed.returncode:
+        raise RuntimeError(
+            f"Qlib smoke test failed for {dataset_dir}: {completed.stderr.strip() or completed.stdout.strip()}"
+        )
+    for line in reversed(completed.stdout.splitlines()):
+        if line.startswith(marker):
+            return json.loads(line[len(marker):])
+    raise RuntimeError(f"Qlib smoke test returned no result for {dataset_dir}")
+
+
+def _portable_dataset_dir(settings: Settings) -> str:
+    try:
+        return settings.qlib_data_uri.relative_to(settings.paths.root).as_posix()
+    except ValueError:
+        return settings.qlib_data_uri.name
+
+
 def _replace_directory_atomic(candidate: Path, target: Path) -> Path | None:
     backup: Path | None = None
     if target.exists():
@@ -129,7 +154,7 @@ def dump_full(settings: Settings, *, single_thread: bool = False) -> Path:
     candidate = Path(tempfile.mkdtemp(prefix=f".{target.name}.building.", dir=target.parent))
     try:
         _run(settings, "dump_all", settings.paths.staging_full, candidate, single_thread=single_thread)
-        smoke = smoke_test_dataset(candidate)
+        smoke = _smoke_test_dataset_subprocess(candidate)
         backup = _replace_directory_atomic(candidate, target)
         write_fingerprint(settings, mode="full", smoke=smoke)
         logger.info("Promoted Qlib dataset: {}, backup={}", target, backup)
@@ -156,7 +181,7 @@ def dump_update(settings: Settings, *, single_thread: bool = False) -> Path:
     shutil.copytree(target, candidate)
     try:
         _run(settings, "dump_update", settings.paths.staging_update, candidate, single_thread=single_thread)
-        smoke = smoke_test_dataset(candidate)
+        smoke = _smoke_test_dataset_subprocess(candidate)
         backup = _replace_directory_atomic(candidate, target)
         write_fingerprint(settings, mode="update", smoke=smoke)
         logger.info("Promoted Qlib update: {}, backup={}", target, backup)
@@ -180,9 +205,9 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
     stage = settings.paths.staging_full if mode == "full" else settings.paths.staging_update
     stage_manifest = stage / "staging_manifest.json"
     payload: dict[str, object] = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
-        "dataset_dir": str(settings.qlib_data_uri),
+        "dataset_dir": _portable_dataset_dir(settings),
         "mode": mode,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "fields": settings.data["qlib"]["include_fields"],
