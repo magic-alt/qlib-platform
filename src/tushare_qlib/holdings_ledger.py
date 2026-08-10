@@ -7,20 +7,52 @@ import pandas as pd
 
 
 _LEDGER_COLUMNS = ["instrument", "opened_trade_date", "last_quantity", "as_of_date"]
+_POSITION_COLUMNS = [
+    "instrument",
+    "quantity",
+    "available_quantity",
+    "as_of_trade_date",
+    "snapshot_at_utc",
+]
 
 
 def _normalise_positions(positions: pd.DataFrame) -> pd.DataFrame:
-    required = {"instrument", "quantity", "available_quantity"}
+    required = set(_POSITION_COLUMNS)
     missing = required - set(positions.columns)
     if missing:
         raise ValueError(f"positions missing columns: {sorted(missing)}")
     frame = positions.copy()
+    optional = [column for column in ("account_id", "source") if column in frame.columns]
+    if frame.empty:
+        if "source" not in frame.columns:
+            frame["source"] = pd.Series(dtype="object")
+            optional.append("source")
+        return frame[_POSITION_COLUMNS + optional]
     frame["instrument"] = frame["instrument"].astype(str).str.upper().str.strip()
     for column in ("quantity", "available_quantity"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
+    as_of = pd.to_datetime(frame["as_of_trade_date"], errors="coerce").dt.normalize()
+    if as_of.isna().any() or as_of.nunique() != 1:
+        raise ValueError("positions as_of_trade_date must be one valid trade date")
+    captured = pd.to_datetime(frame["snapshot_at_utc"], errors="coerce", utc=True)
+    if captured.isna().any() or captured.nunique() != 1:
+        raise ValueError("positions snapshot_at_utc must be one valid UTC instant")
+    frame["as_of_trade_date"] = as_of.dt.strftime("%Y-%m-%d")
+    frame["snapshot_at_utc"] = captured
+    if "source" not in frame.columns:
+        frame["source"] = "broker"
+        optional.append("source")
+    else:
+        frame["source"] = frame["source"].astype(str).str.lower().str.strip()
+        if not frame["source"].isin({"broker", "paper"}).all():
+            raise ValueError("positions source must be broker or paper")
+    if "account_id" in frame.columns:
+        frame["account_id"] = frame["account_id"].astype(str).str.strip()
+        if frame["account_id"].eq("").any():
+            raise ValueError("positions account_id must be non-empty when supplied")
     if frame["instrument"].duplicated().any():
         raise ValueError("positions contains duplicate instruments")
-    return frame.loc[frame["quantity"] > 0, ["instrument", "quantity", "available_quantity"]].reset_index(drop=True)
+    return frame[_POSITION_COLUMNS + optional].reset_index(drop=True)
 
 
 def _normalise_fills(fills: pd.DataFrame | None) -> pd.DataFrame:
@@ -111,11 +143,13 @@ def reconcile_holdings(
     ledger_path: str | Path,
     initial_holdings: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Reconcile broker truth to a persistent active-position holding-period ledger.
+    """Reconcile broker truth and return an execution position snapshot.
 
     A position appearing without an earlier ledger entry must be justified by a
     fill since the last reconciliation or by an explicit initial-holdings file.
-    This deliberately fails closed rather than incorrectly allowing a sell.
+    Freshness metadata is retained from the broker input.  The persisted ledger
+    keeps its internal ``last_quantity`` schema, while the returned execution
+    contract exposes ``quantity`` and never leaks the ledger field.
     """
 
     as_of = pd.Timestamp(as_of_date).normalize()
@@ -127,13 +161,17 @@ def reconcile_holdings(
     calendar = _calendar(calendar_path)
     if as_of not in calendar:
         raise ValueError(f"as_of_date is not an open trading day: {as_of.date()}")
+    if not broker.empty and pd.Timestamp(broker["as_of_trade_date"].iloc[0]).normalize() != as_of:
+        raise ValueError("positions as_of_trade_date must match as_of_date")
+    broker = broker.loc[broker["quantity"] > 0].reset_index(drop=True)
     if not ledger.empty and ledger["as_of_date"].max() > as_of:
         raise ValueError("ledger is newer than the requested reconciliation date")
 
     previous_as_of = ledger["as_of_date"].max() if not ledger.empty else None
     prior = ledger.set_index("instrument") if not ledger.empty else pd.DataFrame(index=pd.Index([], name="instrument"))
     seed_dates = seeds.set_index("instrument")["opened_trade_date"] if not seeds.empty else pd.Series(dtype="datetime64[ns]")
-    rows: list[dict[str, object]] = []
+    ledger_rows: list[dict[str, object]] = []
+    snapshot_rows: list[dict[str, object]] = []
     broker_instruments = set(broker["instrument"])
 
     for row in broker.itertuples(index=False):
@@ -157,21 +195,42 @@ def reconcile_holdings(
             opened = pd.Timestamp(candidate_fills["trade_date"].min()).normalize()
         if opened > as_of:
             raise ValueError(f"opened_trade_date after as_of_date for {instrument}")
-        rows.append(
+        ledger_rows.append(
             {
                 "instrument": instrument,
                 "opened_trade_date": opened,
                 "last_quantity": float(row.quantity),
                 "as_of_date": as_of,
-                "available_quantity": float(row.available_quantity),
-                "holding_days": _holding_days(calendar, opened, as_of),
             }
         )
+        snapshot_row: dict[str, object] = {
+            "instrument": instrument,
+            "quantity": float(row.quantity),
+            "available_quantity": float(row.available_quantity),
+            "holding_days": _holding_days(calendar, opened, as_of),
+            "opened_trade_date": opened,
+            "as_of_trade_date": row.as_of_trade_date,
+            "snapshot_at_utc": row.snapshot_at_utc,
+            "source": row.source,
+        }
+        if "account_id" in broker.columns:
+            snapshot_row["account_id"] = row.account_id
+        snapshot_rows.append(snapshot_row)
 
-    state = pd.DataFrame(
-        rows,
-        columns=["instrument", "opened_trade_date", "last_quantity", "as_of_date", "available_quantity", "holding_days"],
-    )
+    ledger_state = pd.DataFrame(ledger_rows, columns=_LEDGER_COLUMNS)
+    snapshot_columns = [
+        "instrument",
+        "quantity",
+        "available_quantity",
+        "holding_days",
+        "opened_trade_date",
+        "as_of_trade_date",
+        "snapshot_at_utc",
+    ]
+    if "account_id" in broker.columns:
+        snapshot_columns.append("account_id")
+    snapshot_columns.append("source")
+    state = pd.DataFrame(snapshot_rows, columns=snapshot_columns)
     closed_rows = [
         {
             "instrument": instrument,
@@ -182,7 +241,7 @@ def reconcile_holdings(
         for instrument in prior.index
         if instrument not in broker_instruments
     ]
-    persisted = state[_LEDGER_COLUMNS].copy()
+    persisted = ledger_state
     if closed_rows:
         closed = pd.DataFrame(closed_rows, columns=_LEDGER_COLUMNS)
         persisted = closed if persisted.empty else pd.concat([persisted, closed], ignore_index=True)

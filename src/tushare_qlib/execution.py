@@ -401,8 +401,6 @@ def _topk_quote_frame(quotes: pd.DataFrame) -> pd.DataFrame:
 
 def _topk_positions(positions: pd.DataFrame) -> pd.DataFrame:
     frame = positions.copy()
-    if "quantity" not in frame.columns and "last_quantity" in frame.columns:
-        frame = frame.rename(columns={"last_quantity": "quantity"})
     required = {"instrument", "quantity", "available_quantity", "holding_days"}
     missing = required - set(frame.columns)
     if missing:

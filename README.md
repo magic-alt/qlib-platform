@@ -143,35 +143,60 @@ tq --config configs/pipeline.yaml research-report data/output/research/<run_id>
 ### 4.1 TopkDropout 实盘决策与持仓对账
 
 `TopkDropoutStrategy(topk=30, n_drop=5, hold_thresh=5)` 每日重算排名，但不是每日清仓重买 Top30。
-精确模式用 T−1 分数、券商 T−1 仓位和 T 日报价生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
+精确模式用 T−1 分数、T 日盘前券商仓位快照和 T 日报价快照生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
 风险配权路径，只发布 `TARGET_PORTFOLIO`/`STRATEGY_DECISION`，不再发布可执行 `ORDER_INTENT`。
 
 先以券商仓位快照和成交回报更新本地持有期账本：
 
 ```bash
 tq --config configs/pipeline.yaml reconcile-holdings broker_positions.csv \
-  --fills broker_fills.csv --as-of-date 2026-08-08
+  --fills broker_fills.csv --as-of-date 2026-08-10
 ```
 
-仓位 CSV 必须包含 `instrument,quantity,available_quantity`；成交 CSV 必须包含
-`fill_id,trade_date,instrument,side,quantity,fill_price`。首次导入的既有仓位没有可追溯买入成交时，额外传入
-`--initial-holdings`（字段：`instrument,opened_trade_date`）。未能解释的券商持仓会失败关闭，避免错误绕过
+`broker_positions.csv` 是 execution position snapshot，必须包含：
+
+- `instrument,quantity,available_quantity`：券商可执行仓位；
+- `as_of_trade_date`：该快照所属交易日，必须与 `--as-of-date` 一致；
+- `snapshot_at_utc`：券商原始仓位响应的 UTC 采集时刻，不能填对账完成时刻；
+- `account_id`：可选但推荐；
+- `source`：可选，取值为 `broker` 或 `paper`，省略时按 `broker` 处理。
+
+对账输出可直接作为 `build-topk-orders` 的 positions 输入，字段为
+`instrument,quantity,available_quantity,holding_days,opened_trade_date,as_of_trade_date,snapshot_at_utc`，并保留可选
+`account_id` 与 `source`。持有期账本内部仍使用 `last_quantity` 和 `as_of_date`；这两个内部字段不会泄漏到执行快照。
+
+成交 CSV 必须包含 `fill_id,trade_date,instrument,side,quantity,fill_price`。首次导入的既有仓位没有可追溯买入成交时，
+额外传入 `--initial-holdings`（字段：`instrument,opened_trade_date`）。未能解释的券商持仓会失败关闭，避免错误绕过
 `hold_thresh`。
 
 在交易日读取完整分数、对账后仓位、报价和可用现金生成决策及订单：
 
 ```bash
 tq --config configs/pipeline.yaml build-topk-orders \
-  data/output/signals/signal_scores_20260808.parquet \
-  data/output/holdings_state_20260808.csv trade_quotes.csv \
+  data/output/signals/signal_scores_20260807.parquet \
+  data/output/holdings_state_20260810.csv trade_quotes.csv \
   --cash 1000000 --daily-pnl-pct -0.002
 ```
 
 该命令生成 `strategy_decision_YYYYMMDD.csv`、`orders_YYYYMMDD.csv` 和
-`blocked_orders_YYYYMMDD.csv`。`--daily-pnl-pct` 是当日券商账户收益率，缺失时订单发布失败关闭。报价需包含
-`instrument,price,paused,is_limit_up,is_limit_down,sector`；可选
+`blocked_orders_YYYYMMDD.csv`。`--daily-pnl-pct` 是当日券商账户收益率，缺失时订单发布失败关闭。
+
+`trade_quotes.csv` 是 quote snapshot，必须包含
+`instrument,price,paused,is_limit_up,is_limit_down,sector,as_of_trade_date,snapshot_at_utc`。其中
+`as_of_trade_date` 必须等于信号 artifact 声明的 `trade_date`，`snapshot_at_utc` 必须是行情源实际采集时刻；仓位和报价
+各自只能包含一个快照时刻，并且都必须满足配置的最大 age。可选
 `adv20_volume` 以 `ADV20 × max_participation_rate` 约束实盘委托。回测仍使用当日实际成交量，因此审计文件应作为
 两种流动性口径的对照，而不是把回测成交量当作开盘前可知信息。
+
+`2026-08-07`（周五）信号对应 `2026-08-10`（周一）交易日；上面的日期仅用于说明文件配对。真实下单前必须使用
+当前交易日文件，并在采集券商仓位和行情后立即运行，复用原始 `snapshot_at_utc`，否则 freshness 检查会失败关闭。
+
+完整的 `reconcile → freshness → topk` 回归冒烟命令：
+
+```bash
+pytest -q tests/test_holdings_ledger.py tests/test_live_controls.py tests/test_topk_dropout.py
+ruff check src tests
+```
 
 ### 4.2 SH000300 基准回测结果解读（最新一次）
 
