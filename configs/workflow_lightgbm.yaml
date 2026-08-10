@@ -28,7 +28,7 @@ data_handler_config: &data_handler_config
         min_circ_mv_yuan: 2000000000
         min_money_20d_yuan: 20000000
         exclude_st: true
-        allow_unknown_st: true
+        allow_unknown_st: false
   infer_processors:
     - class: ProcessInf
     - class: RobustZScoreNorm

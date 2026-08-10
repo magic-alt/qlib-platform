@@ -137,6 +137,9 @@ execution:
   price_buffer_sell: 0.002
   block_limit_up_buy: true
   block_limit_down_sell: true
+  # Execution snapshots are fail-closed without a current UTC capture timestamp.
+  max_quote_age_seconds: 120
+  max_position_age_seconds: 300
 
 risk:
   max_gross_exposure: 0.95

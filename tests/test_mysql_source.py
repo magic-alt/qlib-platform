@@ -37,7 +37,7 @@ def test_build_connection_kwargs_env_fallback(monkeypatch):
     monkeypatch.setenv("LEAN_MYSQL_DB", "market")
     monkeypatch.setenv("LEAN_MYSQL_PORT", "3307")
 
-    kwargs = build_connection_kwargs({"host": "", "user": "", "password": "", "database": ""})
+    kwargs = build_connection_kwargs({"host": "", "user": "", "password": "", "database": "", "readonly": True})
 
     assert kwargs["host"] == "127.0.0.1"
     assert kwargs["user"] == "tester"

@@ -85,6 +85,8 @@ def parser() -> argparse.ArgumentParser:
     pa = sub.add_parser("project-audit")
     pa.add_argument("--root", default=".")
     pa.add_argument("--output", default="docs/project_audit.json")
+    wc = sub.add_parser("validate-qrun-contract")
+    wc.add_argument("--workflow", default="configs/workflow_lightgbm.yaml")
 
     eo = sub.add_parser("build-orders")
     eo.add_argument("targets")
@@ -94,6 +96,21 @@ def parser() -> argparse.ArgumentParser:
     eo.add_argument("--portfolio-value", type=float, required=True)
     eo.add_argument("--cash", type=float, required=True)
     eo.add_argument("--output-dir", default="./data/output")
+
+    pr = sub.add_parser("pretrade-risk")
+    pr.add_argument("targets")
+    pr.add_argument("--daily-pnl-pct", type=float, required=True)
+
+    be = sub.add_parser("record-broker-event")
+    be.add_argument("ledger")
+    be.add_argument("order_id")
+    be.add_argument("state")
+    be.add_argument("--event-at-utc", required=True)
+    be.add_argument("--broker-order-id")
+    fi = sub.add_parser("ingest-pit-fundamentals")
+    fi.add_argument("reports")
+    fi.add_argument("--calendar")
+    fi.add_argument("--output")
 
     rh = sub.add_parser("reconcile-holdings")
     rh.add_argument("positions")
@@ -161,6 +178,16 @@ def main() -> None:
                 ensure_ascii=False,
             )
         )
+        return
+
+    if args.command == "validate-qrun-contract":
+        from .workflow_contract import validate_qrun_contract
+
+        settings = Settings.load(args.config, create_dirs=False)
+        result = validate_qrun_contract(settings, args.workflow)
+        print(json.dumps(result, ensure_ascii=False))
+        if not result["passed"]:
+            raise SystemExit(2)
         return
 
     if args.command == "research-audit":
@@ -251,6 +278,37 @@ def main() -> None:
         out.mkdir(parents=True, exist_ok=True)
         orders.to_csv(out / f"orders_{args.trade_date.replace('-', '')}.csv", index=False)
         blocked.to_csv(out / f"blocked_orders_{args.trade_date.replace('-', '')}.csv", index=False)
+        return
+
+    if args.command == "pretrade-risk":
+        from .risk_engine import HardRiskPolicy, pretrade_risk_check
+
+        artifact = pd.read_csv(args.targets)
+        # The target artifact's manifest is the release's policy authority.
+        from .artifacts import ArtifactType, load_artifact_manifest, validate_artifact
+
+        metadata = validate_artifact(artifact, ArtifactType.TARGET_PORTFOLIO)
+        manifest = load_artifact_manifest(metadata)
+        canonical = manifest.get("canonicalConfig", {})
+        risk = canonical.get("risk", {}) if isinstance(canonical, dict) else {}
+        print(json.dumps(pretrade_risk_check(artifact, HardRiskPolicy.from_mapping(risk), daily_pnl_pct=args.daily_pnl_pct)))
+        return
+
+    if args.command == "record-broker-event":
+        from .broker_state import record_broker_event
+
+        events = record_broker_event(args.ledger, args.order_id, args.state, event_at_utc=args.event_at_utc,
+                                     broker_order_id=args.broker_order_id)
+        print(json.dumps({"ledger": str(args.ledger), "events": len(events)}))
+        return
+
+    if args.command == "ingest-pit-fundamentals":
+        from .fundamentals import ingest_pit_fundamentals
+
+        pit_settings = Settings.load(args.config, create_dirs=False)
+        calendar = args.calendar or str(pit_settings.paths.metadata / "trade_calendar.parquet")
+        output = args.output or str(pit_settings.paths.curated / "fundamentals_pit.parquet")
+        print(ingest_pit_fundamentals(args.reports, calendar, output))
         return
 
     settings = Settings.load(

@@ -16,6 +16,7 @@ from .artifacts import (
     validate_artifact,
 )
 from .topk_dropout import TopkDropoutPolicy, topk_dropout_decision
+from .freshness import validate_execution_snapshot
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class ExecutionPolicy:
     price_buffer_sell: float = 0.002
     block_limit_up_buy: bool = True
     block_limit_down_sell: bool = True
+    max_quote_age_seconds: int = 120
+    max_position_age_seconds: int = 300
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, object] | None) -> "ExecutionPolicy":
@@ -45,6 +48,8 @@ class ExecutionPolicy:
             price_buffer_sell=float(str(data.get("price_buffer_sell", cls.price_buffer_sell))),
             block_limit_up_buy=bool(data.get("block_limit_up_buy", cls.block_limit_up_buy)),
             block_limit_down_sell=bool(data.get("block_limit_down_sell", cls.block_limit_down_sell)),
+            max_quote_age_seconds=int(str(data.get("max_quote_age_seconds", cls.max_quote_age_seconds))),
+            max_position_age_seconds=int(str(data.get("max_position_age_seconds", cls.max_position_age_seconds))),
         )
 
 
@@ -97,6 +102,12 @@ def build_orders(
     policy = governed_policy
     if portfolio_value <= 0:
         raise ValueError("portfolio_value must be positive")
+    validate_execution_snapshot(
+        positions, name="positions", trade_date=trade_date, max_age_seconds=policy.max_position_age_seconds
+    )
+    validate_execution_snapshot(
+        quotes, name="quotes", trade_date=trade_date, max_age_seconds=policy.max_quote_age_seconds
+    )
     required_target = {"instrument", "target_weight"}
     required_position = {"instrument", "quantity", "available_quantity"}
     required_quote = {"instrument", "price", "paused", "is_limit_up", "is_limit_down"}
@@ -301,8 +312,15 @@ def build_topk_orders(
     if not isinstance(scores, pd.DataFrame):
         raise ArtifactContractError("build_topk_orders requires a versioned MODEL_SCORE DataFrame")
     metadata = validate_artifact(scores, ArtifactType.MODEL_SCORE)
-    if not {"instrument", "score"}.issubset(scores.columns):
-        raise ArtifactContractError("MODEL_SCORE artifact must contain instrument and score")
+    required_score = {"instrument", "score", "signal_date", "trade_date"}
+    if not required_score.issubset(scores.columns):
+        raise ArtifactContractError(f"MODEL_SCORE artifact missing columns: {sorted(required_score - set(scores.columns))}")
+    signal_values = pd.to_datetime(scores["signal_date"], errors="coerce").dt.normalize()
+    trade_values = pd.to_datetime(scores["trade_date"], errors="coerce").dt.normalize()
+    if (signal_values.isna().any() or trade_values.isna().any() or signal_values.nunique() != 1
+            or trade_values.nunique() != 1 or signal_values.iloc[0] != pd.Timestamp(signal_date).normalize()
+            or trade_values.iloc[0] != pd.Timestamp(trade_date).normalize()):
+        raise ArtifactContractError("MODEL_SCORE signal_date/trade_date does not match this execution request")
     score_values = scores.set_index("instrument")["score"]
     model_id = metadata["model_id"]
     manifest = load_artifact_manifest(metadata)
@@ -321,6 +339,18 @@ def build_topk_orders(
     execution_policy = governed_execution
     if cash < 0:
         raise ValueError("cash must be non-negative")
+    validate_execution_snapshot(
+        positions,
+        name="positions",
+        trade_date=trade_date,
+        max_age_seconds=execution_policy.max_position_age_seconds,
+    )
+    validate_execution_snapshot(
+        quotes,
+        name="quotes",
+        trade_date=trade_date,
+        max_age_seconds=execution_policy.max_quote_age_seconds,
+    )
     current = _topk_positions(positions)
     quote = _topk_quote_frame(quotes)
     decision = topk_dropout_decision(

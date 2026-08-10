@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 import os
+import re
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlparse, unquote
 
@@ -243,6 +244,8 @@ def build_connection_kwargs(mysql_cfg: Mapping[str, Any]) -> dict[str, Any]:
     config = mysql_cfg or {}
     if not isinstance(config, Mapping):
         raise ValueError("data_source.mysql config must be a mapping")
+    if config.get("readonly") is not True:
+        raise ValueError("lean_mysql requires data_source.mysql.readonly: true")
 
     kwargs: dict[str, Any] = {}
     dsn = _read_mapping(config, "dsn")
@@ -375,7 +378,13 @@ class MysqlClient:
 
         kwargs = self.connection.copy()
         kwargs.setdefault("cursorclass", pymysql.cursors.DictCursor)
-        return pymysql.connect(**kwargs)
+        conn = pymysql.connect(**kwargs)
+        # A YAML flag is not a security boundary.  Make every connection
+        # read-only at the server session, so accidental DML fails even if an
+        # endpoint override is misconfigured.
+        with conn.cursor() as cursor:
+            cursor.execute("SET SESSION TRANSACTION READ ONLY")
+        return conn
 
     def fetch(
         self,
@@ -390,6 +399,8 @@ class MysqlClient:
         prepared_query = query or self.endpoint_queries.get(api_name)
         if not prepared_query:
             raise ValueError(f"No SQL query configured for endpoint {api_name}")
+        if not re.match(r"^\\s*(SELECT|WITH|SHOW|EXPLAIN)\\b", prepared_query, flags=re.IGNORECASE):
+            raise ValueError(f"endpoint {api_name} is not a read-only SQL statement")
         attempts = 0
         prepared_params = _coerce_params({**self.default_params, **params})
         for attempt in range(1, self.retry.max_attempts + 1):

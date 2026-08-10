@@ -109,6 +109,8 @@ class ExecutionSpec:
     price_buffer_sell: float = 0.002
     block_limit_up_buy: bool = True
     block_limit_down_sell: bool = True
+    max_quote_age_seconds: int = 120
+    max_position_age_seconds: int = 300
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ExecutionSpec":
