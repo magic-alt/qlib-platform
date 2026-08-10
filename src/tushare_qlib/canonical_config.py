@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 from .model_runtime import ResolvedRuntime
+from .portfolio import PortfolioPolicy
 from .research_gate import ResearchThresholds
 from .settings import Settings
 from .topk_dropout import TopkDropoutPolicy
@@ -98,6 +99,29 @@ class StrategySpec:
 
 
 @dataclass(frozen=True)
+class PortfolioSpec:
+    top_n: int = 20
+    min_score: float | None = None
+    weighting: str = "score_vol"
+    max_position: float = 0.08
+    max_exposure: float = 0.90
+    max_group_exposure: float = 0.25
+    max_turnover: float | None = 0.30
+    min_position: float = 0.002
+    volatility_floor: float = 0.01
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "PortfolioSpec":
+        data = _mapping(settings.data.get("portfolio"))
+        policy = PortfolioPolicy.from_mapping(data)
+        policy.validate()
+        return cls(**asdict(policy))
+
+    def to_policy(self) -> PortfolioPolicy:
+        return PortfolioPolicy.from_mapping(asdict(self))
+
+
+@dataclass(frozen=True)
 class ExecutionSpec:
     board_lot: int = 100
     max_participation_rate: float = 0.05
@@ -148,6 +172,7 @@ class CanonicalConfig:
     dataset: DatasetSpec
     model: ModelSpec
     strategy: StrategySpec
+    portfolio: PortfolioSpec
     execution: ExecutionSpec
     risk: RiskSpec
     promotion: ResearchThresholds
@@ -166,6 +191,7 @@ class CanonicalConfig:
             dataset=DatasetSpec.from_settings(settings),
             model=ModelSpec.from_runtime(runtime, parameters=model_parameters),
             strategy=StrategySpec.from_settings(settings, topk_override=topk_override),
+            portfolio=PortfolioSpec.from_settings(settings),
             execution=ExecutionSpec.from_settings(settings),
             risk=RiskSpec.from_settings(settings),
             promotion=ResearchThresholds.from_mapping(_mapping(research.get("promotion_thresholds"))),

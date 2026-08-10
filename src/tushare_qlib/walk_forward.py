@@ -219,6 +219,11 @@ def _evaluate_aggregate_oos_gate(
     labels = pd.concat([pd.read_parquet(path) for path in label_paths]).sort_index()
     combined_report = _rebase_reports(reports)
     lineage_complete = all(bool(manifest.get("lineage", {}).get("complete")) for manifest in manifests)
+    dirty_research_override = not lineage_complete and all(
+        bool(manifest.get("lineage", {}).get("complete"))
+        or bool(manifest.get("metrics", {}).get("dirty_research_override"))
+        for manifest in manifests
+    )
     unique_artifact = len({sha256_file(path) for path in prediction_paths}) == len(prediction_paths)
     metrics = derive_research_metrics(
         predictions,
@@ -231,7 +236,10 @@ def _evaluate_aggregate_oos_gate(
     thresholds = ResearchThresholds.from_mapping(
         research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
     )
-    report = evaluate_research_metrics(metrics, thresholds)
+    metrics["dirty_research_override"] = dirty_research_override
+    report = evaluate_research_metrics(metrics, thresholds, allow_dirty_research=dirty_research_override)
+    if dirty_research_override and report["passed"]:
+        report["decision"] = "RESEARCH_ONLY"
     report["gate_mode"] = "aggregate_rolling_oos"
     report["component_count"] = len(manifests)
     write_gate_report(report, gate_path)
@@ -308,7 +316,7 @@ def run_walk_forward(
                 runtime=runtime,
                 promotion_mode="release" if fold.final_holdout else "component",
             )
-            if fold.final_holdout:
+            if fold.final_holdout and result_path.name != "manifest.json":
                 model_id = str(pd.read_csv(result_path)["model_id"].iloc[0])
                 fold_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
             else:
@@ -330,7 +338,14 @@ def run_walk_forward(
             raise ValueError(f"fold manifest has no promotion contract: {fold.key}")
         expected_status = "PROMOTED" if fold.final_holdout else "CANDIDATE"
         expected_mode = "release" if fold.final_holdout else "component_validation"
-        if promotion.get("status") != expected_status or promotion.get("gateMode") != expected_mode:
+        dirty_candidate = (
+            fold.final_holdout
+            and promotion.get("status") == "CANDIDATE"
+            and bool(manifest.get("metrics", {}).get("dirty_research_override"))
+        )
+        if (promotion.get("status") != expected_status and not dirty_candidate) or promotion.get(
+            "gateMode"
+        ) != expected_mode:
             raise ValueError(
                 f"fold {fold.key} has incompatible promotion contract: "
                 f"status={promotion.get('status')}, gateMode={promotion.get('gateMode')}"
@@ -418,7 +433,6 @@ def run_walk_forward(
         if column in combined:
             values = pd.to_numeric(combined[column], errors="coerce").dropna()
             metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
-    latest = manifests[-1]["latestTargets"]
     component_lineage = [manifest.get("lineage", {}) for manifest in manifests]
     component_lineage_ids = [
         str(item.get("lineageId")) for item in component_lineage if isinstance(item, dict)
@@ -434,6 +448,14 @@ def run_walk_forward(
     aggregate_lineage["lineageId"] = hashlib.sha256(
         json.dumps(aggregate_lineage, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()[:32]
+    promoted = (
+        bool(aggregate_lineage["complete"])
+        and all(
+            manifest.get("promotion", {}).get("status") in {"CANDIDATE", "PROMOTED"}
+            for manifest in manifests[:-1]
+        )
+        and final_manifest.get("promotion", {}).get("status") == "PROMOTED"
+    )
     aggregate_phases = _aggregate_component_timings(manifests)
     timings = {
         "clock": "time.perf_counter",
@@ -460,10 +482,11 @@ def run_walk_forward(
         },
         "runtime": runtime.to_manifest(),
         "canonicalConfig": manifests[-1].get("canonicalConfig"),
+        "portfolioPolicySha256": manifests[-1].get("portfolioPolicySha256"),
         "lineage": aggregate_lineage,
         "promotion": {
-            "status": "PROMOTED",
-            "decision": "PROMOTE",
+            "status": "PROMOTED" if promoted else "CANDIDATE",
+            "decision": "PROMOTE" if promoted else "RESEARCH_ONLY",
             "gateMode": "aggregate_oos_and_final_holdout",
             "aggregateOosGate": aggregate_gate,
             "finalHoldoutGate": final_manifest.get("promotion", {}),
@@ -481,8 +504,9 @@ def run_walk_forward(
             {"name": timings_path.name, "localPath": str(timings_path)},
             {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
         ],
-        "latestTargets": latest,
     }
+    if promoted:
+        payload["latestTargets"] = manifests[-1]["latestTargets"]
     from .backtest_report import ReportArtifacts, write_backtest_report
 
     payload["artifacts"].extend(

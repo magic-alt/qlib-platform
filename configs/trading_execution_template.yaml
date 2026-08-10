@@ -6,14 +6,3 @@ execution:
   rebalance_threshold: 0.005
   force_sell_removed: true
   allow_weight_update: true
-
-  portfolio:
-    top_n: 20
-    min_score: null
-    weighting: score_vol
-    max_position: 0.08
-    max_exposure: 0.90
-    max_group_exposure: 0.25
-    max_turnover: 0.30
-    min_position: 0.002
-    volatility_floor: 0.01

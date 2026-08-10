@@ -12,7 +12,7 @@ import pandas as pd
 
 from .artifacts import ArtifactType, PromotionStatus, stamp_artifact
 from .canonical_config import CanonicalConfig
-from .lineage import build_lineage, sha256_json
+from .lineage import build_lineage, dirty_research_override_enabled, sha256_json
 from .settings import Settings
 from .store import PartitionStore, sha256_file
 from .topk_dropout import TopkDropoutPolicy
@@ -664,14 +664,22 @@ def train_backtest_select(
                 unique_artifact=_prediction_is_unique(settings, predictions_sha256, model_id),
                 lineage_complete=bool(lineage["complete"]),
             )
+            dirty_research_override = dirty_research_override_enabled(settings, lineage)
+            gate_metrics["dirty_research_override"] = dirty_research_override
             gate_report = (
-                evaluate_component_metrics(gate_metrics)
+                evaluate_component_metrics(gate_metrics, allow_dirty_research=dirty_research_override)
                 if promotion_mode == "component"
-                else evaluate_research_metrics(gate_metrics, canonical.promotion)
+                else evaluate_research_metrics(
+                    gate_metrics,
+                    canonical.promotion,
+                    allow_dirty_research=dirty_research_override,
+                )
             )
+            if dirty_research_override and gate_report["passed"]:
+                gate_report["decision"] = "RESEARCH_ONLY"
             write_gate_report(gate_report, gate_path)
             gate_passed = bool(gate_report["passed"])
-            promoted = gate_passed and promotion_mode == "release"
+            promoted = gate_passed and promotion_mode == "release" and bool(lineage["complete"])
 
             path: Path | None = None
             output: pd.DataFrame | None = None
@@ -730,13 +738,14 @@ def train_backtest_select(
                 "parameters": model_parameters,
             },
             "canonicalConfig": canonical.to_manifest(),
+            "portfolioPolicySha256": sha256_json(canonical.to_manifest()["portfolio"]),
             "lineage": lineage,
             "promotion": {
                 "status": (
                     PromotionStatus.PROMOTED.value
                     if promoted
                     else PromotionStatus.CANDIDATE.value
-                    if gate_passed and promotion_mode == "component"
+                    if gate_passed
                     else PromotionStatus.REJECTED.value
                 ),
                 "decision": gate_report["decision"],
@@ -793,7 +802,7 @@ def train_backtest_select(
         write_backtest_report(settings, artifact_dir)
         if not gate_passed:
             raise ResearchPromotionError(manifest_path)
-        if promotion_mode == "component":
+        if promotion_mode == "component" or not promoted:
             return manifest_path
         assert path is not None
         return path

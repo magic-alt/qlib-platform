@@ -10,7 +10,15 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .artifacts import ArtifactType, PromotionStatus, stamp_artifact, validate_artifact
+from .artifacts import (
+    ArtifactContractError,
+    ArtifactType,
+    PromotionStatus,
+    load_artifact_manifest,
+    stamp_artifact,
+    validate_artifact,
+    validate_manifest_portfolio_policy,
+)
 from .portfolio import PortfolioPolicy, construct_target_portfolio
 
 
@@ -120,6 +128,16 @@ def build_trade_plan(
     execution = config.get("execution", config)
     if not isinstance(execution, dict):
         raise ValueError("execution section must be a mapping")
+    portfolio_fields = set(PortfolioPolicy.__dataclass_fields__)
+    forbidden = portfolio_fields.intersection(execution)
+    if "portfolio" in config or "portfolio" in execution or forbidden:
+        names = sorted(
+            forbidden | ({"portfolio"} if "portfolio" in config or "portfolio" in execution else set())
+        )
+        raise ArtifactContractError(
+            "execution template cannot define portfolio semantics; "
+            f"move these fields to pipeline.yaml: {names}"
+        )
 
     selection_dir = _resolve_path(str(execution.get("selection_dir", "./data/output")), project_dir)
     output_dir = _resolve_path(str(execution.get("output_dir", "./data/output")), project_dir)
@@ -132,6 +150,8 @@ def build_trade_plan(
     )
     selection = pd.read_csv(selection_path)
     metadata = validate_artifact(selection, ArtifactType.MODEL_TOPK)
+    manifest = load_artifact_manifest(metadata)
+    portfolio_data, portfolio_policy_sha256 = validate_manifest_portfolio_policy(manifest)
     signal_ts = _selection_signal_date(selection, selection_path, selection_date)
     calendar_path = _resolve_path(
         str(execution.get("calendar_path", "./data/metadata/trade_calendar.parquet")), project_dir
@@ -140,8 +160,8 @@ def build_trade_plan(
 
     current_path = Path(prev_selection_file).expanduser().resolve() if prev_selection_file else None
     current = _read_current(current_path)
-    policy_data = execution.get("portfolio", execution)
-    policy = PortfolioPolicy.from_mapping(policy_data if isinstance(policy_data, dict) else {})
+    policy = PortfolioPolicy.from_mapping(portfolio_data)
+    policy.validate()
     targets = construct_target_portfolio(selection, policy, current=current)
 
     current_weights = (
@@ -230,6 +250,7 @@ def build_trade_plan(
         dataset_id=metadata["dataset_id"],
         lineage_id=metadata["lineage_id"],
         manifest_path=metadata["manifest_path"],
+        portfolio_policy_sha256=portfolio_policy_sha256,
     )
     _atomic_csv(targets_out, targets_path)
     _atomic_json(
@@ -248,6 +269,7 @@ def build_trade_plan(
             "target_exposure": float(targets_out["target_weight"].sum()) if not targets_out.empty else 0.0,
             "plan_rows": len(plan),
             "policy": policy.__dict__,
+            "portfolio_policy_sha256": portfolio_policy_sha256,
         },
         output_dir / f"trade_plan_{date_key}.manifest.json",
     )

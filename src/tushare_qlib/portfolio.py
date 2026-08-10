@@ -45,6 +45,10 @@ class PortfolioPolicy:
             raise ValueError("max_group_exposure must be in (0, 1]")
         if self.max_turnover is not None and self.max_turnover < 0:
             raise ValueError("max_turnover must be non-negative")
+        if not 0 <= self.min_position <= self.max_position:
+            raise ValueError("min_position must be in [0, max_position]")
+        if self.volatility_floor <= 0:
+            raise ValueError("volatility_floor must be positive")
         if self.weighting not in {"equal", "rank", "score", "score_vol"}:
             raise ValueError(f"unsupported weighting method: {self.weighting}")
 
@@ -155,7 +159,10 @@ def _current_weight_series(current: pd.DataFrame | pd.Series | None) -> pd.Serie
 
 def portfolio_turnover(target: pd.Series, current: pd.Series) -> float:
     universe = target.index.union(current.index)
-    return float(0.5 * (target.reindex(universe, fill_value=0.0) - current.reindex(universe, fill_value=0.0)).abs().sum())
+    return float(
+        0.5
+        * (target.reindex(universe, fill_value=0.0) - current.reindex(universe, fill_value=0.0)).abs().sum()
+    )
 
 
 def construct_target_portfolio(
@@ -213,5 +220,19 @@ def construct_target_portfolio(
     frame.loc[frame["target_weight"] < policy.min_position, "target_weight"] = 0.0
     frame["weighting"] = policy.weighting
     frame["pre_trade_turnover"] = pre_turnover
-    optional = [c for c in ("volatility", "group", "adv20_amount", "signal_date", "model_id", "dataset_id") if c in frame]
-    return frame[["instrument", "score", "target_weight", "weighting", *[c for c in optional if c != "group"], "group", "pre_trade_turnover"]]
+    optional = [
+        c
+        for c in ("volatility", "group", "adv20_amount", "signal_date", "model_id", "dataset_id")
+        if c in frame
+    ]
+    return frame[
+        [
+            "instrument",
+            "score",
+            "target_weight",
+            "weighting",
+            *[c for c in optional if c != "group"],
+            "group",
+            "pre_trade_turnover",
+        ]
+    ]

@@ -106,6 +106,8 @@ research:
   signal_lag_days: 1
   trade_unit: 100
   max_participation_rate: 0.05
+  # Dirty revisions may produce research CANDIDATE runs, but can never be promoted.
+  allow_dirty_research: true
   promotion_thresholds:
     min_observations: 252
     min_ic_mean: 0.01
@@ -125,6 +127,17 @@ strategy:
     only_tradable: true
     forbid_all_trade_at_limit: true
     risk_degree: 0.95
+
+portfolio:
+  top_n: 20
+  min_score: null
+  weighting: score_vol
+  max_position: 0.08
+  max_exposure: 0.90
+  max_group_exposure: 0.25
+  max_turnover: 0.30
+  min_position: 0.002
+  volatility_floor: 0.01
 
 execution:
   board_lot: 100

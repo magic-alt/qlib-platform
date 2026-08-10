@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib.canonical_config import DatasetSpec, StrategySpec
+from tushare_qlib.canonical_config import DatasetSpec, PortfolioSpec, StrategySpec
 from tushare_qlib.settings import Paths, Settings
 
 
@@ -48,3 +48,19 @@ def test_dataset_spec_records_lean_pit_universe(tmp_path: Path):
     assert spec.universe_name == "CSI300"
     assert spec.membership_type == "point_in_time"
     assert spec.secondary_filters == {"min_listed_days": 120}
+
+
+def test_portfolio_spec_comes_only_from_pipeline_portfolio_section(tmp_path: Path):
+    settings = _settings(
+        tmp_path,
+        {
+            "portfolio": {"top_n": 12, "max_exposure": 0.75, "weighting": "equal"},
+            "execution": {"portfolio": {"top_n": 99, "max_exposure": 1.0}},
+        },
+    )
+
+    spec = PortfolioSpec.from_settings(settings)
+
+    assert spec.top_n == 12
+    assert spec.max_exposure == 0.75
+    assert spec.weighting == "equal"

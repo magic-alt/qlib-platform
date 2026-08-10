@@ -132,7 +132,10 @@ def derive_research_metrics(
 
 
 def evaluate_research_metrics(
-    metrics: Mapping[str, object], thresholds: ResearchThresholds | None = None
+    metrics: Mapping[str, object],
+    thresholds: ResearchThresholds | None = None,
+    *,
+    allow_dirty_research: bool = False,
 ) -> dict[str, object]:
     thresholds = thresholds or ResearchThresholds()
     observations = int(str(metrics.get("observations", 0)))
@@ -194,8 +197,8 @@ def evaluate_research_metrics(
         GateCheck(
             "lineage_complete",
             bool(metrics.get("lineage_complete", False)),
-            True,
-            bool(metrics.get("lineage_complete", False)),
+            "complete or dirty-research override" if allow_dirty_research else True,
+            bool(metrics.get("lineage_complete", False)) or allow_dirty_research,
         ),
     ]
     passed = all(check.passed for check in checks)
@@ -210,7 +213,9 @@ def evaluate_research_metrics(
     }
 
 
-def evaluate_component_metrics(metrics: Mapping[str, object]) -> dict[str, object]:
+def evaluate_component_metrics(
+    metrics: Mapping[str, object], *, allow_dirty_research: bool = False
+) -> dict[str, object]:
     """Validate a rolling component without granting release promotion.
 
     Short folds establish chronological out-of-sample evidence, but statistical
@@ -234,8 +239,8 @@ def evaluate_component_metrics(metrics: Mapping[str, object]) -> dict[str, objec
         GateCheck(
             "lineage_complete",
             bool(metrics.get("lineage_complete", False)),
-            True,
-            bool(metrics.get("lineage_complete", False)),
+            "complete or dirty-research override" if allow_dirty_research else True,
+            bool(metrics.get("lineage_complete", False)) or allow_dirty_research,
         ),
     ]
     passed = all(check.passed for check in checks)

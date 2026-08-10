@@ -74,18 +74,43 @@ def build_lineage(
         "modelParametersSha256": model_hash,
         "universeSpecSha256": sha256_json(universe_payload),
     }
-    complete = all(value not in {None, "", "unversioned"} for value in required.values())
+    required_fields_complete = all(value not in {None, "", "unversioned"} for value in required.values())
+    qlib_commit_matches_dataset = bool(qlib_git.get("commit")) and qlib_git.get(
+        "commit"
+    ) == dataset_manifest.get("qlib_git_commit")
+    complete = (
+        required_fields_complete
+        and qlib_commit_matches_dataset
+        and platform_git.get("dirty") is False
+        and qlib_git.get("dirty") is False
+    )
     payload: dict[str, object] = {
         **required,
         "qlibPlatformDirty": platform_git.get("dirty"),
         "qlibDirty": qlib_git.get("dirty"),
+        "requiredFieldsComplete": required_fields_complete,
         "featureColumns": feature_columns,
         "modelParameters": config.model.parameters,
         "universe": universe_payload,
-        "qlibCommitMatchesDataset": bool(qlib_git.get("commit"))
-        and qlib_git.get("commit") == dataset_manifest.get("qlib_git_commit"),
+        "qlibCommitMatchesDataset": qlib_commit_matches_dataset,
         "complete": complete,
     }
-    payload["complete"] = bool(payload["complete"]) and bool(payload["qlibCommitMatchesDataset"])
     payload["lineageId"] = sha256_json(payload)[:32]
     return payload
+
+
+def dirty_research_override_enabled(settings: Settings, lineage: Mapping[str, object]) -> bool:
+    """Allow known dirty revisions for research without granting release authority."""
+
+    research = settings.data.get("research")
+    configured = bool(research.get("allow_dirty_research", False)) if isinstance(research, Mapping) else False
+    platform_dirty = lineage.get("qlibPlatformDirty")
+    qlib_dirty = lineage.get("qlibDirty")
+    dirty_is_known = platform_dirty in {True, False} and qlib_dirty in {True, False}
+    return bool(
+        configured
+        and dirty_is_known
+        and (platform_dirty is True or qlib_dirty is True)
+        and lineage.get("requiredFieldsComplete") is True
+        and lineage.get("qlibCommitMatchesDataset") is True
+    )

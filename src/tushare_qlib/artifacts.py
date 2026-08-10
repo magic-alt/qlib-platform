@@ -32,7 +32,7 @@ class ArtifactContractError(ValueError):
     pass
 
 
-_METADATA_COLUMNS = {
+_BASE_METADATA_COLUMNS = {
     "artifact_type",
     "schema_version",
     "promotion_status",
@@ -43,6 +43,43 @@ _METADATA_COLUMNS = {
     "manifest_path",
     "payload_sha256",
 }
+_POLICY_METADATA_COLUMNS = {"portfolio_policy_sha256"}
+_METADATA_COLUMNS = _BASE_METADATA_COLUMNS | _POLICY_METADATA_COLUMNS
+
+
+def _sha256_json(value: object) -> str:
+    encoded = json.dumps(
+        value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_manifest_portfolio_policy(manifest: Mapping[str, Any]) -> tuple[Mapping[str, Any], str]:
+    canonical = manifest.get("canonicalConfig")
+    if not isinstance(canonical, Mapping):
+        raise ArtifactContractError("manifest canonical config is missing")
+    portfolio = canonical.get("portfolio")
+    required = {
+        "top_n",
+        "min_score",
+        "weighting",
+        "max_position",
+        "max_exposure",
+        "max_group_exposure",
+        "max_turnover",
+        "min_position",
+        "volatility_floor",
+    }
+    if not isinstance(portfolio, Mapping) or not required.issubset(portfolio):
+        missing = required - set(portfolio) if isinstance(portfolio, Mapping) else required
+        raise ArtifactContractError(f"manifest canonical portfolio config is incomplete: {sorted(missing)}")
+    calculated = _sha256_json(dict(portfolio))
+    recorded = manifest.get("portfolioPolicySha256")
+    if not isinstance(recorded, str) or not recorded:
+        raise ArtifactContractError("manifest portfolio policy hash is missing")
+    if recorded != calculated:
+        raise ArtifactContractError("manifest portfolio policy hash does not match canonical config")
+    return portfolio, calculated
 
 
 def _payload_sha256(frame: pd.DataFrame) -> str:
@@ -76,6 +113,7 @@ def stamp_artifact(
     dataset_id: str,
     lineage_id: str,
     manifest_path: str | Path,
+    portfolio_policy_sha256: str | None = None,
 ) -> pd.DataFrame:
     if frame.empty:
         raise ArtifactContractError(f"cannot publish an empty {artifact_type.value} artifact")
@@ -91,6 +129,10 @@ def stamp_artifact(
         "manifest_path": str(Path(manifest_path).expanduser().resolve()),
         "payload_sha256": _payload_sha256(result),
     }
+    if artifact_type is ArtifactType.TARGET_PORTFOLIO:
+        if not portfolio_policy_sha256:
+            raise ArtifactContractError("TARGET_PORTFOLIO requires a portfolio policy hash")
+        metadata["portfolio_policy_sha256"] = portfolio_policy_sha256
     for column, value in metadata.items():
         result[column] = value
     return result
@@ -122,12 +164,15 @@ def validate_artifact(
     *,
     require_promoted: bool = True,
 ) -> dict[str, str]:
-    missing = _METADATA_COLUMNS - set(frame.columns)
+    required_metadata = set(_BASE_METADATA_COLUMNS)
+    if expected_type is ArtifactType.TARGET_PORTFOLIO:
+        required_metadata.update(_POLICY_METADATA_COLUMNS)
+    missing = required_metadata - set(frame.columns)
     if missing:
         raise ArtifactContractError(
             f"legacy or incomplete artifact is not executable; missing metadata: {sorted(missing)}"
         )
-    metadata = {column: _single_value(frame, column) for column in sorted(_METADATA_COLUMNS)}
+    metadata = {column: _single_value(frame, column) for column in sorted(required_metadata)}
     if metadata["schema_version"] != ARTIFACT_SCHEMA_VERSION:
         raise ArtifactContractError(
             f"unsupported artifact schema {metadata['schema_version']!r}; expected {ARTIFACT_SCHEMA_VERSION}"
@@ -142,6 +187,7 @@ def validate_artifact(
         raise ArtifactContractError("artifact payload checksum mismatch")
 
     manifest = load_artifact_manifest(metadata)
+    _, portfolio_policy_sha256 = validate_manifest_portfolio_policy(manifest)
     promotion = manifest.get("promotion")
     lineage = manifest.get("lineage")
     dataset = manifest.get("dataset")
@@ -160,4 +206,7 @@ def validate_artifact(
     for key, manifest_value in expected.items():
         if not manifest_value or metadata[key] != manifest_value:
             raise ArtifactContractError(f"artifact {key} does not match its manifest")
+    if expected_type is ArtifactType.TARGET_PORTFOLIO:
+        if metadata["portfolio_policy_sha256"] != portfolio_policy_sha256:
+            raise ArtifactContractError("TARGET_PORTFOLIO policy hash does not match its release manifest")
     return metadata
