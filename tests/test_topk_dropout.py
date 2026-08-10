@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from tushare_qlib.artifacts import ArtifactType
 from tushare_qlib.execution import ExecutionPolicy, build_topk_orders
 from tushare_qlib.topk_dropout import TopkDropoutPolicy, topk_dropout_decision
 
@@ -64,8 +65,11 @@ def test_only_tradable_skips_limited_candidate_before_combined_ranking():
     assert decision.at["A", "target_action"] == "HOLD"
 
 
-def test_topk_order_builder_keeps_buy_when_t1_blocks_requested_sell():
+def test_topk_order_builder_keeps_buy_when_t1_blocks_requested_sell(governed_artifact):
     scores = pd.Series({"A": 0.9, "B": 0.8, "C": 0.7, "D": 0.6})
+    score_artifact = governed_artifact(
+        scores.rename("score").rename_axis("instrument").reset_index(), ArtifactType.MODEL_SCORE
+    )
     positions = pd.DataFrame(
         {
             "instrument": ["B", "D"],
@@ -75,7 +79,7 @@ def test_topk_order_builder_keeps_buy_when_t1_blocks_requested_sell():
         }
     )
     decision, orders, blocked = build_topk_orders(
-        scores,
+        score_artifact,
         positions,
         _quotes(list(scores.index)),
         signal_date="2026-01-05",

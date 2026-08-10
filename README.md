@@ -69,7 +69,7 @@ tq --config configs/pipeline.yaml dump-full
 
 ## 4. 训练、回测和选股
 
-YAML 工作流：
+YAML 工作流（仅用于探索和调试，不产生可准入执行链路的 artifact）：
 
 ```bash
 export QLIB_DATA_URI=/absolute/path/to/data/qlib/cn_tushare_v1
@@ -110,8 +110,19 @@ CPU/CUDA LightGBM profiles 都使用 `max_bin=63`，因此可以在相同模型�
 降级原因和阶段耗时。`backtest` 包含 Qlib `PortAnaRecord` 绑定执行的组合风险/指标分析，且不代表回测已在
 GPU 上运行。报告渲染自身不计入阶段合计。
 
-选股结果位于 `data/output/selection_YYYYMMDD.csv`。该文件仍只表示模型 TopN；每个信号日同时会写入
-`data/output/signals/signal_scores_YYYYMMDD.parquet`，这是 TopkDropout 精确决策所需的全股票池分数与排名。
+一体化流程会自动从 OOS prediction、label 和组合报告计算 Research Gate。只有全部阈值通过且 lineage 完整的
+运行才标记为 `PROMOTED`，并发布 `data/output/selection_YYYYMMDD.csv` 与
+`data/output/signals/signal_scores_YYYYMMDD.parquet`；未通过的运行保留 manifest、回测产物和
+`research_gate.json` 后失败退出，不会生成执行候选。
+
+所有可进入执行链路的文件使用 schema `2.0`，并携带 `artifact_type / promotion_status / run_id / model_id` 与
+`dataset_id / lineage_id / manifest_path`。`selection_*.csv` 的类型是 `MODEL_TOPK`，仍只表示模型 TopN；完整分数
+文件的类型是 `MODEL_SCORE`，才是 TopkDropout 精确决策的合法输入。旧文件、`REJECTED` 模型、lineage 缺失或
+把 `MODEL_TOPK` 直接传给订单生成器都会失败关闭。
+
+升级后需要先重新执行 `stage-full → dump-full` 生成 schema `2.0` 的 `dataset_manifest.json`；旧数据集 manifest
+缺少 source snapshot 或 Qlib commit 时，Research Gate 会按 lineage 不完整拒绝发布。
+
 回测运行还会在 `data/output/research/<model_id>/strategy_audit.parquet` 输出“候选 → 指令 → 成交 → 持仓”的审计链。
 
 每次通过 `tq` 一体化流程运行的回测还会在同一运行目录生成可直接阅读的：

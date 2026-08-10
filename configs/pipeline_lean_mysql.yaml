@@ -114,7 +114,7 @@ research:
     max_drawdown: 0.20
     require_unique_artifact: true
 
-execution:
+strategy:
   topk_dropout:
     topk: 30
     n_drop: 5
@@ -122,6 +122,8 @@ execution:
     only_tradable: true
     forbid_all_trade_at_limit: true
     risk_degree: 0.95
+
+execution:
   board_lot: 100
   max_participation_rate: 0.05
   commission_rate: 0.00025
@@ -132,3 +134,10 @@ execution:
   price_buffer_sell: 0.002
   block_limit_up_buy: true
   block_limit_down_sell: true
+
+risk:
+  max_gross_exposure: 0.95
+  max_single_name: 0.10
+  max_sector_exposure: 0.30
+  max_daily_loss: 0.03
+  kill_switch: false

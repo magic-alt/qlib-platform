@@ -216,7 +216,9 @@ def resolve_runtime(profile: ModelProfile) -> ResolvedRuntime:
     try:
         import torch
     except ImportError as exc:
-        raise RuntimeError("PyTorch profile selected but torch is not installed; install the pytorch extra") from exc
+        raise RuntimeError(
+            "PyTorch profile selected but torch is not installed; install the pytorch extra"
+        ) from exc
     versions["torch"] = str(torch.__version__)
     cuda_available = bool(torch.cuda.is_available())
     mps_backend = getattr(torch.backends, "mps", None)
@@ -238,11 +240,11 @@ def resolve_runtime(profile: ModelProfile) -> ResolvedRuntime:
     return ResolvedRuntime(profile, "cpu", "No PyTorch CUDA or MPS device is available; using CPU", versions)
 
 
-def build_model(runtime: ResolvedRuntime, *, feature_count: int, seed: int, num_threads: int) -> Any:
+def resolved_model_parameters(
+    runtime: ResolvedRuntime, *, feature_count: int, seed: int, num_threads: int
+) -> dict[str, Any]:
     kwargs = dict(runtime.profile.model_kwargs)
     if runtime.profile.family == "lightgbm":
-        from qlib.contrib.model.gbdt import LGBModel
-
         params = {**_DEFAULT_LIGHTGBM_KWARGS, "num_threads": num_threads, **kwargs}
         params.update(
             {
@@ -257,16 +259,29 @@ def build_model(runtime: ResolvedRuntime, *, feature_count: int, seed: int, num_
             params["gpu_device_id"] = runtime.profile.device_index
         else:
             params.pop("gpu_device_id", None)
-        return LGBModel(**params)
+        return params
 
     pt_kwargs = dict(kwargs.pop("pt_model_kwargs", {}))
     configured_dim = pt_kwargs.pop("input_dim", None)
     if configured_dim is not None and int(configured_dim) != feature_count:
-        raise ValueError(f"DNN input_dim={configured_dim} does not match dataset feature count {feature_count}")
+        raise ValueError(
+            f"DNN input_dim={configured_dim} does not match dataset feature count {feature_count}"
+        )
     pt_kwargs["input_dim"] = feature_count
     kwargs["pt_model_kwargs"] = pt_kwargs
     kwargs["GPU"] = runtime.resolved_device
     kwargs.setdefault("seed", seed)
+    return kwargs
+
+
+def build_model(runtime: ResolvedRuntime, *, feature_count: int, seed: int, num_threads: int) -> Any:
+    kwargs = resolved_model_parameters(
+        runtime, feature_count=feature_count, seed=seed, num_threads=num_threads
+    )
+    if runtime.profile.family == "lightgbm":
+        from qlib.contrib.model.gbdt import LGBModel
+
+        return LGBModel(**kwargs)
     from qlib.contrib.model.pytorch_nn import DNNModelPytorch
 
     return DNNModelPytorch(**kwargs)

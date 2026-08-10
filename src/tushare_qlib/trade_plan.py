@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
+from .artifacts import ArtifactType, PromotionStatus, stamp_artifact, validate_artifact
 from .portfolio import PortfolioPolicy, construct_target_portfolio
 
 
@@ -40,7 +41,9 @@ def _selection_signal_date(frame: pd.DataFrame, path: Path, requested: str | Non
     raise ValueError("signal date is required in selection data, file name, or --selection-date")
 
 
-def _next_trade_date(signal_date: pd.Timestamp, calendar_path: Path, explicit_trade_date: str | None = None) -> pd.Timestamp:
+def _next_trade_date(
+    signal_date: pd.Timestamp, calendar_path: Path, explicit_trade_date: str | None = None
+) -> pd.Timestamp:
     if explicit_trade_date:
         trade_date = pd.Timestamp(explicit_trade_date).normalize()
         if trade_date <= signal_date:
@@ -54,7 +57,9 @@ def _next_trade_date(signal_date: pd.Timestamp, calendar_path: Path, explicit_tr
     cal = pd.read_parquet(calendar_path)
     if not {"cal_date", "is_open"}.issubset(cal.columns):
         raise ValueError("trading calendar must contain cal_date and is_open")
-    dates = pd.to_datetime(cal.loc[pd.to_numeric(cal["is_open"], errors="coerce") == 1, "cal_date"], errors="coerce")
+    dates = pd.to_datetime(
+        cal.loc[pd.to_numeric(cal["is_open"], errors="coerce") == 1, "cal_date"], errors="coerce"
+    )
     future = dates[dates.dt.normalize() > signal_date].sort_values()
     if future.empty:
         raise ValueError(f"trading calendar has no open date after {signal_date.date()}")
@@ -121,9 +126,12 @@ def build_trade_plan(
     selection_path = (
         Path(selection_file).expanduser().resolve()
         if selection_file
-        else _find_selection(selection_dir, str(execution.get("selection_glob", "selection_*.csv")), selection_date)
+        else _find_selection(
+            selection_dir, str(execution.get("selection_glob", "selection_*.csv")), selection_date
+        )
     )
     selection = pd.read_csv(selection_path)
+    metadata = validate_artifact(selection, ArtifactType.MODEL_TOPK)
     signal_ts = _selection_signal_date(selection, selection_path, selection_date)
     calendar_path = _resolve_path(
         str(execution.get("calendar_path", "./data/metadata/trade_calendar.parquet")), project_dir
@@ -136,12 +144,20 @@ def build_trade_plan(
     policy = PortfolioPolicy.from_mapping(policy_data if isinstance(policy_data, dict) else {})
     targets = construct_target_portfolio(selection, policy, current=current)
 
-    current_weights = current.set_index("instrument")["target_weight"] if not current.empty else pd.Series(dtype=float)
-    target_weights = targets.set_index("instrument")["target_weight"] if not targets.empty else pd.Series(dtype=float)
+    current_weights = (
+        current.set_index("instrument")["target_weight"] if not current.empty else pd.Series(dtype=float)
+    )
+    target_weights = (
+        targets.set_index("instrument")["target_weight"] if not targets.empty else pd.Series(dtype=float)
+    )
     universe = current_weights.index.union(target_weights.index)
     threshold = float(execution.get("rebalance_threshold", 0.005))
     force_sell_removed = bool(execution.get("force_sell_removed", True))
-    emit_weight = bool(execution.get("allow_weight_update", True)) if allow_weight_update is None else allow_weight_update
+    emit_weight = (
+        bool(execution.get("allow_weight_update", True))
+        if allow_weight_update is None
+        else allow_weight_update
+    )
     score_map = targets.set_index("instrument")["score"] if not targets.empty else pd.Series(dtype=float)
 
     rows: list[dict[str, object]] = []
@@ -170,15 +186,31 @@ def build_trade_plan(
                 "weight_delta": delta,
                 "score": float(score_map.get(instrument, float("nan"))),
                 "trigger": trigger,
-                "model_id": str(selection["model_id"].dropna().iloc[0]) if "model_id" in selection and selection["model_id"].notna().any() else "unversioned",
-                "dataset_id": str(selection["dataset_id"].dropna().iloc[0]) if "dataset_id" in selection and selection["dataset_id"].notna().any() else "unversioned",
+                "model_id": str(selection["model_id"].dropna().iloc[0])
+                if "model_id" in selection and selection["model_id"].notna().any()
+                else "unversioned",
+                "dataset_id": str(selection["dataset_id"].dropna().iloc[0])
+                if "dataset_id" in selection and selection["dataset_id"].notna().any()
+                else "unversioned",
             }
         )
     plan = pd.DataFrame(rows)
     if not plan.empty:
         action_order = {"SELL": 0, "BUY": 1, "WEIGHT": 2}
         plan["_order"] = plan["action"].map(action_order)
-        plan = plan.sort_values(["_order", "score", "instrument"], ascending=[True, False, True]).drop(columns="_order")
+        plan = plan.sort_values(["_order", "score", "instrument"], ascending=[True, False, True]).drop(
+            columns="_order"
+        )
+        plan = stamp_artifact(
+            plan,
+            ArtifactType.ORDER_INTENT,
+            promotion_status=PromotionStatus.PROMOTED,
+            run_id=metadata["run_id"],
+            model_id=metadata["model_id"],
+            dataset_id=metadata["dataset_id"],
+            lineage_id=metadata["lineage_id"],
+            manifest_path=metadata["manifest_path"],
+        )
 
     date_key = trade_ts.strftime("%Y%m%d")
     plan_path = output_dir / f"trade_plan_{date_key}.csv"
@@ -189,10 +221,24 @@ def build_trade_plan(
     targets_out["signal_date"] = signal_ts.strftime("%Y-%m-%d")
     lead = ["signal_date", "trade_date"]
     targets_out = targets_out[lead + [c for c in targets_out.columns if c not in lead]]
+    targets_out = stamp_artifact(
+        targets_out,
+        ArtifactType.TARGET_PORTFOLIO,
+        promotion_status=PromotionStatus.PROMOTED,
+        run_id=metadata["run_id"],
+        model_id=metadata["model_id"],
+        dataset_id=metadata["dataset_id"],
+        lineage_id=metadata["lineage_id"],
+        manifest_path=metadata["manifest_path"],
+    )
     _atomic_csv(targets_out, targets_path)
     _atomic_json(
         {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
+            "artifact_type": ArtifactType.ORDER_INTENT.value,
+            "source_artifact_type": ArtifactType.MODEL_TOPK.value,
+            "promotion_status": PromotionStatus.PROMOTED.value,
+            "lineage_id": metadata["lineage_id"],
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "selection_file": str(selection_path),
             "current_portfolio_file": str(current_path) if current_path else None,

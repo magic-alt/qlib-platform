@@ -9,6 +9,8 @@ from typing import Mapping
 
 import pandas as pd
 
+from .artifacts import ARTIFACT_SCHEMA_VERSION, ArtifactType, validate_artifact
+
 
 def default_lean_symbol(instrument: str) -> tuple[str, str, str]:
     value = str(instrument).upper().strip()
@@ -33,6 +35,10 @@ def export_lean_targets(
     dataset_id: str,
     symbol_map: Mapping[str, str] | None = None,
 ) -> tuple[Path, Path]:
+    metadata = validate_artifact(targets, ArtifactType.TARGET_PORTFOLIO)
+    for name, supplied in (("model_id", model_id), ("dataset_id", dataset_id)):
+        if supplied != metadata[name]:
+            raise ValueError(f"{name} does not match the governed target artifact")
     required = {"instrument", "target_weight"}
     missing = required - set(targets.columns)
     if missing:
@@ -57,12 +63,20 @@ def export_lean_targets(
                 "market": market,
                 "lean_symbol": lean_symbol,
                 "target_weight": round(float(row.target_weight), 12),
-                "score": (round(float(getattr(row, "score")), 12) if hasattr(row, "score") and pd.notna(getattr(row, "score")) else None),
+                "score": (
+                    round(float(getattr(row, "score")), 12)
+                    if hasattr(row, "score") and pd.notna(getattr(row, "score"))
+                    else None
+                ),
             }
         )
     checksum = hashlib.sha256(_canonical_json(rows)).hexdigest()
     envelope = {
-        "schema_version": "1.0",
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "artifact_type": ArtifactType.TARGET_PORTFOLIO.value,
+        "promotion_status": metadata["promotion_status"],
+        "run_id": metadata["run_id"],
+        "lineage_id": metadata["lineage_id"],
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "signal_date": pd.Timestamp(signal_date).strftime("%Y-%m-%d"),
         "trade_date": pd.Timestamp(trade_date).strftime("%Y-%m-%d"),
@@ -70,7 +84,7 @@ def export_lean_targets(
         "dataset_id": dataset_id,
         "currency": "CNY",
         "target_count": len(rows),
-        "gross_target_exposure": round(sum(float(r["target_weight"]) for r in rows), 12),
+        "gross_target_exposure": round(sum(float(str(r["target_weight"])) for r in rows), 12),
         "targets_sha256": checksum,
         "targets": rows,
     }

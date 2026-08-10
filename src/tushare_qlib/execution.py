@@ -7,6 +7,14 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
+from .artifacts import (
+    ArtifactContractError,
+    ArtifactType,
+    PromotionStatus,
+    load_artifact_manifest,
+    stamp_artifact,
+    validate_artifact,
+)
 from .topk_dropout import TopkDropoutPolicy, topk_dropout_decision
 
 
@@ -27,14 +35,14 @@ class ExecutionPolicy:
     def from_mapping(cls, data: Mapping[str, object] | None) -> "ExecutionPolicy":
         data = data or {}
         return cls(
-            board_lot=int(data.get("board_lot", cls.board_lot)),
-            max_participation_rate=float(data.get("max_participation_rate", cls.max_participation_rate)),
-            commission_rate=float(data.get("commission_rate", cls.commission_rate)),
-            min_commission=float(data.get("min_commission", cls.min_commission)),
-            stamp_duty_sell=float(data.get("stamp_duty_sell", cls.stamp_duty_sell)),
-            transfer_fee_rate=float(data.get("transfer_fee_rate", cls.transfer_fee_rate)),
-            price_buffer_buy=float(data.get("price_buffer_buy", cls.price_buffer_buy)),
-            price_buffer_sell=float(data.get("price_buffer_sell", cls.price_buffer_sell)),
+            board_lot=int(str(data.get("board_lot", cls.board_lot))),
+            max_participation_rate=float(str(data.get("max_participation_rate", cls.max_participation_rate))),
+            commission_rate=float(str(data.get("commission_rate", cls.commission_rate))),
+            min_commission=float(str(data.get("min_commission", cls.min_commission))),
+            stamp_duty_sell=float(str(data.get("stamp_duty_sell", cls.stamp_duty_sell))),
+            transfer_fee_rate=float(str(data.get("transfer_fee_rate", cls.transfer_fee_rate))),
+            price_buffer_buy=float(str(data.get("price_buffer_buy", cls.price_buffer_buy))),
+            price_buffer_sell=float(str(data.get("price_buffer_sell", cls.price_buffer_sell))),
             block_limit_up_buy=bool(data.get("block_limit_up_buy", cls.block_limit_up_buy)),
             block_limit_down_sell=bool(data.get("block_limit_down_sell", cls.block_limit_down_sell)),
         )
@@ -69,7 +77,6 @@ def build_orders(
     portfolio_value: float,
     cash: float,
     policy: ExecutionPolicy | None = None,
-    model_id: str = "unversioned",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Convert target weights to broker-neutral A-share orders.
 
@@ -77,7 +84,17 @@ def build_orders(
     Quotes are point-in-time execution snapshots, not research close prices.
     """
 
-    policy = policy or ExecutionPolicy()
+    metadata = validate_artifact(targets, ArtifactType.TARGET_PORTFOLIO)
+    model_id = metadata["model_id"]
+    manifest = load_artifact_manifest(metadata)
+    canonical = manifest.get("canonicalConfig", {})
+    configured_execution = canonical.get("execution", {}) if isinstance(canonical, Mapping) else {}
+    if not isinstance(configured_execution, Mapping):
+        raise ArtifactContractError("manifest canonical execution config is missing")
+    governed_policy = ExecutionPolicy.from_mapping(configured_execution)
+    if policy is not None and policy != governed_policy:
+        raise ArtifactContractError("execution policy does not match the artifact's canonical config")
+    policy = governed_policy
     if portfolio_value <= 0:
         raise ValueError("portfolio_value must be positive")
     required_target = {"instrument", "target_weight"}
@@ -100,9 +117,19 @@ def build_orders(
     blocked: list[dict[str, object]] = []
 
     for instrument in universe:
-        target_weight = float(pd.to_numeric(t.at[instrument, "target_weight"], errors="coerce")) if instrument in t.index else 0.0
-        current_qty = int(pd.to_numeric(p.at[instrument, "quantity"], errors="coerce")) if instrument in p.index else 0
-        available_qty = int(pd.to_numeric(p.at[instrument, "available_quantity"], errors="coerce")) if instrument in p.index else 0
+        target_weight = (
+            float(pd.to_numeric(t.at[instrument, "target_weight"], errors="coerce"))
+            if instrument in t.index
+            else 0.0
+        )
+        current_qty = (
+            int(pd.to_numeric(p.at[instrument, "quantity"], errors="coerce")) if instrument in p.index else 0
+        )
+        available_qty = (
+            int(pd.to_numeric(p.at[instrument, "available_quantity"], errors="coerce"))
+            if instrument in p.index
+            else 0
+        )
         if instrument not in q.index:
             blocked.append({"instrument": instrument, "reason": "MISSING_QUOTE", "requested_delta": None})
             continue
@@ -134,7 +161,9 @@ def build_orders(
         if side == "SELL":
             quantity = min(quantity, max(0, available_qty))
             if quantity <= 0:
-                blocked.append({"instrument": instrument, "reason": "T1_NOT_SELLABLE", "requested_delta": delta})
+                blocked.append(
+                    {"instrument": instrument, "reason": "T1_NOT_SELLABLE", "requested_delta": delta}
+                )
                 continue
         adv20_volume = pd.to_numeric(quote.get("adv20_volume", np.nan), errors="coerce")
         if np.isfinite(adv20_volume) and adv20_volume > 0:
@@ -142,10 +171,14 @@ def build_orders(
             quantity = min(quantity, participation_cap)
         quantity = int(np.floor(quantity / lot) * lot)
         if quantity <= 0:
-            blocked.append({"instrument": instrument, "reason": "BELOW_LOT_OR_LIQUIDITY_CAP", "requested_delta": delta})
+            blocked.append(
+                {"instrument": instrument, "reason": "BELOW_LOT_OR_LIQUIDITY_CAP", "requested_delta": delta}
+            )
             continue
 
-        limit_price = price * (1 + policy.price_buffer_buy) if side == "BUY" else price * (1 - policy.price_buffer_sell)
+        limit_price = (
+            price * (1 + policy.price_buffer_buy) if side == "BUY" else price * (1 - policy.price_buffer_sell)
+        )
         notional = quantity * limit_price
         fee = _fees(notional, side, policy)
         score = float(t.at[instrument, "score"]) if instrument in t.index and "score" in t.columns else np.nan
@@ -174,7 +207,9 @@ def build_orders(
 
     # Process sells first; proceeds are conservatively reduced by fees. Buys are then cash-gated by score.
     sell_mask = orders["side"] == "SELL"
-    available_cash = float(cash) + float((orders.loc[sell_mask, "estimated_notional"] - orders.loc[sell_mask, "estimated_fees"]).sum())
+    available_cash = float(cash) + float(
+        (orders.loc[sell_mask, "estimated_notional"] - orders.loc[sell_mask, "estimated_fees"]).sum()
+    )
     buys = orders.loc[~sell_mask].sort_values(["score", "instrument"], ascending=[False, True])
     accepted_buy_indices: list[int] = []
     for idx, row in buys.iterrows():
@@ -184,11 +219,34 @@ def build_orders(
             available_cash -= total
         else:
             blocked_df = pd.concat(
-                [blocked_df, pd.DataFrame([{"instrument": row["instrument"], "reason": "INSUFFICIENT_CASH", "requested_delta": row["quantity"]}])],
+                [
+                    blocked_df,
+                    pd.DataFrame(
+                        [
+                            {
+                                "instrument": row["instrument"],
+                                "reason": "INSUFFICIENT_CASH",
+                                "requested_delta": row["quantity"],
+                            }
+                        ]
+                    ),
+                ],
                 ignore_index=True,
             )
     orders = pd.concat([orders.loc[sell_mask], orders.loc[accepted_buy_indices]], ignore_index=True)
-    orders = orders.sort_values(["side", "score", "instrument"], ascending=[False, False, True]).reset_index(drop=True)
+    orders = orders.sort_values(["side", "score", "instrument"], ascending=[False, False, True]).reset_index(
+        drop=True
+    )
+    orders = stamp_artifact(
+        orders,
+        ArtifactType.ORDER_INTENT,
+        promotion_status=PromotionStatus.PROMOTED,
+        run_id=metadata["run_id"],
+        model_id=model_id,
+        dataset_id=metadata["dataset_id"],
+        lineage_id=metadata["lineage_id"],
+        manifest_path=metadata["manifest_path"],
+    )
     return orders, blocked_df.reset_index(drop=True)
 
 
@@ -231,7 +289,6 @@ def build_topk_orders(
     cash: float,
     strategy_policy: TopkDropoutPolicy | None = None,
     execution_policy: ExecutionPolicy | None = None,
-    model_id: str = "unversioned",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Generate Qlib-style TopkDropout intents and broker-neutral orders.
 
@@ -241,14 +298,33 @@ def build_topk_orders(
     available before the market opens.
     """
 
+    if not isinstance(scores, pd.DataFrame):
+        raise ArtifactContractError("build_topk_orders requires a versioned MODEL_SCORE DataFrame")
+    metadata = validate_artifact(scores, ArtifactType.MODEL_SCORE)
+    if not {"instrument", "score"}.issubset(scores.columns):
+        raise ArtifactContractError("MODEL_SCORE artifact must contain instrument and score")
+    score_values = scores.set_index("instrument")["score"]
+    model_id = metadata["model_id"]
+    manifest = load_artifact_manifest(metadata)
+    canonical = manifest.get("canonicalConfig", {})
+    configured_strategy = canonical.get("strategy", {}) if isinstance(canonical, Mapping) else {}
+    configured_execution = canonical.get("execution", {}) if isinstance(canonical, Mapping) else {}
+    if not isinstance(configured_strategy, Mapping) or not isinstance(configured_execution, Mapping):
+        raise ArtifactContractError("manifest canonical strategy/execution config is missing")
+    governed_strategy = TopkDropoutPolicy.from_mapping(configured_strategy)
+    governed_execution = ExecutionPolicy.from_mapping(configured_execution)
+    if strategy_policy is not None and strategy_policy != governed_strategy:
+        raise ArtifactContractError("strategy policy does not match the artifact's canonical config")
+    if execution_policy is not None and execution_policy != governed_execution:
+        raise ArtifactContractError("execution policy does not match the artifact's canonical config")
+    strategy_policy = governed_strategy
+    execution_policy = governed_execution
     if cash < 0:
         raise ValueError("cash must be non-negative")
-    strategy_policy = strategy_policy or TopkDropoutPolicy()
-    execution_policy = execution_policy or ExecutionPolicy()
     current = _topk_positions(positions)
     quote = _topk_quote_frame(quotes)
     decision = topk_dropout_decision(
-        scores,
+        score_values,
         current,
         quote.reset_index(),
         policy=strategy_policy,
@@ -267,7 +343,7 @@ def build_topk_orders(
         quantity: int,
         current_quantity: int,
         available_quantity: int,
-    ) -> float:
+    ) -> tuple[float, float]:
         instrument = str(row["instrument"])
         quote_row = quote.loc[instrument]
         price = float(pd.to_numeric(quote_row["price"], errors="coerce"))
@@ -310,10 +386,14 @@ def build_topk_orders(
             blocked.append({"instrument": instrument, "reason": "INVALID_PRICE", "requested_delta": None})
             continue
         current_quantity = int(pd.to_numeric(position_index.at[instrument, "quantity"], errors="coerce"))
-        available_quantity = int(pd.to_numeric(position_index.at[instrument, "available_quantity"], errors="coerce"))
+        available_quantity = int(
+            pd.to_numeric(position_index.at[instrument, "available_quantity"], errors="coerce")
+        )
         lot = int(pd.to_numeric(quote_row.get("board_lot", execution_policy.board_lot), errors="coerce"))
         lot = lot if lot > 0 else execution_policy.board_lot
-        quantity = _topk_quantity_cap(quote_row, min(current_quantity, available_quantity), lot, execution_policy)
+        quantity = _topk_quantity_cap(
+            quote_row, min(current_quantity, available_quantity), lot, execution_policy
+        )
         if quantity <= 0:
             reason = "T1_NOT_SELLABLE" if available_quantity <= 0 else "BELOW_LOT_OR_LIQUIDITY_CAP"
             blocked.append({"instrument": instrument, "reason": reason, "requested_delta": -current_quantity})
@@ -339,14 +419,22 @@ def build_topk_orders(
         lot = lot if lot > 0 else execution_policy.board_lot
         quantity = _topk_quantity_cap(quote_row, per_buy_budget / price, lot, execution_policy)
         if quantity <= 0:
-            blocked.append({"instrument": instrument, "reason": "BELOW_LOT_OR_LIQUIDITY_CAP", "requested_delta": None})
+            blocked.append(
+                {"instrument": instrument, "reason": "BELOW_LOT_OR_LIQUIDITY_CAP", "requested_delta": None}
+            )
             continue
         notional = quantity * price
         fee = _fees(notional, "BUY", execution_policy)
         if notional + fee > available_cash + 1e-9:
-            blocked.append({"instrument": instrument, "reason": "INSUFFICIENT_CASH", "requested_delta": quantity})
+            blocked.append(
+                {"instrument": instrument, "reason": "INSUFFICIENT_CASH", "requested_delta": quantity}
+            )
             continue
-        current_quantity = int(pd.to_numeric(position_index.at[instrument, "quantity"], errors="coerce")) if instrument in position_index.index else 0
+        current_quantity = (
+            int(pd.to_numeric(position_index.at[instrument, "quantity"], errors="coerce"))
+            if instrument in position_index.index
+            else 0
+        )
         available_quantity = (
             int(pd.to_numeric(position_index.at[instrument, "available_quantity"], errors="coerce"))
             if instrument in position_index.index
@@ -360,4 +448,25 @@ def build_topk_orders(
         orders["_side_order"] = orders["side"].map({"SELL": 0, "BUY": 1})
         orders = orders.sort_values(["_side_order", "action_order", "score_rank", "instrument"])
         orders = orders.drop(columns=["_side_order", "action_order"], errors="ignore").reset_index(drop=True)
+        orders = stamp_artifact(
+            orders,
+            ArtifactType.ORDER_INTENT,
+            promotion_status=PromotionStatus.PROMOTED,
+            run_id=metadata["run_id"],
+            model_id=model_id,
+            dataset_id=metadata["dataset_id"],
+            lineage_id=metadata["lineage_id"],
+            manifest_path=metadata["manifest_path"],
+        )
+    if not decision.empty:
+        decision = stamp_artifact(
+            decision,
+            ArtifactType.STRATEGY_DECISION,
+            promotion_status=PromotionStatus.PROMOTED,
+            run_id=metadata["run_id"],
+            model_id=model_id,
+            dataset_id=metadata["dataset_id"],
+            lineage_id=metadata["lineage_id"],
+            manifest_path=metadata["manifest_path"],
+        )
     return decision, orders, pd.DataFrame(blocked)

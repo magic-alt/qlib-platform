@@ -43,7 +43,16 @@ def test_export_daily_selections_writes_one_topn_file_per_signal_date(tmp_path, 
         },
     )
 
-    latest_path, latest = _export_daily_selections(settings, score, model_id="model-1", topn=2)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    latest_path, latest = _export_daily_selections(
+        settings,
+        score,
+        model_id="model-1",
+        topn=2,
+        lineage_id="lineage-1",
+        manifest_path=manifest,
+    )
 
     first = pd.read_csv(paths.output / "selection_20260105.csv")
     assert latest_path == paths.output / "selection_20260106.csv"
@@ -56,7 +65,13 @@ def test_export_daily_selections_writes_one_topn_file_per_signal_date(tmp_path, 
     assert first["score_rank"].tolist() == [1, 2]
     assert first["is_model_topk"].all()
 
-    signal_paths = _export_daily_signal_scores(settings, score, model_id="model-1")
+    signal_paths = _export_daily_signal_scores(
+        settings,
+        score,
+        model_id="model-1",
+        lineage_id="lineage-1",
+        manifest_path=manifest,
+    )
     full = pd.read_parquet(signal_paths[pd.Timestamp("2026-01-05")])
     assert full["instrument"].tolist() == ["SZ000001", "SH600519", "SH600000"]
     assert full["score_rank"].tolist() == [1, 2, 3]

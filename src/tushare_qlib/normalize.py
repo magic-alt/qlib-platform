@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -301,7 +300,7 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
         raw_df = con.execute("SELECT * FROM read_parquet(?) WHERE symbol=? ORDER BY date", [glob, symbol]).df()
         try:
             norm, base = normalize_symbol(raw_df, calendar, existing_bases.get(symbol))
-        except ValueError as exc:
+        except ValueError:
             if not raw_df["close"].notna().any():
                 skipped.append(symbol)
                 logger.warning("Skip symbol without any traded row in full stage: {}", symbol)

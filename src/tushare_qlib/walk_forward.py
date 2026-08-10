@@ -53,7 +53,9 @@ def _rebase_reports(reports: list[tuple[str, pd.DataFrame]]) -> pd.DataFrame:
         value_source = frame["value"] if "value" in frame else account - cash
         value = pd.to_numeric(value_source, errors="coerce").fillna(account - cash)
         cost_source = frame["total_cost"] if "total_cost" in frame else pd.Series(0.0, index=frame.index)
-        turnover_source = frame["total_turnover"] if "total_turnover" in frame else pd.Series(0.0, index=frame.index)
+        turnover_source = (
+            frame["total_turnover"] if "total_turnover" in frame else pd.Series(0.0, index=frame.index)
+        )
         source_cost = pd.to_numeric(cost_source, errors="coerce").fillna(0.0)
         source_turnover = pd.to_numeric(turnover_source, errors="coerce").fillna(0.0)
         daily_cost = source_cost.diff().fillna(source_cost)
@@ -96,7 +98,7 @@ def _checkpoint_fingerprint(
     *,
     runtime_fingerprint: str,
     benchmark: str,
-    topn: int,
+    topn: int | None,
 ) -> str:
     payload = {
         "runtimeFingerprint": runtime_fingerprint,
@@ -140,25 +142,50 @@ def build_walk_forward_plan(
     dates = calendar[(calendar >= pd.Timestamp(start_date)) & (calendar <= pd.Timestamp(end_date))]
     if len(dates) < 252 * 6:
         raise ValueError("walk-forward requires at least six years of trading dates")
-    holdout_start = _at_or_after(dates, dates[-1] - pd.DateOffset(months=holdout_months) + pd.Timedelta(days=1))
+    holdout_start = _at_or_after(
+        dates, dates[-1] - pd.DateOffset(months=holdout_months) + pd.Timedelta(days=1)
+    )
     test_start = _at_or_after(dates, dates[0] + pd.DateOffset(years=train_years, months=valid_months))
     folds: list[Fold] = []
     index = 0
     while test_start < holdout_start:
-        test_end = _at_or_before(dates, min(test_start + pd.DateOffset(months=test_months) - pd.Timedelta(days=1), holdout_start - pd.Timedelta(days=1)))
+        test_end = _at_or_before(
+            dates,
+            min(
+                test_start + pd.DateOffset(months=test_months) - pd.Timedelta(days=1),
+                holdout_start - pd.Timedelta(days=1),
+            ),
+        )
         valid_end_pos = dates.get_loc(test_start) - embargo_days - 1
         valid_end = dates[valid_end_pos]
-        valid_start = _at_or_after(dates, valid_end - pd.DateOffset(months=valid_months) + pd.Timedelta(days=1))
+        valid_start = _at_or_after(
+            dates, valid_end - pd.DateOffset(months=valid_months) + pd.Timedelta(days=1)
+        )
         train_end = dates[dates.get_loc(valid_start) - purge_days - 1]
         train_start = _at_or_after(dates, train_end - pd.DateOffset(years=train_years) + pd.Timedelta(days=1))
-        folds.append(Fold(f"rolling_{index:02d}", (str(train_start.date()), str(train_end.date())), (str(valid_start.date()), str(valid_end.date())), (str(test_start.date()), str(test_end.date()))))
+        folds.append(
+            Fold(
+                f"rolling_{index:02d}",
+                (str(train_start.date()), str(train_end.date())),
+                (str(valid_start.date()), str(valid_end.date())),
+                (str(test_start.date()), str(test_end.date())),
+            )
+        )
         index += 1
         test_start = _at_or_after(dates, test_end + pd.Timedelta(days=1))
     valid_end = dates[dates.get_loc(holdout_start) - embargo_days - 1]
     valid_start = _at_or_after(dates, valid_end - pd.DateOffset(months=valid_months) + pd.Timedelta(days=1))
     train_end = dates[dates.get_loc(valid_start) - purge_days - 1]
     train_start = _at_or_after(dates, train_end - pd.DateOffset(years=train_years) + pd.Timedelta(days=1))
-    folds.append(Fold("final_holdout", (str(train_start.date()), str(train_end.date())), (str(valid_start.date()), str(valid_end.date())), (str(holdout_start.date()), str(dates[-2].date())), True))
+    folds.append(
+        Fold(
+            "final_holdout",
+            (str(train_start.date()), str(train_end.date())),
+            (str(valid_start.date()), str(valid_end.date())),
+            (str(holdout_start.date()), str(dates[-2].date())),
+            True,
+        )
+    )
     return folds
 
 
@@ -168,15 +195,19 @@ def run_walk_forward(
     start_date: str,
     end_date: str,
     benchmark: str = "SH000300",
-    topn: int = 30,
+    topn: int | None = None,
     model_profile: str | Path | None = None,
 ) -> Path:
     orchestration_started = time.perf_counter()
     runtime = resolve_runtime(load_model_profile(settings, model_profile))
     calendar_frame = pd.read_parquet(settings.paths.metadata / "trade_calendar.parquet")
     calendar = pd.DatetimeIndex(
-        pd.to_datetime(calendar_frame.loc[pd.to_numeric(calendar_frame["is_open"], errors="coerce") == 1, "cal_date"])
-        .dropna().sort_values().unique()
+        pd.to_datetime(
+            calendar_frame.loc[pd.to_numeric(calendar_frame["is_open"], errors="coerce") == 1, "cal_date"]
+        )
+        .dropna()
+        .sort_values()
+        .unique()
     )
     folds = build_walk_forward_plan(calendar, start_date, end_date)
     run_root = settings.paths.output / "research" / "walk_forward"
@@ -262,6 +293,21 @@ def run_walk_forward(
             values = pd.to_numeric(combined[column], errors="coerce").dropna()
             metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
     latest = manifests[-1]["latestTargets"]
+    component_lineage = [manifest.get("lineage", {}) for manifest in manifests]
+    component_lineage_ids = [
+        str(item.get("lineageId")) for item in component_lineage if isinstance(item, dict)
+    ]
+    aggregate_lineage = {
+        "componentLineageIds": component_lineage_ids,
+        "complete": len(component_lineage_ids) == len(manifests)
+        and all(bool(item.get("complete")) for item in component_lineage if isinstance(item, dict)),
+        "qlibPlatformCommit": component_lineage[-1].get("qlibPlatformCommit"),
+        "qlibCommit": component_lineage[-1].get("qlibCommit"),
+        "datasetFingerprint": manifests[-1]["dataset"].get("fingerprint"),
+    }
+    aggregate_lineage["lineageId"] = hashlib.sha256(
+        json.dumps(aggregate_lineage, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:32]
     aggregate_phases = _aggregate_component_timings(manifests)
     timings = {
         "clock": "time.perf_counter",
@@ -273,7 +319,7 @@ def run_walk_forward(
     }
     write_timings(timings_path, runtime, timings)
     payload = {
-        "schemaVersion": "1.2",
+        "schemaVersion": "2.0",
         "externalRunId": external_id,
         "runKind": "walk_forward",
         "name": f"Qlib CSI300 walk-forward {start_date}..{end_date}",
@@ -287,6 +333,14 @@ def run_walk_forward(
             "fingerprint": external_id,
         },
         "runtime": runtime.to_manifest(),
+        "canonicalConfig": manifests[-1].get("canonicalConfig"),
+        "lineage": aggregate_lineage,
+        "promotion": {
+            "status": "PROMOTED",
+            "decision": "PROMOTE",
+            "gateMode": "all_components_promoted",
+            "componentGateReports": [manifest.get("promotion", {}) for manifest in manifests],
+        },
         "timings": timings,
         "folds": [asdict(fold) for fold in folds],
         "execution": manifests[-1]["execution"],
