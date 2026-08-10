@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
+from .fundamentals import PIT_FIELDS
 from .quality import assert_quality, validate_curated, validate_normalized, write_report
 from .settings import Settings
 from .store import PartitionStore, _atomic_replace, sha256_file
@@ -23,7 +24,7 @@ MONEYFLOW_HAND_FIELDS = ["buy_lg_vol", "sell_lg_vol", "buy_elg_vol", "sell_elg_v
 
 
 def _normalize_trade_date(value: str) -> str:
-    return pd.Timestamp(value).strftime("%Y%m%d")
+    return str(pd.Timestamp(value).strftime("%Y%m%d"))
 
 
 def _rename_daily_basic(df: pd.DataFrame) -> pd.DataFrame:
@@ -36,6 +37,28 @@ def _active_master(master: pd.DataFrame, trade_date: pd.Timestamp) -> pd.DataFra
     listed = master["list_date"].notna() & (master["list_date"] <= trade_date)
     not_delisted = master["delist_date"].isna() | (master["delist_date"] >= trade_date)
     return master.loc[listed & not_delisted].copy()
+
+
+def _merge_pit_fundamentals(frame: pd.DataFrame, settings: Settings, trade_date: str) -> pd.DataFrame:
+    path = settings.paths.curated / "fundamentals_pit.parquet"
+    if not path.exists():
+        result = frame.copy()
+        for field in PIT_FIELDS:
+            result[field] = np.nan
+        return result
+    fundamentals = pd.read_parquet(path)
+    required = {"ts_code", "trade_date", *PIT_FIELDS}
+    missing = required - set(fundamentals.columns)
+    if missing:
+        raise ValueError(f"PIT fundamentals missing columns: {sorted(missing)}")
+    fundamentals = fundamentals[["ts_code", "trade_date", *PIT_FIELDS]].copy()
+    fundamentals["trade_date"] = pd.to_datetime(fundamentals["trade_date"], errors="raise").dt.strftime(
+        "%Y%m%d"
+    )
+    fundamentals = fundamentals.loc[fundamentals["trade_date"] == trade_date]
+    if fundamentals.duplicated(["ts_code", "trade_date"]).any():
+        raise ValueError(f"duplicate PIT fundamentals for trade_date={trade_date}")
+    return frame.merge(fundamentals, on=["ts_code", "trade_date"], how="left", validate="one_to_one")
 
 
 def build_curated_day(settings: Settings, trade_date: str, force: bool = False) -> Path:
@@ -68,6 +91,7 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
     for source in (daily, adj, basic, moneyflow, limit_df):
         if not source.empty:
             frame = frame.merge(source, on=["ts_code", "trade_date"], how="left", validate="one_to_one")
+    frame = _merge_pit_fundamentals(frame, settings, trade_date)
 
     suspended_codes = (
         set(suspend.loc[suspend.get("suspend_type", pd.Series(dtype=str)) == "S", "ts_code"])
@@ -100,6 +124,14 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
         "source_manifests": {
             name: raw.read_manifest(name, trade_date)
             for name in ("daily", "adj_factor", "daily_basic", "moneyflow", "stk_limit", "suspend_d", "stock_st")
+        },
+        "pit_fundamentals": {
+            "path": str(settings.paths.curated / "fundamentals_pit.parquet"),
+            "sha256": (
+                sha256_file(settings.paths.curated / "fundamentals_pit.parquet")
+                if (settings.paths.curated / "fundamentals_pit.parquet").exists()
+                else None
+            ),
         },
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
@@ -138,7 +170,7 @@ def _load_open_calendar(settings: Settings) -> pd.DatetimeIndex:
 def _trading_age(date_values: pd.Series, list_date: pd.Timestamp, calendar: pd.DatetimeIndex) -> np.ndarray:
     list_idx = int(calendar.searchsorted(list_date, side="left"))
     date_idx = calendar.searchsorted(pd.DatetimeIndex(date_values), side="left")
-    return np.maximum(date_idx - list_idx, 0).astype(float)
+    return np.asarray(np.maximum(date_idx - list_idx, 0), dtype=float)
 
 
 def normalize_symbol(
@@ -248,6 +280,7 @@ def normalize_symbol(
         "is_limit_down",
         "is_st",
         "listed_days",
+        *PIT_FIELDS,
     ]
     for col in keep:
         if col not in df:

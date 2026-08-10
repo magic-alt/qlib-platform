@@ -55,6 +55,7 @@ class Extractor:
         self.settings = settings
         self.store = PartitionStore(settings.paths.raw)
         self.source_is_mysql = self._is_mysql_source(settings)
+        self.client: TushareClient | MysqlClient
         optional = cfg.get("optional_endpoints", {})
         mysql_endpoint_cfg: dict[str, dict[str, Any]] = {}
 
@@ -201,7 +202,7 @@ class Extractor:
         if start < available_start or end > available_end:
             cal = self.fetch_calendar(min(start, available_start).strftime("%Y%m%d"), max(end, available_end).strftime("%Y%m%d"))
         mask = (cal["is_open"] == 1) & (cal["cal_date"] >= start) & (cal["cal_date"] <= end)
-        return cal.loc[mask, "cal_date"].dt.strftime("%Y%m%d").tolist()
+        return [str(value) for value in cal.loc[mask, "cal_date"].dt.strftime("%Y%m%d").tolist()]
 
     def fetch_day(self, trade_date: str, force: bool = False) -> None:
         fetched: dict[str, pd.DataFrame] = {}

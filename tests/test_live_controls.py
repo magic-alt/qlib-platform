@@ -25,6 +25,13 @@ def test_broker_ledger_rejects_terminal_reopen(tmp_path):
     ledger = tmp_path / "broker_events.parquet"
     record_broker_event(ledger, "id-1", "INTENT", event_at_utc="2026-08-10T01:00:00Z")
     record_broker_event(ledger, "id-1", "SUBMITTED", event_at_utc="2026-08-10T01:01:00Z")
-    record_broker_event(ledger, "id-1", "FILLED", event_at_utc="2026-08-10T01:02:00Z")
+    record_broker_event(
+        ledger,
+        "id-1",
+        "FILLED",
+        event_at_utc="2026-08-10T01:02:00Z",
+        fill_qty=100,
+        fill_price=10,
+    )
     with pytest.raises(ValueError, match="illegal"):
         record_broker_event(ledger, "id-1", "SUBMITTED", event_at_utc="2026-08-10T01:03:00Z")

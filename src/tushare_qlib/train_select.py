@@ -152,10 +152,10 @@ def build_dataset(
 ) -> Any:
     from qlib.data.dataset import DatasetH
 
-    from .custom_handler import TushareAlpha158Daily
+    from .custom_handler import TushareAlpha158Fundamental
 
     universe = universe or {}
-    handler = TushareAlpha158Daily(
+    handler = TushareAlpha158Fundamental(
         instruments=universe.get("instruments", "all"),
         start_time=train[0],
         end_time=test[1],

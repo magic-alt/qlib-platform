@@ -5,7 +5,15 @@ from pathlib import Path
 import pandas as pd
 
 
-PIT_FIELDS = ("roe_waa_pit", "roa_pit", "netprofit_margin_pit", "netprofit_yoy_pit", "or_yoy_pit", "debt_to_assets_pit", "ocf_to_or_pit")
+PIT_FIELDS = (
+    "roe_waa_pit",
+    "roa_pit",
+    "netprofit_margin_pit",
+    "netprofit_yoy_pit",
+    "or_yoy_pit",
+    "debt_to_assets_pit",
+    "ocf_to_or_pit",
+)
 
 
 def build_pit_fundamentals(reports: pd.DataFrame, calendar: pd.DataFrame) -> pd.DataFrame:
@@ -29,14 +37,23 @@ def build_pit_fundamentals(reports: pd.DataFrame, calendar: pd.DataFrame) -> pd.
     if records[["ann_date", "end_date"]].isna().any().any():
         raise ValueError("fundamental reports contain invalid dates")
     rows: list[pd.DataFrame] = []
+    open_days = pd.DataFrame({"trade_date": dates})
     for code, group in records.sort_values(["ann_date", "end_date"]).groupby("ts_code", sort=True):
-        indexed = group.set_index("ann_date")[list(PIT_FIELDS)].apply(pd.to_numeric, errors="coerce")
-        # Multiple report periods announced on a day are resolved deterministically
-        # by the latest period, then carried forward only to future open dates.
-        indexed = indexed[~indexed.index.duplicated(keep="last")]
-        expanded = indexed.reindex(dates).ffill()
-        expanded = expanded.loc[expanded.notna().any(axis=1)].reset_index(names="trade_date")
-        expanded.insert(0, "ts_code", code)
+        events = group.drop_duplicates("ann_date", keep="last")[["ann_date", *PIT_FIELDS]].copy()
+        events[list(PIT_FIELDS)] = events[list(PIT_FIELDS)].apply(pd.to_numeric, errors="coerce")
+        # A weekend/holiday announcement becomes usable on the first following
+        # open day.  merge_asof also ensures a restatement only supersedes the
+        # previously known values after its own announcement timestamp.
+        expanded = pd.merge_asof(
+            open_days,
+            events.sort_values("ann_date"),
+            left_on="trade_date",
+            right_on="ann_date",
+            direction="backward",
+            allow_exact_matches=True,
+        ).drop(columns="ann_date")
+        expanded = expanded.loc[expanded[list(PIT_FIELDS)].notna().any(axis=1)]
+        expanded.insert(0, "ts_code", str(code))
         rows.append(expanded)
     return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["ts_code", "trade_date", *PIT_FIELDS])
 

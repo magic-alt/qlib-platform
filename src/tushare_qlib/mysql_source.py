@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+import importlib
 import os
 import re
+from datetime import date
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlparse, unquote
 
@@ -372,7 +373,7 @@ class MysqlClient:
 
     def _connect(self):
         try:
-            import pymysql
+            pymysql = importlib.import_module("pymysql")
         except ImportError as exc:  # pragma: no cover - optional path
             raise RuntimeError("pymysql is required for lean_mysql. Install project extra: .[data] or .[all]") from exc
 

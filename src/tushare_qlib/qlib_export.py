@@ -13,6 +13,7 @@ from typing import Any
 
 from loguru import logger
 
+from .fundamentals import PIT_FIELDS
 from .lineage import git_revision, sha256_json
 from .settings import Settings
 from .store import sha256_file
@@ -98,9 +99,8 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
     sample = instruments[: min(3, len(instruments))]
     start = calendar[max(0, len(calendar) - 5)]
     end = calendar[-1]
-    features = D.features(
-        sample, ["$close", "$volume", "$factor"], start_time=start, end_time=end, freq="day"
-    )
+    queried_fields = ["$close", "$volume", "$factor", *(f"${field}" for field in PIT_FIELDS)]
+    features = D.features(sample, queried_fields, start_time=start, end_time=end, freq="day")
     if features.empty:
         raise RuntimeError("Qlib smoke test failed: feature query returned empty")
     return {
@@ -108,6 +108,7 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
         "instrument_count": len(instruments),
         "sample_instruments": sample,
         "sample_rows": len(features),
+        "queried_fields": queried_fields,
         "last_date": str(calendar[-1]),
     }
 

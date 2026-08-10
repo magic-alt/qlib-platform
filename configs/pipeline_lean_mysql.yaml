@@ -81,6 +81,13 @@ qlib:
     - is_limit_down
     - is_st
     - listed_days
+    - roe_waa_pit
+    - roa_pit
+    - netprofit_margin_pit
+    - netprofit_yoy_pit
+    - or_yoy_pit
+    - debt_to_assets_pit
+    - ocf_to_or_pit
 
 universe:
   min_listed_days: 120

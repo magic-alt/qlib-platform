@@ -107,7 +107,10 @@ def parser() -> argparse.ArgumentParser:
     be.add_argument("order_id")
     be.add_argument("state")
     be.add_argument("--event-at-utc", required=True)
+    be.add_argument("--event-id")
     be.add_argument("--broker-order-id")
+    be.add_argument("--fill-qty", type=float)
+    be.add_argument("--fill-price", type=float)
     fi = sub.add_parser("ingest-pit-fundamentals")
     fi.add_argument("reports")
     fi.add_argument("--calendar")
@@ -170,10 +173,10 @@ def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -
 def main() -> None:
     args = parser().parse_args()
     if args.command == "project-audit":
-        from .project_audit import audit_project, write_audit
+        from .project_audit import audit_project, write_audit as write_project_audit
 
         report = audit_project(args.root)
-        path = write_audit(report, args.output)
+        path = write_project_audit(report, args.output)
         print(
             json.dumps(
                 {"score": report["score"], "passed": report["passed"], "report": str(path)},
@@ -193,10 +196,10 @@ def main() -> None:
         return
 
     if args.command == "research-audit":
-        from .backtest_audit import audit_mlflow_run, write_audit
+        from .backtest_audit import audit_mlflow_run, write_audit as write_backtest_audit
 
         report = audit_mlflow_run(args.run_dir)
-        path = write_audit(report, args.output)
+        path = write_backtest_audit(report, args.output)
         print(json.dumps({"passed": report["passed"], "report": str(path)}, ensure_ascii=False))
         if not report["passed"]:
             raise SystemExit(2)
@@ -311,7 +314,10 @@ def main() -> None:
             args.order_id,
             args.state,
             event_at_utc=args.event_at_utc,
+            event_id=args.event_id,
             broker_order_id=args.broker_order_id,
+            fill_qty=args.fill_qty,
+            fill_price=args.fill_price,
         )
         print(json.dumps({"ledger": str(args.ledger), "events": len(events)}))
         return

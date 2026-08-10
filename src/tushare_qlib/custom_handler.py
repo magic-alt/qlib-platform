@@ -2,6 +2,20 @@ from __future__ import annotations
 
 from qlib.contrib.data.handler import Alpha158
 
+from .fundamentals import PIT_FIELDS
+
+
+PIT_FEATURE_EXPRESSIONS = tuple(f"${field}" for field in PIT_FIELDS)
+PIT_FEATURE_NAMES = (
+    "ROE_WAA_PIT",
+    "ROA_PIT",
+    "NET_MARGIN_PIT",
+    "NETPROFIT_YOY_PIT",
+    "REVENUE_YOY_PIT",
+    "DEBT_ASSETS_PIT",
+    "OCF_OR_PIT",
+)
+
 
 class TushareAlpha158Daily(Alpha158):
     """Alpha158 plus valuation, liquidity, money-flow and A-share state fields."""
@@ -40,10 +54,4 @@ class TushareAlpha158Fundamental(TushareAlpha158Daily):
 
     def get_feature_config(self):
         fields, names = super().get_feature_config()
-        return list(fields) + [
-            "$roe_waa_pit", "$roa_pit", "$netprofit_margin_pit", "$netprofit_yoy_pit",
-            "$or_yoy_pit", "$debt_to_assets_pit", "$ocf_to_or_pit",
-        ], list(names) + [
-            "ROE_WAA_PIT", "ROA_PIT", "NET_MARGIN_PIT", "NETPROFIT_YOY_PIT",
-            "REVENUE_YOY_PIT", "DEBT_ASSETS_PIT", "OCF_OR_PIT",
-        ]
+        return list(fields) + list(PIT_FEATURE_EXPRESSIONS), list(names) + list(PIT_FEATURE_NAMES)

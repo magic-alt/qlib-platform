@@ -23,15 +23,15 @@ class PortfolioPolicy:
     def from_mapping(cls, data: Mapping[str, object] | None) -> "PortfolioPolicy":
         data = data or {}
         return cls(
-            top_n=int(data.get("top_n", cls.top_n)),
-            min_score=float(data["min_score"]) if data.get("min_score") is not None else None,
+            top_n=int(str(data.get("top_n", cls.top_n))),
+            min_score=float(str(data["min_score"])) if data.get("min_score") is not None else None,
             weighting=str(data.get("weighting", cls.weighting)),
-            max_position=float(data.get("max_position", cls.max_position)),
-            max_exposure=float(data.get("max_exposure", cls.max_exposure)),
-            max_group_exposure=float(data.get("max_group_exposure", cls.max_group_exposure)),
-            max_turnover=(float(data["max_turnover"]) if data.get("max_turnover") is not None else None),
-            min_position=float(data.get("min_position", cls.min_position)),
-            volatility_floor=float(data.get("volatility_floor", cls.volatility_floor)),
+            max_position=float(str(data.get("max_position", cls.max_position))),
+            max_exposure=float(str(data.get("max_exposure", cls.max_exposure))),
+            max_group_exposure=float(str(data.get("max_group_exposure", cls.max_group_exposure))),
+            max_turnover=(float(str(data["max_turnover"])) if data.get("max_turnover") is not None else None),
+            min_position=float(str(data.get("min_position", cls.min_position))),
+            volatility_floor=float(str(data.get("volatility_floor", cls.volatility_floor))),
         )
 
     def validate(self) -> None:
