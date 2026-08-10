@@ -5,8 +5,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from .canonical_config import CanonicalConfig
-from .model_runtime import load_model_profile, resolve_runtime
+from .canonical_config import StrategySpec
 from .settings import Settings
 
 
@@ -15,7 +14,14 @@ def _mapping(value: object) -> Mapping[str, Any]:
 
 
 def validate_qrun_contract(settings: Settings, workflow_path: str | Path) -> dict[str, object]:
-    """Reject qrun templates whose execution semantics drift from pipeline YAML."""
+    """Compare the configuration-only subset shared by qrun and the release runner.
+
+    qrun is an exploratory workflow and cannot express the release runner's
+    per-side limit expressions.  The result therefore reports that semantic as
+    uncovered instead of claiming that a successful comparison is certified
+    execution equivalence.  Model imports, device probing and dataset access
+    are intentionally outside this validation path.
+    """
     workflow = yaml.safe_load(Path(workflow_path).read_text(encoding="utf-8")) or {}
     records = _mapping(workflow.get("task")).get("record", [])
     port_record = next(
@@ -27,17 +33,44 @@ def validate_qrun_contract(settings: Settings, workflow_path: str | Path) -> dic
     qrun_strategy = _mapping(_mapping(config.get("strategy")).get("kwargs"))
     qrun_backtest = _mapping(config.get("backtest"))
     qrun_exchange = _mapping(qrun_backtest.get("exchange_kwargs"))
-    # Runtime is irrelevant to this comparison; only pipeline settings are read.
-    canonical = CanonicalConfig.from_settings(settings, resolve_runtime(load_model_profile(settings)))
-    expected = canonical.strategy.to_policy().__dict__
+    expected = StrategySpec.from_settings(settings).to_policy().__dict__
     actual = {key: qrun_strategy.get(key) for key in expected}
     research = _mapping(settings.data.get("research"))
+    participation = float(research.get("max_participation_rate", 0.05))
     execution_expected = {
-        "deal_price": research.get("deal_price"), "trade_unit": research.get("trade_unit"),
-        "open_cost": research.get("open_cost"), "close_cost": research.get("close_cost"),
+        "deal_price": research.get("deal_price"),
+        "trade_unit": research.get("trade_unit"),
+        "open_cost": research.get("open_cost"),
+        "close_cost": research.get("close_cost"),
         "min_cost": research.get("min_cost"),
+        "volume_threshold": ["current", f"$volume * {participation}"],
     }
     execution_actual = {key: qrun_exchange.get(key) for key in execution_expected}
-    mismatches = {key: {"pipeline": expected[key], "qrun": actual[key]} for key in expected if actual[key] != expected[key]}
-    mismatches.update({key: {"pipeline": value, "qrun": execution_actual[key]} for key, value in execution_expected.items() if execution_actual[key] != value})
-    return {"passed": not mismatches, "mismatches": mismatches}
+    mismatches = {
+        key: {"pipeline": expected[key], "qrun": actual[key]}
+        for key in expected
+        if actual[key] != expected[key]
+    }
+    mismatches.update(
+        {
+            key: {"pipeline": value, "qrun": execution_actual[key]}
+            for key, value in execution_expected.items()
+            if execution_actual[key] != value
+        }
+    )
+    benchmark = qrun_backtest.get("benchmark")
+    expected_benchmark = research.get("benchmark")
+    if benchmark != expected_benchmark:
+        mismatches["benchmark"] = {"pipeline": expected_benchmark, "qrun": benchmark}
+    return {
+        "passed": not mismatches,
+        "mismatches": mismatches,
+        "certifiedExecutionEquivalent": False,
+        "uncoveredSemantics": {
+            "limit_threshold": {
+                "integratedRunner": ["$is_limit_up > 0", "$is_limit_down > 0"],
+                "qrun": qrun_exchange.get("limit_threshold"),
+                "reason": "qrun safe YAML cannot encode the integrated runner's per-side expressions",
+            }
+        },
+    }

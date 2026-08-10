@@ -11,6 +11,14 @@ import pandas as pd
 
 from .settings import Settings
 from .model_runtime import load_model_profile, resolve_runtime, write_timings
+from .research_gate import (
+    ResearchPromotionError,
+    ResearchThresholds,
+    derive_research_metrics,
+    evaluate_research_metrics,
+    write_gate_report,
+)
+from .store import sha256_file
 from .train_select import train_backtest_select
 
 
@@ -108,6 +116,7 @@ def _checkpoint_fingerprint(
         "research": settings.data.get("research", {}),
         "universe": settings.data.get("universe", {}),
         "datasetUri": str(settings.qlib_data_uri),
+        "promotionContract": "release-v2" if fold.final_holdout else "component-validation-v2",
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()[:16]
@@ -138,13 +147,18 @@ def build_walk_forward_plan(
     holdout_months: int = 12,
     purge_days: int = 5,
     embargo_days: int = 5,
+    min_holdout_observations: int = 252,
 ) -> list[Fold]:
     dates = calendar[(calendar >= pd.Timestamp(start_date)) & (calendar <= pd.Timestamp(end_date))]
     if len(dates) < 252 * 6:
         raise ValueError("walk-forward requires at least six years of trading dates")
-    holdout_start = _at_or_after(
+    calendar_holdout_start = _at_or_after(
         dates, dates[-1] - pd.DateOffset(months=holdout_months) + pd.Timedelta(days=1)
     )
+    if min_holdout_observations <= 0 or len(dates) <= min_holdout_observations:
+        raise ValueError("min_holdout_observations must fit inside the walk-forward calendar")
+    observation_holdout_start = dates[-(min_holdout_observations + 1)]
+    holdout_start = min(calendar_holdout_start, observation_holdout_start)
     test_start = _at_or_after(dates, dates[0] + pd.DateOffset(years=train_years, months=valid_months))
     folds: list[Fold] = []
     index = 0
@@ -189,6 +203,41 @@ def build_walk_forward_plan(
     return folds
 
 
+def _evaluate_aggregate_oos_gate(
+    settings: Settings,
+    manifests: list[dict[str, Any]],
+    reports: list[tuple[str, pd.DataFrame]],
+    gate_path: Path,
+) -> dict[str, object]:
+    """Apply the release gate once to the combined rolling-fold OOS evidence."""
+
+    if not manifests or not reports:
+        raise ValueError("aggregate OOS gate requires rolling component evidence")
+    prediction_paths = [_artifact_path(manifest, "oos_predictions.parquet") for manifest in manifests]
+    label_paths = [_artifact_path(manifest, "oos_labels.parquet") for manifest in manifests]
+    predictions = pd.concat([pd.read_parquet(path) for path in prediction_paths]).sort_index()
+    labels = pd.concat([pd.read_parquet(path) for path in label_paths]).sort_index()
+    combined_report = _rebase_reports(reports)
+    lineage_complete = all(bool(manifest.get("lineage", {}).get("complete")) for manifest in manifests)
+    unique_artifact = len({sha256_file(path) for path in prediction_paths}) == len(prediction_paths)
+    metrics = derive_research_metrics(
+        predictions,
+        labels,
+        combined_report,
+        unique_artifact=unique_artifact,
+        lineage_complete=lineage_complete,
+    )
+    research = settings.data.get("research", {})
+    thresholds = ResearchThresholds.from_mapping(
+        research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
+    )
+    report = evaluate_research_metrics(metrics, thresholds)
+    report["gate_mode"] = "aggregate_rolling_oos"
+    report["component_count"] = len(manifests)
+    write_gate_report(report, gate_path)
+    return report
+
+
 def run_walk_forward(
     settings: Settings,
     *,
@@ -209,7 +258,21 @@ def run_walk_forward(
         .sort_values()
         .unique()
     )
-    folds = build_walk_forward_plan(calendar, start_date, end_date)
+    research = settings.data.get("research", {})
+    thresholds = ResearchThresholds.from_mapping(
+        research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
+    )
+    label_buffer_days = (
+        int(research.get("walk_forward_label_buffer_days", 5)) if isinstance(research, dict) else 5
+    )
+    if label_buffer_days < 0:
+        raise ValueError("research.walk_forward_label_buffer_days must be non-negative")
+    folds = build_walk_forward_plan(
+        calendar,
+        start_date,
+        end_date,
+        min_holdout_observations=thresholds.min_observations + label_buffer_days,
+    )
     run_root = settings.paths.output / "research" / "walk_forward"
     run_root.mkdir(parents=True, exist_ok=True)
     manifests: list[dict[str, Any]] = []
@@ -217,7 +280,10 @@ def run_walk_forward(
     audits: list[pd.DataFrame] = []
     holdings: list[pd.DataFrame] = []
     component_runs: list[dict[str, Any]] = []
-    for fold in folds:
+
+    def execute_fold(
+        fold: Fold,
+    ) -> tuple[dict[str, Any], pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
         checkpoint_fingerprint = _checkpoint_fingerprint(
             settings,
             fold,
@@ -230,7 +296,7 @@ def run_walk_forward(
         if checkpoint.exists():
             fold_manifest_path = Path(json.loads(checkpoint.read_text(encoding="utf-8"))["manifest"])
         else:
-            selection = train_backtest_select(
+            result_path = train_backtest_select(
                 settings,
                 train=fold.train,
                 valid=fold.valid,
@@ -240,9 +306,13 @@ def run_walk_forward(
                 experiment_name=f"lean_csi300_{runtime.profile.name}_{fold.key}",
                 run_kind="final_holdout" if fold.final_holdout else "walk_forward_fold",
                 runtime=runtime,
+                promotion_mode="release" if fold.final_holdout else "component",
             )
-            model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
-            fold_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+            if fold.final_holdout:
+                model_id = str(pd.read_csv(result_path)["model_id"].iloc[0])
+                fold_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+            else:
+                fold_manifest_path = result_path
             checkpoint.write_text(
                 json.dumps(
                     {
@@ -255,24 +325,80 @@ def run_walk_forward(
                 encoding="utf-8",
             )
         manifest = json.loads(fold_manifest_path.read_text(encoding="utf-8"))
-        manifests.append(manifest)
+        promotion = manifest.get("promotion", {})
+        if not isinstance(promotion, dict):
+            raise ValueError(f"fold manifest has no promotion contract: {fold.key}")
+        expected_status = "PROMOTED" if fold.final_holdout else "CANDIDATE"
+        expected_mode = "release" if fold.final_holdout else "component_validation"
+        if promotion.get("status") != expected_status or promotion.get("gateMode") != expected_mode:
+            raise ValueError(
+                f"fold {fold.key} has incompatible promotion contract: "
+                f"status={promotion.get('status')}, gateMode={promotion.get('gateMode')}"
+            )
         report = pd.read_parquet(_artifact_path(manifest, "portfolio_report.parquet"))
+        audit = pd.read_parquet(_artifact_path(manifest, "strategy_audit.parquet"))
+        holding = pd.read_parquet(_artifact_path(manifest, "holdings.parquet"))
+        component_run = {
+            "key": fold.key,
+            "externalRunId": str(manifest["externalRunId"]),
+            "manifestPath": str(fold_manifest_path),
+            "checkpointReused": reused,
+            "promotionMode": "release" if fold.final_holdout else "component_validation",
+            "timings": manifest.get("timings", {}),
+        }
+        return manifest, report, audit, holding, component_run
+
+    rolling_folds = [fold for fold in folds if not fold.final_holdout]
+    final_folds = [fold for fold in folds if fold.final_holdout]
+    if len(final_folds) != 1:
+        raise ValueError("walk-forward plan must contain exactly one final holdout")
+    for fold in rolling_folds:
+        manifest, report, audit, holding, component_run = execute_fold(fold)
         if reports and pd.Timestamp(report.index.min()) <= pd.Timestamp(reports[-1][1].index.max()):
             raise ValueError(f"overlapping OOS reports at fold {fold.key}")
+        manifests.append(manifest)
         reports.append((fold.key, report))
-        audit = pd.read_parquet(_artifact_path(manifest, "strategy_audit.parquet"))
         audits.append(audit.assign(fold_key=fold.key))
-        holding = pd.read_parquet(_artifact_path(manifest, "holdings.parquet"))
         holdings.append(holding.assign(fold_key=fold.key))
-        component_runs.append(
-            {
-                "key": fold.key,
-                "externalRunId": str(manifest["externalRunId"]),
-                "manifestPath": str(fold_manifest_path),
-                "checkpointReused": reused,
-                "timings": manifest.get("timings", {}),
-            }
+        component_runs.append(component_run)
+
+    rolling_ids = [str(manifest["externalRunId"]) for manifest in manifests]
+    aggregate_key = hashlib.sha256("|".join(rolling_ids).encode()).hexdigest()[:32]
+    aggregate_gate_path = run_root / f"aggregate_oos_gate_{aggregate_key}.json"
+    aggregate_gate = _evaluate_aggregate_oos_gate(settings, manifests, reports, aggregate_gate_path)
+    if not aggregate_gate["passed"]:
+        rejection_manifest = run_root / f"aggregate_oos_{aggregate_key}.manifest.json"
+        rejection_manifest.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": "2.0",
+                    "externalRunId": aggregate_key,
+                    "runKind": "walk_forward_aggregate_oos",
+                    "promotion": {
+                        "status": "REJECTED",
+                        "decision": "REJECT",
+                        "gateMode": "aggregate_rolling_oos",
+                        "gateReportPath": str(aggregate_gate_path),
+                    },
+                    "componentRuns": component_runs,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
         )
+        raise ResearchPromotionError(rejection_manifest)
+
+    final_fold = final_folds[0]
+    final_manifest, final_report, final_audit, final_holding, final_run = execute_fold(final_fold)
+    if pd.Timestamp(final_report.index.min()) <= pd.Timestamp(reports[-1][1].index.max()):
+        raise ValueError(f"overlapping OOS reports at fold {final_fold.key}")
+    manifests.append(final_manifest)
+    reports.append((final_fold.key, final_report))
+    audits.append(final_audit.assign(fold_key=final_fold.key))
+    holdings.append(final_holding.assign(fold_key=final_fold.key))
+    component_runs.append(final_run)
+
     combined = _rebase_reports(reports)
     combined_audit = pd.concat(audits, ignore_index=True)
     combined_holdings = pd.concat(holdings, ignore_index=True)
@@ -338,8 +464,10 @@ def run_walk_forward(
         "promotion": {
             "status": "PROMOTED",
             "decision": "PROMOTE",
-            "gateMode": "all_components_promoted",
-            "componentGateReports": [manifest.get("promotion", {}) for manifest in manifests],
+            "gateMode": "aggregate_oos_and_final_holdout",
+            "aggregateOosGate": aggregate_gate,
+            "finalHoldoutGate": final_manifest.get("promotion", {}),
+            "componentValidationReports": [manifest.get("promotion", {}) for manifest in manifests[:-1]],
         },
         "timings": timings,
         "folds": [asdict(fold) for fold in folds],
@@ -351,6 +479,7 @@ def run_walk_forward(
             {"name": audit_path.name, "localPath": str(audit_path), "rows": len(combined_audit)},
             {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(combined_holdings)},
             {"name": timings_path.name, "localPath": str(timings_path)},
+            {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
         ],
         "latestTargets": latest,
     }

@@ -41,3 +41,7 @@ def test_trade_plan_uses_next_official_open_day(tmp_path: Path, monkeypatch, gov
     path, plan = build_trade_plan(config_path=config, selection_file=selection_path)
     assert path.exists()
     assert set(plan["trade_date"]) == {"2026-08-10"}
+    assert set(plan["artifact_type"]) == {ArtifactType.STRATEGY_DECISION.value}
+    assert ArtifactType.ORDER_INTENT.value not in set(plan["artifact_type"])
+    targets = pd.read_csv(output / "target_portfolio_20260810.csv")
+    assert set(targets["artifact_type"]) == {ArtifactType.TARGET_PORTFOLIO.value}

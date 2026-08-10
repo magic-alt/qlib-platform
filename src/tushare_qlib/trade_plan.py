@@ -203,7 +203,7 @@ def build_trade_plan(
         )
         plan = stamp_artifact(
             plan,
-            ArtifactType.ORDER_INTENT,
+            ArtifactType.STRATEGY_DECISION,
             promotion_status=PromotionStatus.PROMOTED,
             run_id=metadata["run_id"],
             model_id=metadata["model_id"],
@@ -235,7 +235,7 @@ def build_trade_plan(
     _atomic_json(
         {
             "schema_version": "2.0",
-            "artifact_type": ArtifactType.ORDER_INTENT.value,
+            "artifact_type": ArtifactType.STRATEGY_DECISION.value,
             "source_artifact_type": ArtifactType.MODEL_TOPK.value,
             "promotion_status": PromotionStatus.PROMOTED.value,
             "lineage_id": metadata["lineage_id"],

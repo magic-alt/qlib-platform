@@ -30,6 +30,7 @@ from .research_gate import (
     ResearchPromotionError,
     derive_research_metrics,
     evaluate_research_metrics,
+    evaluate_component_metrics,
     write_gate_report,
 )
 
@@ -469,7 +470,10 @@ def train_backtest_select(
     run_kind: str = "fixed_split",
     model_profile: str | Path | None = None,
     runtime: ResolvedRuntime | None = None,
+    promotion_mode: str = "release",
 ) -> Path:
+    if promotion_mode not in {"release", "component"}:
+        raise ValueError("promotion_mode must be 'release' or 'component'")
     if runtime is not None and model_profile is not None:
         raise ValueError("pass either model_profile or a pre-resolved runtime, not both")
     profile: ModelProfile = (
@@ -611,6 +615,7 @@ def train_backtest_select(
         report_path = artifact_dir / "portfolio_report.parquet"
         audit_path = artifact_dir / "strategy_audit.parquet"
         holdings_path = artifact_dir / "holdings.parquet"
+        label_path = artifact_dir / "oos_labels.parquet"
         timings_path = artifact_dir / "timings.json"
         gate_path = artifact_dir / "research_gate.json"
         manifest_path = artifact_dir / "manifest.json"
@@ -622,6 +627,8 @@ def train_backtest_select(
             latest = pd.Timestamp(score.index.get_level_values("datetime").max())
             report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
             pred.to_parquet(pred_path)
+            label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
+            label_frame.to_parquet(label_path)
             report.to_parquet(report_path)
             positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
             holdings = export_holding_snapshots(positions)
@@ -657,9 +664,14 @@ def train_backtest_select(
                 unique_artifact=_prediction_is_unique(settings, predictions_sha256, model_id),
                 lineage_complete=bool(lineage["complete"]),
             )
-            gate_report = evaluate_research_metrics(gate_metrics, canonical.promotion)
+            gate_report = (
+                evaluate_component_metrics(gate_metrics)
+                if promotion_mode == "component"
+                else evaluate_research_metrics(gate_metrics, canonical.promotion)
+            )
             write_gate_report(gate_report, gate_path)
-            promoted = bool(gate_report["passed"])
+            gate_passed = bool(gate_report["passed"])
+            promoted = gate_passed and promotion_mode == "release"
 
             path: Path | None = None
             output: pd.DataFrame | None = None
@@ -720,9 +732,16 @@ def train_backtest_select(
             "canonicalConfig": canonical.to_manifest(),
             "lineage": lineage,
             "promotion": {
-                "status": PromotionStatus.PROMOTED.value if promoted else PromotionStatus.REJECTED.value,
+                "status": (
+                    PromotionStatus.PROMOTED.value
+                    if promoted
+                    else PromotionStatus.CANDIDATE.value
+                    if gate_passed and promotion_mode == "component"
+                    else PromotionStatus.REJECTED.value
+                ),
                 "decision": gate_report["decision"],
                 "gateReportPath": str(gate_path),
+                "gateMode": "component_validation" if promotion_mode == "component" else "release",
             },
             "runtime": runtime.to_manifest(),
             "timings": timing_payload,
@@ -740,6 +759,7 @@ def train_backtest_select(
             "metrics": {**metrics, **gate_metrics},
             "artifacts": [
                 {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
+                {"name": label_path.name, "localPath": str(label_path), "rows": len(label_frame)},
                 {"name": report_path.name, "localPath": str(report_path), "rows": len(report)},
                 {"name": audit_path.name, "localPath": str(audit_path), "rows": len(audit)},
                 {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(holdings)},
@@ -771,7 +791,9 @@ def train_backtest_select(
             }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         write_backtest_report(settings, artifact_dir)
-        if not promoted:
+        if not gate_passed:
             raise ResearchPromotionError(manifest_path)
+        if promotion_mode == "component":
+            return manifest_path
         assert path is not None
         return path

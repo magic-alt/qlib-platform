@@ -17,6 +17,7 @@ def _quotes(rows: list[str], *, limited_up: set[str] | None = None) -> pd.DataFr
             "is_limit_up": [int(code in limited_up) for code in rows],
             "is_limit_down": [0] * len(rows),
             "adv20_volume": [100_000] * len(rows),
+            "sector": [f"sector-{index}" for index in range(len(rows))],
         }
     )
 
@@ -68,9 +69,11 @@ def test_only_tradable_skips_limited_candidate_before_combined_ranking():
 def test_topk_order_builder_keeps_buy_when_t1_blocks_requested_sell(governed_artifact):
     scores = pd.Series({"A": 0.9, "B": 0.8, "C": 0.7, "D": 0.6})
     score_artifact = governed_artifact(
-        scores.rename("score").rename_axis("instrument").reset_index().assign(
-            signal_date="2026-01-05", trade_date="2026-01-06"
-        ), ArtifactType.MODEL_SCORE
+        scores.rename("score")
+        .rename_axis("instrument")
+        .reset_index()
+        .assign(signal_date="2026-01-05", trade_date="2026-01-06"),
+        ArtifactType.MODEL_SCORE,
     )
     positions = pd.DataFrame(
         {
@@ -92,6 +95,7 @@ def test_topk_order_builder_keeps_buy_when_t1_blocks_requested_sell(governed_art
         cash=10_000,
         strategy_policy=TopkDropoutPolicy(topk=2, n_drop=1, hold_thresh=5),
         execution_policy=ExecutionPolicy(),
+        daily_pnl_pct=0.0,
     )
     assert decision.set_index("instrument").at["D", "target_action"] == "SELL"
     assert orders["side"].tolist() == ["BUY"]

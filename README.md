@@ -144,7 +144,7 @@ tq --config configs/pipeline.yaml research-report data/output/research/<run_id>
 
 `TopkDropoutStrategy(topk=30, n_drop=5, hold_thresh=5)` 每日重算排名，但不是每日清仓重买 Top30。
 精确模式用 T−1 分数、券商 T−1 仓位和 T 日报价生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
-风险配权路径。
+风险配权路径，只发布 `TARGET_PORTFOLIO`/`STRATEGY_DECISION`，不再发布可执行 `ORDER_INTENT`。
 
 先以券商仓位快照和成交回报更新本地持有期账本：
 
@@ -164,11 +164,12 @@ tq --config configs/pipeline.yaml reconcile-holdings broker_positions.csv \
 tq --config configs/pipeline.yaml build-topk-orders \
   data/output/signals/signal_scores_20260808.parquet \
   data/output/holdings_state_20260808.csv trade_quotes.csv \
-  --cash 1000000
+  --cash 1000000 --daily-pnl-pct -0.002
 ```
 
 该命令生成 `strategy_decision_YYYYMMDD.csv`、`orders_YYYYMMDD.csv` 和
-`blocked_orders_YYYYMMDD.csv`。报价需包含 `instrument,price,paused,is_limit_up,is_limit_down`；可选
+`blocked_orders_YYYYMMDD.csv`。`--daily-pnl-pct` 是当日券商账户收益率，缺失时订单发布失败关闭。报价需包含
+`instrument,price,paused,is_limit_up,is_limit_down,sector`；可选
 `adv20_volume` 以 `ADV20 × max_participation_rate` 约束实盘委托。回测仍使用当日实际成交量，因此审计文件应作为
 两种流动性口径的对照，而不是把回测成交量当作开盘前可知信息。
 

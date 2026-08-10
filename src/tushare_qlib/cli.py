@@ -95,6 +95,7 @@ def parser() -> argparse.ArgumentParser:
     eo.add_argument("--trade-date", required=True)
     eo.add_argument("--portfolio-value", type=float, required=True)
     eo.add_argument("--cash", type=float, required=True)
+    eo.add_argument("--daily-pnl-pct", type=float, required=True)
     eo.add_argument("--output-dir", default="./data/output")
 
     pr = sub.add_parser("pretrade-risk")
@@ -126,6 +127,7 @@ def parser() -> argparse.ArgumentParser:
     to.add_argument("quotes")
     to.add_argument("--trade-date")
     to.add_argument("--cash", type=float, required=True)
+    to.add_argument("--daily-pnl-pct", type=float, required=True)
     to.add_argument("--output-dir", default="./data/output")
     return p
 
@@ -273,6 +275,7 @@ def main() -> None:
             portfolio_value=args.portfolio_value,
             cash=args.cash,
             policy=policy,
+            daily_pnl_pct=args.daily_pnl_pct,
         )
         out = Path(args.output_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -291,14 +294,25 @@ def main() -> None:
         manifest = load_artifact_manifest(metadata)
         canonical = manifest.get("canonicalConfig", {})
         risk = canonical.get("risk", {}) if isinstance(canonical, dict) else {}
-        print(json.dumps(pretrade_risk_check(artifact, HardRiskPolicy.from_mapping(risk), daily_pnl_pct=args.daily_pnl_pct)))
+        print(
+            json.dumps(
+                pretrade_risk_check(
+                    artifact, HardRiskPolicy.from_mapping(risk), daily_pnl_pct=args.daily_pnl_pct
+                )
+            )
+        )
         return
 
     if args.command == "record-broker-event":
         from .broker_state import record_broker_event
 
-        events = record_broker_event(args.ledger, args.order_id, args.state, event_at_utc=args.event_at_utc,
-                                     broker_order_id=args.broker_order_id)
+        events = record_broker_event(
+            args.ledger,
+            args.order_id,
+            args.state,
+            event_at_utc=args.event_at_utc,
+            broker_order_id=args.broker_order_id,
+        )
         print(json.dumps({"ledger": str(args.ledger), "events": len(events)}))
         return
 
@@ -396,6 +410,7 @@ def main() -> None:
             cash=args.cash,
             strategy_policy=strategy_policy,
             execution_policy=execution_policy,
+            daily_pnl_pct=args.daily_pnl_pct,
         )
         out = Path(args.output_dir).expanduser().resolve()
         out.mkdir(parents=True, exist_ok=True)

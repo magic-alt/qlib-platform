@@ -18,6 +18,7 @@ def governed_artifact(tmp_path: Path) -> Callable[..., pd.DataFrame]:
         *,
         status: PromotionStatus = PromotionStatus.PROMOTED,
         complete_lineage: bool = True,
+        risk: dict[str, object] | None = None,
     ) -> pd.DataFrame:
         manifest = tmp_path / f"{artifact_type.value.lower()}_{status.value.lower()}_manifest.json"
         manifest.write_text(
@@ -49,6 +50,14 @@ def governed_artifact(tmp_path: Path) -> Callable[..., pd.DataFrame]:
                             "price_buffer_sell": 0.002,
                             "block_limit_up_buy": True,
                             "block_limit_down_sell": True,
+                        },
+                        "risk": risk
+                        or {
+                            "max_gross_exposure": 1.0,
+                            "max_single_name": 1.0,
+                            "max_sector_exposure": 1.0,
+                            "max_daily_loss": 0.03,
+                            "kill_switch": False,
                         },
                     },
                 }

@@ -1,4 +1,19 @@
-from tushare_qlib.research_gate import ResearchThresholds, evaluate_research_metrics
+from tushare_qlib.research_gate import (
+    ResearchThresholds,
+    evaluate_component_metrics,
+    evaluate_research_metrics,
+)
+
+
+def test_short_fold_is_component_validated_without_weakening_release_thresholds():
+    metrics = {"observations": 60, "unique_artifact": True, "lineage_complete": True}
+
+    component = evaluate_component_metrics(metrics)
+    release = evaluate_research_metrics(metrics, ResearchThresholds(min_observations=252))
+
+    assert component["decision"] == "COMPONENT_VALIDATED"
+    assert component["passed"] is True
+    assert release["decision"] == "REJECT"
 
 
 def test_uploaded_sample_metrics_are_rejected():

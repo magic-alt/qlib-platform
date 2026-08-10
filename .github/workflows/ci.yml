@@ -8,11 +8,18 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Configuration-only contract validation still requires placeholders to
+      # resolve the canonical pipeline YAML.  These are isolated empty paths;
+      # CI never reads production Qlib data.
+      QLIB_REPO: ${{ runner.temp }}/qlib-repo
+      QLIB_DATA_URI: ${{ runner.temp }}/qlib-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - run: mkdir -p "$QLIB_REPO" "$QLIB_DATA_URI"
       - run: pip install -e '.[dev]'
       - run: ruff check src tests
       - run: tq --config configs/pipeline.yaml validate-qrun-contract

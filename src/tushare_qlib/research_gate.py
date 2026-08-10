@@ -210,6 +210,46 @@ def evaluate_research_metrics(
     }
 
 
+def evaluate_component_metrics(metrics: Mapping[str, object]) -> dict[str, object]:
+    """Validate a rolling component without granting release promotion.
+
+    Short folds establish chronological out-of-sample evidence, but statistical
+    promotion belongs to their combined OOS series.  Component validation only
+    checks that evidence exists, is unique and has complete lineage.
+    """
+
+    checks = [
+        GateCheck(
+            "observations",
+            int(str(metrics.get("observations", 0))),
+            "> 0",
+            int(str(metrics.get("observations", 0))) > 0,
+        ),
+        GateCheck(
+            "unique_artifact",
+            bool(metrics.get("unique_artifact", False)),
+            True,
+            bool(metrics.get("unique_artifact", False)),
+        ),
+        GateCheck(
+            "lineage_complete",
+            bool(metrics.get("lineage_complete", False)),
+            True,
+            bool(metrics.get("lineage_complete", False)),
+        ),
+    ]
+    passed = all(check.passed for check in checks)
+    return {
+        "schema_version": "1.0",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "decision": "COMPONENT_VALIDATED" if passed else "REJECT",
+        "passed": passed,
+        "metrics": dict(metrics),
+        "thresholds": {"mode": "component_validation"},
+        "checks": [asdict(check) for check in checks],
+    }
+
+
 def write_gate_report(report: Mapping[str, object], path: str | Path) -> Path:
     target = Path(path).expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)

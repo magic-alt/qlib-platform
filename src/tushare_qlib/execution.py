@@ -17,6 +17,7 @@ from .artifacts import (
 )
 from .topk_dropout import TopkDropoutPolicy, topk_dropout_decision
 from .freshness import validate_execution_snapshot
+from .risk_engine import HardRiskPolicy, pretrade_risk_check
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,9 @@ class ExecutionPolicy:
             block_limit_up_buy=bool(data.get("block_limit_up_buy", cls.block_limit_up_buy)),
             block_limit_down_sell=bool(data.get("block_limit_down_sell", cls.block_limit_down_sell)),
             max_quote_age_seconds=int(str(data.get("max_quote_age_seconds", cls.max_quote_age_seconds))),
-            max_position_age_seconds=int(str(data.get("max_position_age_seconds", cls.max_position_age_seconds))),
+            max_position_age_seconds=int(
+                str(data.get("max_position_age_seconds", cls.max_position_age_seconds))
+            ),
         )
 
 
@@ -73,6 +76,122 @@ def _fees(notional: float, side: str, policy: ExecutionPolicy) -> float:
     return commission + transfer + stamp
 
 
+def _manifest_risk_policy(manifest: Mapping[str, object]) -> HardRiskPolicy:
+    canonical = manifest.get("canonicalConfig")
+    if not isinstance(canonical, Mapping):
+        raise ArtifactContractError("manifest canonical config is missing")
+    risk = canonical.get("risk")
+    required = set(HardRiskPolicy.__dataclass_fields__)
+    if not isinstance(risk, Mapping) or not required.issubset(risk):
+        missing = required - set(risk) if isinstance(risk, Mapping) else required
+        raise ArtifactContractError(f"manifest canonical risk config is incomplete: {sorted(missing)}")
+    return HardRiskPolicy.from_mapping(risk)
+
+
+def release_order_intent(
+    orders: pd.DataFrame,
+    projected_targets: pd.DataFrame,
+    *,
+    metadata: Mapping[str, str],
+    manifest: Mapping[str, object],
+    daily_pnl_pct: float | None,
+) -> pd.DataFrame:
+    """The sole boundary allowed to publish an executable ORDER_INTENT.
+
+    Candidate orders remain ordinary in-memory rows until their projected
+    post-trade portfolio passes the release manifest's hard-risk policy.
+    """
+
+    if orders.empty:
+        return orders
+    policy = _manifest_risk_policy(manifest)
+    pnl = float("nan") if daily_pnl_pct is None else float(daily_pnl_pct)
+    pretrade_risk_check(projected_targets, policy, daily_pnl_pct=pnl)
+    return stamp_artifact(
+        orders,
+        ArtifactType.ORDER_INTENT,
+        promotion_status=PromotionStatus.PROMOTED,
+        run_id=metadata["run_id"],
+        model_id=metadata["model_id"],
+        dataset_id=metadata["dataset_id"],
+        lineage_id=metadata["lineage_id"],
+        manifest_path=metadata["manifest_path"],
+    )
+
+
+def _projected_portfolio(
+    orders: pd.DataFrame,
+    positions: pd.DataFrame,
+    quotes: pd.DataFrame,
+    *,
+    portfolio_value: float,
+    sector_sources: tuple[pd.DataFrame, ...],
+) -> pd.DataFrame:
+    """Value accepted orders into a post-trade portfolio for hard-risk approval."""
+
+    if portfolio_value <= 0:
+        raise ArtifactContractError("projected portfolio value must be positive")
+    quantities: dict[str, int] = {}
+    for row in positions.to_dict("records"):
+        instrument = str(row["instrument"]).upper().strip()
+        quantities[instrument] = int(pd.to_numeric(row.get("quantity", 0), errors="coerce"))
+    for row in orders.to_dict("records"):
+        instrument = str(row["instrument"]).upper().strip()
+        quantity = int(pd.to_numeric(row["quantity"], errors="raise"))
+        quantities[instrument] = quantities.get(instrument, 0) + (
+            quantity if row["side"] == "BUY" else -quantity
+        )
+        if quantities[instrument] < 0:
+            raise ArtifactContractError(f"projected quantity is negative: {instrument}")
+
+    quote = quotes.copy()
+    quote["instrument"] = quote["instrument"].astype(str).str.upper().str.strip()
+    quote = quote.drop_duplicates("instrument", keep="last").set_index("instrument")
+    sectors: dict[str, object] = {}
+    for source in sector_sources:
+        if "instrument" not in source or "sector" not in source:
+            continue
+        for row in source[["instrument", "sector"]].dropna(subset=["sector"]).to_dict("records"):
+            sectors[str(row["instrument"]).upper().strip()] = row["sector"]
+
+    rows: list[dict[str, object]] = []
+    for instrument, quantity in quantities.items():
+        if quantity <= 0:
+            continue
+        if instrument not in quote.index:
+            raise ArtifactContractError(f"cannot value projected position without quote: {instrument}")
+        price = float(pd.to_numeric(quote.at[instrument, "price"], errors="coerce"))
+        if not np.isfinite(price) or price <= 0:
+            raise ArtifactContractError(f"cannot value projected position with invalid quote: {instrument}")
+        rows.append(
+            {
+                "instrument": instrument,
+                "target_weight": quantity * price / portfolio_value,
+                "sector": sectors.get(instrument),
+            }
+        )
+    return pd.DataFrame(rows, columns=["instrument", "target_weight", "sector"])
+
+
+def _current_market_value(positions: pd.DataFrame, quotes: pd.DataFrame) -> float:
+    quote = quotes.copy()
+    quote["instrument"] = quote["instrument"].astype(str).str.upper().str.strip()
+    quote = quote.drop_duplicates("instrument", keep="last").set_index("instrument")
+    value = 0.0
+    for row in positions.to_dict("records"):
+        quantity = int(pd.to_numeric(row.get("quantity", 0), errors="coerce"))
+        if quantity <= 0:
+            continue
+        instrument = str(row["instrument"]).upper().strip()
+        if instrument not in quote.index:
+            raise ArtifactContractError(f"cannot value current position without quote: {instrument}")
+        price = float(pd.to_numeric(quote.at[instrument, "price"], errors="coerce"))
+        if not np.isfinite(price) or price <= 0:
+            raise ArtifactContractError(f"cannot value current position with invalid quote: {instrument}")
+        value += quantity * price
+    return value
+
+
 def build_orders(
     targets: pd.DataFrame,
     positions: pd.DataFrame,
@@ -82,6 +201,7 @@ def build_orders(
     portfolio_value: float,
     cash: float,
     policy: ExecutionPolicy | None = None,
+    daily_pnl_pct: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Convert target weights to broker-neutral A-share orders.
 
@@ -102,6 +222,8 @@ def build_orders(
     policy = governed_policy
     if portfolio_value <= 0:
         raise ValueError("portfolio_value must be positive")
+    if cash < 0:
+        raise ValueError("cash must be non-negative")
     validate_execution_snapshot(
         positions, name="positions", trade_date=trade_date, max_age_seconds=policy.max_position_age_seconds
     )
@@ -248,15 +370,21 @@ def build_orders(
     orders = orders.sort_values(["side", "score", "instrument"], ascending=[False, False, True]).reset_index(
         drop=True
     )
-    orders = stamp_artifact(
+    projected = _projected_portfolio(
         orders,
-        ArtifactType.ORDER_INTENT,
-        promotion_status=PromotionStatus.PROMOTED,
-        run_id=metadata["run_id"],
-        model_id=model_id,
-        dataset_id=metadata["dataset_id"],
-        lineage_id=metadata["lineage_id"],
-        manifest_path=metadata["manifest_path"],
+        positions,
+        quotes,
+        # Risk uses broker cash plus freshly marked holdings rather than the
+        # caller-provided sizing NAV, which must never dilute exposure checks.
+        portfolio_value=float(cash) + _current_market_value(positions, quotes),
+        sector_sources=(targets, positions, quotes),
+    )
+    orders = release_order_intent(
+        orders,
+        projected,
+        metadata=metadata,
+        manifest=manifest,
+        daily_pnl_pct=daily_pnl_pct,
     )
     return orders, blocked_df.reset_index(drop=True)
 
@@ -300,6 +428,7 @@ def build_topk_orders(
     cash: float,
     strategy_policy: TopkDropoutPolicy | None = None,
     execution_policy: ExecutionPolicy | None = None,
+    daily_pnl_pct: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Generate Qlib-style TopkDropout intents and broker-neutral orders.
 
@@ -314,13 +443,22 @@ def build_topk_orders(
     metadata = validate_artifact(scores, ArtifactType.MODEL_SCORE)
     required_score = {"instrument", "score", "signal_date", "trade_date"}
     if not required_score.issubset(scores.columns):
-        raise ArtifactContractError(f"MODEL_SCORE artifact missing columns: {sorted(required_score - set(scores.columns))}")
+        raise ArtifactContractError(
+            f"MODEL_SCORE artifact missing columns: {sorted(required_score - set(scores.columns))}"
+        )
     signal_values = pd.to_datetime(scores["signal_date"], errors="coerce").dt.normalize()
     trade_values = pd.to_datetime(scores["trade_date"], errors="coerce").dt.normalize()
-    if (signal_values.isna().any() or trade_values.isna().any() or signal_values.nunique() != 1
-            or trade_values.nunique() != 1 or signal_values.iloc[0] != pd.Timestamp(signal_date).normalize()
-            or trade_values.iloc[0] != pd.Timestamp(trade_date).normalize()):
-        raise ArtifactContractError("MODEL_SCORE signal_date/trade_date does not match this execution request")
+    if (
+        signal_values.isna().any()
+        or trade_values.isna().any()
+        or signal_values.nunique() != 1
+        or trade_values.nunique() != 1
+        or signal_values.iloc[0] != pd.Timestamp(signal_date).normalize()
+        or trade_values.iloc[0] != pd.Timestamp(trade_date).normalize()
+    ):
+        raise ArtifactContractError(
+            "MODEL_SCORE signal_date/trade_date does not match this execution request"
+        )
     score_values = scores.set_index("instrument")["score"]
     model_id = metadata["model_id"]
     manifest = load_artifact_manifest(metadata)
@@ -478,15 +616,20 @@ def build_topk_orders(
         orders["_side_order"] = orders["side"].map({"SELL": 0, "BUY": 1})
         orders = orders.sort_values(["_side_order", "action_order", "score_rank", "instrument"])
         orders = orders.drop(columns=["_side_order", "action_order"], errors="ignore").reset_index(drop=True)
-        orders = stamp_artifact(
+        current_market_value = _current_market_value(current, quotes)
+        projected = _projected_portfolio(
             orders,
-            ArtifactType.ORDER_INTENT,
-            promotion_status=PromotionStatus.PROMOTED,
-            run_id=metadata["run_id"],
-            model_id=model_id,
-            dataset_id=metadata["dataset_id"],
-            lineage_id=metadata["lineage_id"],
-            manifest_path=metadata["manifest_path"],
+            current,
+            quotes,
+            portfolio_value=float(cash) + current_market_value,
+            sector_sources=(scores, current, quotes),
+        )
+        orders = release_order_intent(
+            orders,
+            projected,
+            metadata=metadata,
+            manifest=manifest,
+            daily_pnl_pct=daily_pnl_pct,
         )
     if not decision.empty:
         decision = stamp_artifact(
