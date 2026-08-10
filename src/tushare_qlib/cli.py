@@ -45,12 +45,14 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("--test", nargs=2, metavar=("START", "END"))
     ts.add_argument("--benchmark")
     ts.add_argument("--topn", type=int, default=30)
+    ts.add_argument("--model-profile")
     rr = sub.add_parser("research-run")
     rr.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
     rr.add_argument("--start")
     rr.add_argument("--end")
     rr.add_argument("--benchmark", default="SH000300")
     rr.add_argument("--topn", type=int, default=30)
+    rr.add_argument("--model-profile")
     rp = sub.add_parser("research-report")
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
@@ -119,20 +121,28 @@ def _first_value(frame: pd.DataFrame, column: str, fallback: str | None) -> str:
     raise ValueError(f"{column} must be supplied in file or CLI")
 
 
-def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -> dict[str, str]:
+def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -> dict[str, object]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     artifacts = {
         str(item.get("name")): str(item.get("localPath"))
         for item in manifest.get("artifacts", [])
         if isinstance(item, dict) and item.get("name") and item.get("localPath")
     }
-    payload = {
+    payload: dict[str, object] = {
         "runId": str(manifest.get("externalRunId", manifest_path.parent.name)),
         "reportMarkdown": artifacts.get("backtest_report.md", str(manifest_path.parent / "backtest_report.md")),
         "reportPdf": artifacts.get("backtest_report.pdf", str(manifest_path.parent / "backtest_report.pdf")),
+        "timingsJson": artifacts.get("timings.json", str(manifest_path.parent / "timings.json")),
     }
     if latest_selection is not None:
         payload["latestSelection"] = str(latest_selection)
+    runtime = manifest.get("runtime", {})
+    timings = manifest.get("timings", {})
+    if isinstance(runtime, dict) and runtime:
+        payload["modelProfile"] = runtime.get("modelProfile", "unknown")
+        payload["resolvedDevice"] = runtime.get("resolvedDevice", "unknown")
+    if isinstance(timings, dict) and timings:
+        payload["timings"] = timings
     return payload
 
 
@@ -346,10 +356,16 @@ def main() -> None:
                 end_date=args.end or settings.data["end_date"],
                 benchmark=args.benchmark,
                 topn=args.topn,
+                model_profile=args.model_profile,
             )
             print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
         elif args.command == "research-run":
-            selection = train_backtest_select(settings, benchmark=args.benchmark, topn=args.topn)
+            selection = train_backtest_select(
+                settings,
+                benchmark=args.benchmark,
+                topn=args.topn,
+                model_profile=args.model_profile,
+            )
             model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
             manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
             print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
@@ -357,7 +373,15 @@ def main() -> None:
             train = tuple(args.train) if args.train else None
             valid = tuple(args.valid) if args.valid else None
             test = tuple(args.test) if args.test else None
-            selection = train_backtest_select(settings, train=train, valid=valid, test=test, benchmark=args.benchmark, topn=args.topn)
+            selection = train_backtest_select(
+                settings,
+                train=train,
+                valid=valid,
+                test=test,
+                benchmark=args.benchmark,
+                topn=args.topn,
+                model_profile=args.model_profile,
+            )
             model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
             manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
             print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))

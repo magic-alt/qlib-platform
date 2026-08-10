@@ -1,0 +1,7 @@
+name: lightgbm_cuda_nvidia
+family: lightgbm
+device: cuda
+device_index: 0
+model_kwargs:
+  max_bin: 63
+  num_threads: 8

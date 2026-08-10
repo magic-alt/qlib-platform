@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from .settings import Settings
+from .model_runtime import load_model_profile, resolve_runtime, write_timings
 from .train_select import train_backtest_select
 
 
@@ -76,6 +78,39 @@ def _rebase_reports(reports: list[tuple[str, pd.DataFrame]]) -> pd.DataFrame:
     return pd.concat(frames).sort_index()
 
 
+def _aggregate_component_timings(manifests: list[dict[str, Any]]) -> dict[str, float]:
+    aggregate: dict[str, float] = {}
+    for manifest in manifests:
+        timings = manifest.get("timings", {})
+        phases = timings.get("phasesSeconds", {}) if isinstance(timings, dict) else {}
+        if not isinstance(phases, dict):
+            continue
+        for key, value in phases.items():
+            aggregate[str(key)] = aggregate.get(str(key), 0.0) + float(value)
+    return {key: round(value, 6) for key, value in aggregate.items()}
+
+
+def _checkpoint_fingerprint(
+    settings: Settings,
+    fold: Fold,
+    *,
+    runtime_fingerprint: str,
+    benchmark: str,
+    topn: int,
+) -> str:
+    payload = {
+        "runtimeFingerprint": runtime_fingerprint,
+        "fold": asdict(fold),
+        "benchmark": benchmark,
+        "topn": topn,
+        "research": settings.data.get("research", {}),
+        "universe": settings.data.get("universe", {}),
+        "datasetUri": str(settings.qlib_data_uri),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()[:16]
+
+
 def _at_or_after(calendar: pd.DatetimeIndex, value: pd.Timestamp) -> pd.Timestamp:
     found = calendar[calendar >= value]
     if found.empty:
@@ -134,7 +169,10 @@ def run_walk_forward(
     end_date: str,
     benchmark: str = "SH000300",
     topn: int = 30,
+    model_profile: str | Path | None = None,
 ) -> Path:
+    orchestration_started = time.perf_counter()
+    runtime = resolve_runtime(load_model_profile(settings, model_profile))
     calendar_frame = pd.read_parquet(settings.paths.metadata / "trade_calendar.parquet")
     calendar = pd.DatetimeIndex(
         pd.to_datetime(calendar_frame.loc[pd.to_numeric(calendar_frame["is_open"], errors="coerce") == 1, "cal_date"])
@@ -147,9 +185,17 @@ def run_walk_forward(
     reports: list[tuple[str, pd.DataFrame]] = []
     audits: list[pd.DataFrame] = []
     holdings: list[pd.DataFrame] = []
-    component_runs: list[dict[str, str]] = []
+    component_runs: list[dict[str, Any]] = []
     for fold in folds:
-        checkpoint = run_root / f"{fold.key}.json"
+        checkpoint_fingerprint = _checkpoint_fingerprint(
+            settings,
+            fold,
+            runtime_fingerprint=runtime.fingerprint,
+            benchmark=benchmark,
+            topn=topn,
+        )
+        checkpoint = run_root / f"{fold.key}_{checkpoint_fingerprint}.json"
+        reused = checkpoint.exists()
         if checkpoint.exists():
             fold_manifest_path = Path(json.loads(checkpoint.read_text(encoding="utf-8"))["manifest"])
         else:
@@ -160,12 +206,23 @@ def run_walk_forward(
                 test=fold.test,
                 benchmark=benchmark,
                 topn=topn,
-                experiment_name=f"lean_csi300_walk_forward_{fold.key}",
+                experiment_name=f"lean_csi300_{runtime.profile.name}_{fold.key}",
                 run_kind="final_holdout" if fold.final_holdout else "walk_forward_fold",
+                runtime=runtime,
             )
             model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
             fold_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
-            checkpoint.write_text(json.dumps({"manifest": str(fold_manifest_path)}, indent=2), encoding="utf-8")
+            checkpoint.write_text(
+                json.dumps(
+                    {
+                        "manifest": str(fold_manifest_path),
+                        "runtimeFingerprint": runtime.fingerprint,
+                        "checkpointFingerprint": checkpoint_fingerprint,
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         manifest = json.loads(fold_manifest_path.read_text(encoding="utf-8"))
         manifests.append(manifest)
         report = pd.read_parquet(_artifact_path(manifest, "portfolio_report.parquet"))
@@ -181,6 +238,8 @@ def run_walk_forward(
                 "key": fold.key,
                 "externalRunId": str(manifest["externalRunId"]),
                 "manifestPath": str(fold_manifest_path),
+                "checkpointReused": reused,
+                "timings": manifest.get("timings", {}),
             }
         )
     combined = _rebase_reports(reports)
@@ -193,6 +252,7 @@ def run_walk_forward(
     report_path = output_dir / "portfolio_report.parquet"
     audit_path = output_dir / "strategy_audit.parquet"
     holdings_path = output_dir / "holdings.parquet"
+    timings_path = output_dir / "timings.json"
     combined.to_parquet(report_path)
     combined_audit.to_parquet(audit_path, index=False)
     combined_holdings.to_parquet(holdings_path, index=False)
@@ -202,13 +262,32 @@ def run_walk_forward(
             values = pd.to_numeric(combined[column], errors="coerce").dropna()
             metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
     latest = manifests[-1]["latestTargets"]
+    aggregate_phases = _aggregate_component_timings(manifests)
+    timings = {
+        "clock": "time.perf_counter",
+        "phasesSeconds": aggregate_phases,
+        "totalSeconds": round(sum(aggregate_phases.values()), 6),
+        "orchestrationWallSeconds": round(time.perf_counter() - orchestration_started, 6),
+        "checkpointReuseCount": sum(bool(item["checkpointReused"]) for item in component_runs),
+        "reportRenderingIncluded": False,
+    }
+    write_timings(timings_path, runtime, timings)
     payload = {
-        "schemaVersion": "1.1",
+        "schemaVersion": "1.2",
         "externalRunId": external_id,
         "runKind": "walk_forward",
         "name": f"Qlib CSI300 walk-forward {start_date}..{end_date}",
         "dataset": manifests[-1]["dataset"],
-        "model": {"name": "Alpha158-LGBM-WalkForward", "fingerprint": external_id},
+        "model": {
+            "name": (
+                "Alpha158-LGBM-WalkForward"
+                if runtime.profile.family == "lightgbm"
+                else "Alpha158-DNN-WalkForward"
+            ),
+            "fingerprint": external_id,
+        },
+        "runtime": runtime.to_manifest(),
+        "timings": timings,
         "folds": [asdict(fold) for fold in folds],
         "execution": manifests[-1]["execution"],
         "metrics": metrics,
@@ -217,6 +296,7 @@ def run_walk_forward(
             {"name": report_path.name, "localPath": str(report_path), "rows": len(combined)},
             {"name": audit_path.name, "localPath": str(audit_path), "rows": len(combined_audit)},
             {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(combined_holdings)},
+            {"name": timings_path.name, "localPath": str(timings_path)},
         ],
         "latestTargets": latest,
     }

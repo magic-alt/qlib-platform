@@ -13,6 +13,15 @@ import pandas as pd
 from .settings import Settings
 from .store import PartitionStore
 from .topk_dropout import TopkDropoutPolicy
+from .model_runtime import (
+    ModelProfile,
+    ResolvedRuntime,
+    StageTimings,
+    build_model,
+    load_model_profile,
+    resolve_runtime,
+    write_timings,
+)
 
 _DEFAULT_BENCHMARK = "SH000300"
 
@@ -383,143 +392,168 @@ def train_backtest_select(
     test: tuple[str, str] | None = None,
     benchmark: str | None = None,
     topn: int = 30,
-    experiment_name: str = "tushare_alpha158_lgb",
+    experiment_name: str | None = None,
     run_kind: str = "fixed_split",
+    model_profile: str | Path | None = None,
+    runtime: ResolvedRuntime | None = None,
 ) -> Path:
+    if runtime is not None and model_profile is not None:
+        raise ValueError("pass either model_profile or a pre-resolved runtime, not both")
+    profile: ModelProfile = runtime.profile if runtime is not None else load_model_profile(settings, model_profile)
+    runtime = runtime or resolve_runtime(profile)
+    timings = StageTimings()
     try:
         import qlib
         from qlib.constant import REG_CN
-        from qlib.contrib.model.gbdt import LGBModel
         from qlib.workflow import R
         from qlib.workflow.record_temp import PortAnaRecord, SigAnaRecord, SignalRecord
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise RuntimeError("Install the qlib optional dependencies: pip install -e '.[qlib]'") from exc
-
-    _configure_mlflow_tracking(settings)
-    # Alpha158 materializes a wide cross-sectional frame.  Keeping Qlib's
-    # feature preparation single-process avoids duplicate worker copies while
-    # leaving LightGBM's configured training parallelism unchanged.
-    qlib.init(
-        provider_uri=str(settings.qlib_data_uri),
-        region=REG_CN,
-        expression_cache=None,
-        dataset_cache=None,
-        kernels=1,
-    )
-    if train is None or valid is None or test is None:
-        train, valid, test = _default_splits_from_data(settings)
-    if not (pd.Timestamp(train[1]) < pd.Timestamp(valid[0]) <= pd.Timestamp(valid[1]) < pd.Timestamp(test[0])):
-        raise ValueError("train/valid/test windows must be strictly chronological and non-overlapping")
 
     research = settings.data.get("research", {}) if isinstance(settings.data.get("research", {}), dict) else {}
     universe = dict(settings.data.get("universe", {}))
     seed = int(research.get("random_seed", 42))
     topk_policy = TopkDropoutPolicy(topk=topn, n_drop=max(1, topn // 6), hold_thresh=5)
     np.random.seed(seed)
-    dataset = build_dataset(train=train, valid=valid, test=test, universe=universe)
-    model = LGBModel(
-        loss="mse",
-        learning_rate=0.03,
-        num_leaves=63,
-        max_depth=8,
-        colsample_bytree=0.8,
-        subsample=0.8,
-        lambda_l1=10.0,
-        lambda_l2=50.0,
-        num_threads=int(research.get("num_threads", 8)),
-        early_stopping_rounds=100,
-        num_boost_round=2000,
+    _configure_mlflow_tracking(settings)
+    with timings.measure("data_seconds"):
+        # Alpha158 materializes a wide cross-sectional frame. Keeping feature
+        # preparation single-process avoids duplicate worker copies.
+        qlib.init(
+            provider_uri=str(settings.qlib_data_uri),
+            region=REG_CN,
+            expression_cache=None,
+            dataset_cache=None,
+            kernels=1,
+        )
+        if train is None or valid is None or test is None:
+            train, valid, test = _default_splits_from_data(settings)
+        if not (pd.Timestamp(train[1]) < pd.Timestamp(valid[0]) <= pd.Timestamp(valid[1]) < pd.Timestamp(test[0])):
+            raise ValueError("train/valid/test windows must be strictly chronological and non-overlapping")
+        dataset = build_dataset(train=train, valid=valid, test=test, universe=universe)
+    feature_count = len(dataset.handler.get_cols(col_set="feature"))
+    model = build_model(
+        runtime,
+        feature_count=feature_count,
         seed=seed,
-        feature_fraction_seed=seed,
-        bagging_seed=seed,
-        data_random_seed=seed,
+        num_threads=int(research.get("num_threads", 8)),
     )
 
     tracking_uri = os.environ["MLFLOW_TRACKING_URI"]
-    with R.start(experiment_name=experiment_name, uri=tracking_uri):
-        model.fit(dataset)
+    resolved_experiment = experiment_name or f"tushare_alpha158_{runtime.profile.family}"
+    with R.start(experiment_name=resolved_experiment, uri=tracking_uri):
         recorder = R.get_recorder()
+        recorder.log_params(
+            model_profile=runtime.profile.name,
+            model_family=runtime.profile.family,
+            requested_device=runtime.profile.device,
+            resolved_device=runtime.resolved_device,
+            runtime_fingerprint=runtime.fingerprint,
+            device_fallback_reason=runtime.fallback_reason or "",
+            feature_count=feature_count,
+        )
+        with timings.measure("train_seconds"):
+            model.fit(dataset)
         R.save_objects(**{"params.pkl": model, "dataset": dataset})
-        SignalRecord(model=model, dataset=dataset, recorder=recorder).generate()
-        SigAnaRecord(recorder=recorder, ana_long_short=True, ann_scaler=252).generate()
-        pred = recorder.load_object("pred.pkl")
+        signal_record = SignalRecord(model=model, dataset=dataset, recorder=recorder)
+        with timings.measure("predict_seconds"):
+            pred = model.predict(dataset)
+            if isinstance(pred, pd.Series):
+                pred = pred.to_frame("score")
+        signal_record.save(**{"pred.pkl": pred})
+        with timings.measure("signal_analysis_seconds"):
+            raw_label = signal_record.generate_label(dataset)
+            signal_record.save(**{"label.pkl": raw_label})
+            SigAnaRecord(recorder=recorder, ana_long_short=True, ann_scaler=252).generate()
         pred_dates = pred.index.get_level_values("datetime")
         oos_start = pd.Timestamp(pred_dates.min()).strftime("%Y-%m-%d")
         oos_end = pd.Timestamp(pred_dates.max()).strftime("%Y-%m-%d")
         benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
-        PortAnaRecord(
-            recorder=recorder,
-            config={
-                "strategy": {
-                    "class": "TopkDropoutStrategy",
-                    "module_path": "qlib.contrib.strategy",
-                    "kwargs": {
-                        "signal": "<PRED>",
-                        "topk": topk_policy.topk,
-                        "n_drop": topk_policy.n_drop,
-                        "hold_thresh": topk_policy.hold_thresh,
-                        "only_tradable": topk_policy.only_tradable,
-                        "forbid_all_trade_at_limit": topk_policy.forbid_all_trade_at_limit,
-                        "risk_degree": topk_policy.risk_degree,
+        with timings.measure("backtest_seconds"):
+            PortAnaRecord(
+                recorder=recorder,
+                config={
+                    "strategy": {
+                        "class": "TopkDropoutStrategy",
+                        "module_path": "qlib.contrib.strategy",
+                        "kwargs": {
+                            "signal": "<PRED>",
+                            "topk": topk_policy.topk,
+                            "n_drop": topk_policy.n_drop,
+                            "hold_thresh": topk_policy.hold_thresh,
+                            "only_tradable": topk_policy.only_tradable,
+                            "forbid_all_trade_at_limit": topk_policy.forbid_all_trade_at_limit,
+                            "risk_degree": topk_policy.risk_degree,
+                        },
+                    },
+                    "executor": {
+                        "class": "SimulatorExecutor",
+                        "module_path": "qlib.backtest.executor",
+                        "kwargs": {"time_per_step": "day", "generate_portfolio_metrics": True},
+                    },
+                    "backtest": {
+                        "start_time": oos_start,
+                        "end_time": oos_end,
+                        "account": int(research.get("backtest_account", 500_000)),
+                        "benchmark": benchmark_cfg,
+                        "exchange_kwargs": {
+                            "limit_threshold": ("$is_limit_up > 0", "$is_limit_down > 0"),
+                            "deal_price": str(research.get("deal_price", "open")),
+                            "volume_threshold": (
+                                "current",
+                                f"$volume * {float(research.get('max_participation_rate', 0.05))}",
+                            ),
+                            "trade_unit": int(research.get("trade_unit", 100)),
+                            "open_cost": float(research.get("open_cost", 0.00035)),
+                            "close_cost": float(research.get("close_cost", 0.00085)),
+                            "min_cost": float(research.get("min_cost", 5)),
+                        },
                     },
                 },
-                "executor": {
-                    "class": "SimulatorExecutor",
-                    "module_path": "qlib.backtest.executor",
-                    "kwargs": {"time_per_step": "day", "generate_portfolio_metrics": True},
-                },
-                "backtest": {
-                    "start_time": oos_start,
-                    "end_time": oos_end,
-                    "account": int(research.get("backtest_account", 500_000)),
-                    "benchmark": benchmark_cfg,
-                    "exchange_kwargs": {
-                        "limit_threshold": ("$is_limit_up > 0", "$is_limit_down > 0"),
-                        "deal_price": str(research.get("deal_price", "open")),
-                        "volume_threshold": ("current", f"$volume * {float(research.get('max_participation_rate', 0.05))}"),
-                        "trade_unit": int(research.get("trade_unit", 100)),
-                        "open_cost": float(research.get("open_cost", 0.00035)),
-                        "close_cost": float(research.get("close_cost", 0.00085)),
-                        "min_cost": float(research.get("min_cost", 5)),
-                    },
-                },
-            },
-        ).generate()
+            ).generate()
 
-        score = pred.iloc[:, 0] if isinstance(pred, pd.DataFrame) else pred
         model_id = str(getattr(recorder, "id", "unversioned"))
-        latest = pd.Timestamp(score.index.get_level_values("datetime").max())
-        report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
         artifact_dir = settings.paths.output / "research" / model_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         pred_path = artifact_dir / "oos_predictions.parquet"
         report_path = artifact_dir / "portfolio_report.parquet"
         audit_path = artifact_dir / "strategy_audit.parquet"
         holdings_path = artifact_dir / "holdings.parquet"
-        pred.to_parquet(pred_path)
-        report.to_parquet(report_path)
+        timings_path = artifact_dir / "timings.json"
         from .backtest_report import ReportArtifacts, export_holding_snapshots, write_backtest_report
         from .strategy_audit import build_strategy_audit
 
-        positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
-        holdings = export_holding_snapshots(positions)
-        holdings.to_parquet(holdings_path, index=False)
-        audit = build_strategy_audit(
-            score,
-            positions,
-            recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl"),
-            _backtest_quote_status(settings, score),
-            policy=topk_policy,
+        with timings.measure("artifact_export_seconds"):
+            score = pred.iloc[:, 0]
+            latest = pd.Timestamp(score.index.get_level_values("datetime").max())
+            report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
+            pred.to_parquet(pred_path)
+            report.to_parquet(report_path)
+            positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
+            holdings = export_holding_snapshots(positions)
+            holdings.to_parquet(holdings_path, index=False)
+            audit = build_strategy_audit(
+                score,
+                positions,
+                recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl"),
+                _backtest_quote_status(settings, score),
+                policy=topk_policy,
+            )
+            audit.to_parquet(audit_path, index=False)
+            signal_paths = _export_daily_signal_scores(settings, score, model_id=model_id, policy=topk_policy)
+            path, output = _export_daily_selections(settings, score, model_id=model_id, topn=topn)
+            metrics: dict[str, float] = {}
+            for column in ("return", "bench", "cost"):
+                if column in report:
+                    values = pd.to_numeric(report[column], errors="coerce").dropna()
+                    metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
+            universe_name, universe_members = _universe_manifest(universe)
+        timing_payload = timings.to_dict()
+        recorder.log_metrics(
+            **{f"timing.{key}": float(value) for key, value in timing_payload["phasesSeconds"].items()},
+            **{"timing.total_seconds": float(timing_payload["totalSeconds"])},
         )
-        audit.to_parquet(audit_path, index=False)
-        signal_paths = _export_daily_signal_scores(settings, score, model_id=model_id, policy=topk_policy)
-        path, output = _export_daily_selections(settings, score, model_id=model_id, topn=topn)
-        metrics: dict[str, float] = {}
-        for column in ("return", "bench", "cost"):
-            if column in report:
-                values = pd.to_numeric(report[column], errors="coerce").dropna()
-                metrics[f"{column}Total"] = float((1.0 + values).prod() - 1.0)
-        universe_name, universe_members = _universe_manifest(universe)
+        write_timings(timings_path, runtime, timing_payload)
         dataset_manifest: dict[str, object] = {
             "fingerprint": _dataset_id(settings),
             "source": "lean_mysql" if not settings.uses_tushare_source() else "tushare",
@@ -530,12 +564,17 @@ def train_backtest_select(
         if universe_members is not None:
             dataset_manifest["universeMembers"] = universe_members
         manifest = {
-            "schemaVersion": "1.1",
+            "schemaVersion": "1.2",
             "externalRunId": model_id,
             "runKind": run_kind,
             "name": f"Qlib {run_kind} {oos_start}..{oos_end}",
             "dataset": dataset_manifest,
-            "model": {"name": "Alpha158-LGBM", "fingerprint": model_id},
+            "model": {
+                "name": "Alpha158-LGBM" if runtime.profile.family == "lightgbm" else "Alpha158-DNN",
+                "fingerprint": model_id,
+            },
+            "runtime": runtime.to_manifest(),
+            "timings": timing_payload,
             "folds": [{"key": run_kind, "train": list(train), "valid": list(valid), "test": [oos_start, oos_end]}],
             "execution": {
                 "benchmark": benchmark or str(research.get("benchmark", _DEFAULT_BENCHMARK)),
@@ -551,6 +590,7 @@ def train_backtest_select(
                 {"name": report_path.name, "localPath": str(report_path), "rows": len(report)},
                 {"name": audit_path.name, "localPath": str(audit_path), "rows": len(audit)},
                 {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(holdings)},
+                {"name": timings_path.name, "localPath": str(timings_path)},
                 *ReportArtifacts(
                     markdown_path=artifact_dir / "backtest_report.md",
                     pdf_path=artifact_dir / "backtest_report.pdf",

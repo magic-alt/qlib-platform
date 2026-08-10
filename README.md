@@ -82,6 +82,34 @@ qrun configs/workflow_lightgbm.yaml
 tq --config configs/pipeline.yaml train-select
 ```
 
+一体化 runner 默认读取 `configs/model_profiles/lightgbm_auto.yaml`。模型家族由 profile 固定，`auto`
+只选择该模型可用的执行设备，不会因为换机器而把 LightGBM 改成 DNN。Linux 上会用一个极小训练任务验证
+当前 LightGBM 是否真的包含 CUDA backend；探测失败或在 macOS/Windows 上运行时会回退 CPU，并把原因写入
+运行 manifest。显式指定 CUDA 或 MPS 时不会静默回退。
+
+```bash
+# Apple Silicon：CPU LightGBM
+tq --config configs/pipeline.yaml train-select \
+  --model-profile configs/model_profiles/lightgbm_cpu_m5.yaml
+
+# Linux / WSL2 + CUDA build：NVIDIA LightGBM
+tq --config configs/pipeline.yaml research-run --mode walk-forward \
+  --model-profile configs/model_profiles/lightgbm_cuda_nvidia.yaml
+
+# Apple Silicon：Qlib DNN + PyTorch MPS
+pip install -e '.[pytorch]'
+tq --config configs/pipeline.yaml train-select \
+  --model-profile configs/model_profiles/pytorch_mps_m5.yaml
+```
+
+CPU/CUDA LightGBM profiles 都使用 `max_bin=63`，因此可以在相同模型参数下比较耗时与指标。DNN 的输入
+维度由 `TushareAlpha158Daily` 的实际字段数动态注入，不能按标准 Alpha158 固定写成 158。
+
+每次运行会在 `data/output/research/<model_id>/timings.json`、manifest、MLflow 和命令行 JSON 中记录
+`data / train / predict / signal_analysis / backtest / artifact_export` 耗时；Markdown/PDF 报告也会展示设备、
+降级原因和阶段耗时。`backtest` 包含 Qlib `PortAnaRecord` 绑定执行的组合风险/指标分析，且不代表回测已在
+GPU 上运行。报告渲染自身不计入阶段合计。
+
 选股结果位于 `data/output/selection_YYYYMMDD.csv`。该文件仍只表示模型 TopN；每个信号日同时会写入
 `data/output/signals/signal_scores_YYYYMMDD.parquet`，这是 TopkDropout 精确决策所需的全股票池分数与排名。
 回测运行还会在 `data/output/research/<model_id>/strategy_audit.parquet` 输出“候选 → 指令 → 成交 → 持仓”的审计链。

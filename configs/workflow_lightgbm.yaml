@@ -57,6 +57,8 @@ task:
       subsample: 0.8
       lambda_l1: 10.0
       lambda_l2: 50.0
+      device_type: cpu
+      max_bin: 63
       num_threads: 12
       early_stopping_rounds: 100
       num_boost_round: 2000
