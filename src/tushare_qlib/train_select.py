@@ -38,6 +38,7 @@ from .research_gate import (
 )
 from .research_timing import label_timing_from_settings, shared_research_calendar
 from .feature_store import feature_store_enabled, prepare_feature_data
+from .runtime_safety import resolve_qlib_parallel_runtime
 
 _DEFAULT_BENCHMARK = "SH000300"
 
@@ -478,7 +479,11 @@ def _export_daily_signal_scores(
     return paths
 
 
-def _backtest_quote_status(settings: Settings, score: pd.Series) -> pd.DataFrame:
+def _backtest_quote_status(
+    settings: Settings,
+    score: pd.Series,
+    timings: StageTimings | None = None,
+) -> pd.DataFrame:
     """Load the point-in-time tradability fields used by the daily Qlib exchange."""
 
     from qlib.data import D
@@ -491,24 +496,36 @@ def _backtest_quote_status(settings: Settings, score: pd.Series) -> pd.DataFrame
     if trade_dates.empty:
         return pd.DataFrame(columns=["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"])
     instruments = sorted(score.index.get_level_values("instrument").astype(str).unique())
-    raw = D.features(
-        instruments,
-        ["$close", "$is_limit_up", "$is_limit_down"],
-        start_time=trade_dates.min(),
-        end_time=trade_dates.max(),
-        freq="day",
+    from contextlib import nullcontext
+
+    query_timer = (
+        timings.measure_diagnostic("audit_quote_query_seconds") if timings is not None else nullcontext()
     )
+    with query_timer:
+        raw = D.features(
+            instruments,
+            ["$close", "$is_limit_up", "$is_limit_down"],
+            start_time=trade_dates.min(),
+            end_time=trade_dates.max(),
+            freq="day",
+        )
     if raw.empty:
         raise RuntimeError("cannot audit TopkDropout without Qlib trade-status fields")
-    frame = raw.reset_index().rename(columns={"datetime": "trade_date"})
-    frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.normalize()
-    frame["paused"] = pd.to_numeric(frame["$close"], errors="coerce").isna().astype(float)
-    for column in ("is_limit_up", "is_limit_down"):
-        frame[column] = pd.to_numeric(frame[f"${column}"], errors="coerce").fillna(1.0)
-    return frame.loc[
-        frame["trade_date"].isin(trade_dates),
-        ["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"],
-    ]
+    transform_timer = (
+        timings.measure_diagnostic("audit_quote_transform_seconds")
+        if timings is not None
+        else nullcontext()
+    )
+    with transform_timer:
+        frame = raw.reset_index().rename(columns={"datetime": "trade_date"})
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.normalize()
+        frame["paused"] = pd.to_numeric(frame["$close"], errors="coerce").isna().astype(float)
+        for column in ("is_limit_up", "is_limit_down"):
+            frame[column] = pd.to_numeric(frame[f"${column}"], errors="coerce").fillna(1.0)
+        return frame.loc[
+            frame["trade_date"].isin(trade_dates),
+            ["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"],
+        ]
 
 
 def train_backtest_select(
@@ -526,11 +543,14 @@ def train_backtest_select(
     promotion_mode: str = "release",
     prepared_feature_data: pd.DataFrame | None = None,
     feature_store_metadata: dict[str, object] | None = None,
+    artifact_level: str = "full",
 ) -> Path:
     if promotion_mode not in {"release", "component", "signal"}:
         raise ValueError("promotion_mode must be 'release', 'component', or 'signal'")
     if runtime is not None and model_profile is not None:
         raise ValueError("pass either model_profile or a pre-resolved runtime, not both")
+    if artifact_level not in {"minimal", "full"}:
+        raise ValueError("artifact_level must be 'minimal' or 'full'")
     profile: ModelProfile = (
         runtime.profile if runtime is not None else load_model_profile(settings, model_profile)
     )
@@ -554,13 +574,14 @@ def train_backtest_select(
     seed = int(research.get("random_seed", 42))
     np.random.seed(seed)
     _configure_mlflow_tracking(settings)
+    parallel = resolve_qlib_parallel_runtime(settings)
     with timings.measure("qlib_init_seconds"):
         qlib.init(
             provider_uri=str(settings.qlib_data_uri),
             region=REG_CN,
             expression_cache=None,
             dataset_cache=None,
-            kernels=max(1, int(research.get("qlib_kernels", 4))),
+            **parallel.qlib_init_kwargs(),
         )
     with timings.measure("dataset_prepare_seconds"):
         if train is None or valid is None or test is None:
@@ -721,8 +742,9 @@ def train_backtest_select(
             }
             manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
             return manifest_path
-        benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
-        with timings.measure("backtest_seconds"):
+        with timings.measure("benchmark_load_seconds"):
+            benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
+        with timings.measure("portfolio_engine_seconds"):
             PortAnaRecord(
                 recorder=recorder,
                 config={
@@ -782,21 +804,28 @@ def train_backtest_select(
         with timings.measure("artifact_export_seconds"):
             score = pred.iloc[:, 0]
             latest = pd.Timestamp(score.index.get_level_values("datetime").max())
-            report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
+            with timings.measure_diagnostic("portfolio_artifact_load_seconds"):
+                report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
+                positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
+                indicators = recorder.load_object(
+                    "portfolio_analysis/indicators_normal_1day_obj.pkl"
+                )
             pred.to_parquet(pred_path)
             label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
             label_frame.to_parquet(label_path)
             report.to_parquet(report_path)
-            positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
-            holdings = export_holding_snapshots(positions)
+            with timings.measure_diagnostic("holdings_build_seconds"):
+                holdings = export_holding_snapshots(positions)
             holdings.to_parquet(holdings_path, index=False)
-            audit = build_strategy_audit(
-                score,
-                positions,
-                recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl"),
-                _backtest_quote_status(settings, score),
-                policy=topk_policy,
-            )
+            quote_status = _backtest_quote_status(settings, score, timings)
+            with timings.measure_diagnostic("audit_build_seconds"):
+                audit = build_strategy_audit(
+                    score,
+                    positions,
+                    indicators,
+                    quote_status,
+                    policy=topk_policy,
+                )
             audit.to_parquet(audit_path, index=False)
             metrics: dict[str, float] = {}
             for column in ("return", "bench", "cost"):
@@ -887,6 +916,15 @@ def train_backtest_select(
             "instrumentCount": int(dataset.handler._learn.index.get_level_values("instrument").nunique()),
             "featureCount": feature_count,
         }
+        report_artifacts = (
+            ReportArtifacts(
+                markdown_path=artifact_dir / "backtest_report.md",
+                pdf_path=artifact_dir / "backtest_report.pdf",
+                assets_dir=artifact_dir / "report_assets",
+            ).manifest_entries()
+            if artifact_level == "full"
+            else []
+        )
         manifest = {
             "schemaVersion": "2.0",
             "externalRunId": model_id,
@@ -917,6 +955,7 @@ def train_backtest_select(
                 "gateMode": "component_validation" if promotion_mode == "component" else "release",
             },
             "runtime": runtime.to_manifest(),
+            "artifactLevel": artifact_level,
             "timings": timing_payload,
             "folds": [
                 {"key": run_kind, "train": list(train), "valid": list(valid), "test": [oos_start, oos_end]}
@@ -938,11 +977,7 @@ def train_backtest_select(
                 {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(holdings)},
                 {"name": timings_path.name, "localPath": str(timings_path)},
                 {"name": gate_path.name, "localPath": str(gate_path)},
-                *ReportArtifacts(
-                    markdown_path=artifact_dir / "backtest_report.md",
-                    pdf_path=artifact_dir / "backtest_report.pdf",
-                    assets_dir=artifact_dir / "report_assets",
-                ).manifest_entries(),
+                *report_artifacts,
             ],
         }
         if promoted:
@@ -963,8 +998,9 @@ def train_backtest_select(
                 "scorePath": str(signal_paths[latest]),
             }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        with timings.measure("report_seconds"):
-            write_backtest_report(settings, artifact_dir)
+        if artifact_level == "full":
+            with timings.measure("report_seconds"):
+                write_backtest_report(settings, artifact_dir)
         timing_payload = timings.to_dict()
         manifest["timings"] = timing_payload
         write_timings(timings_path, runtime, timing_payload)

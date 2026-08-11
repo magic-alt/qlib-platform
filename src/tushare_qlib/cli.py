@@ -69,6 +69,7 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("--topn", type=int)
     ts.add_argument("--model-profile")
     ts.add_argument("--stage", choices=["signal", "release"], default="release")
+    ts.add_argument("--artifact-level", choices=["minimal", "full"], default="full")
     rr = sub.add_parser("research-run")
     rr.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
     rr.add_argument("--start")
@@ -77,6 +78,12 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--topn", type=int)
     rr.add_argument("--model-profile")
     rr.add_argument("--stage", choices=["signal", "release"], default="release")
+    rr.add_argument("--artifact-level", choices=["minimal", "full"], default="full")
+    pb = sub.add_parser("backtest-predictions")
+    pb.add_argument("predictions")
+    pb.add_argument("--benchmark")
+    pb.add_argument("--topn", type=int)
+    pb.add_argument("--artifact-level", choices=["minimal", "full"], default="minimal")
     rp = sub.add_parser("research-report")
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
@@ -411,6 +418,19 @@ def main() -> None:
         print(json.dumps(_report_payload(run_dir / "manifest.json"), ensure_ascii=False))
         return
 
+    if args.command == "backtest-predictions":
+        from .prediction_backtest import backtest_predictions
+
+        manifest_path = backtest_predictions(
+            settings,
+            args.predictions,
+            benchmark=args.benchmark,
+            topn=args.topn,
+            artifact_level=args.artifact_level,
+        )
+        print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
+        return
+
     if args.command == "reconcile-holdings":
         from .holdings_ledger import reconcile_holdings
 
@@ -603,6 +623,7 @@ def main() -> None:
                 topn=args.topn,
                 model_profile=args.model_profile,
                 promotion_mode="signal" if args.stage == "signal" else "release",
+                artifact_level=args.artifact_level,
             )
             if result.name == "manifest.json":
                 print(json.dumps(_report_payload(result), ensure_ascii=False))
@@ -623,6 +644,7 @@ def main() -> None:
                 topn=args.topn,
                 model_profile=args.model_profile,
                 promotion_mode="signal" if args.stage == "signal" else "release",
+                artifact_level=args.artifact_level,
             )
             if selection.name == "manifest.json":
                 print(json.dumps(_report_payload(selection), ensure_ascii=False))

@@ -45,3 +45,86 @@ def test_feature_store_partitions_and_reuses_raw_features(tmp_path, monkeypatch)
         "year=2024.parquet",
     ]
     pd.testing.assert_frame_equal(loaded, source, check_freq=False)
+
+
+def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatch):
+    paths = Paths.from_root(tmp_path / "data")
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={
+            "research": {
+                "feature_store": {
+                    "enabled": True,
+                    "append_lookback_trading_days": 60,
+                }
+            },
+            "universe": {"instruments": "all"},
+        },
+        paths=paths,
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    columns = pd.MultiIndex.from_tuples([("feature", "A"), ("label", "LABEL0")])
+    original_index = pd.MultiIndex.from_tuples(
+        [
+            (pd.Timestamp("2026-01-02"), "SH600000"),
+            (pd.Timestamp("2026-01-03"), "SH600000"),
+        ],
+        names=["datetime", "instrument"],
+    )
+    refresh_index = pd.MultiIndex.from_tuples(
+        [
+            (pd.Timestamp("2026-01-03"), "SH600000"),
+            (pd.Timestamp("2026-01-04"), "SH600000"),
+        ],
+        names=["datetime", "instrument"],
+    )
+    frames = [
+        pd.DataFrame([[1.0, 0.1], [2.0, 0.2]], index=original_index, columns=columns),
+        pd.DataFrame([[20.0, 0.2], [3.0, 0.3]], index=refresh_index, columns=columns),
+    ]
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        "tushare_qlib.feature_store._raw_features",
+        lambda *args, **kwargs: calls.append((*args, kwargs)) or frames[len(calls) - 1],
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.feature_store._lookback_start",
+        lambda value, trading_days: "2026-01-03",
+    )
+    state = {"snapshot": "old"}
+
+    def snapshot(_settings):
+        if state["snapshot"] == "old":
+            return {
+                "sha256": "old",
+                "mode": "full",
+                "syncContext": None,
+                "lastDate": "2026-01-03",
+                "datasetId": "test",
+                "fields": ["close"],
+            }
+        return {
+            "sha256": "new",
+            "mode": "update",
+            "syncContext": {
+                "changed_trade_dates": ["2026-01-04"],
+                "revised_symbols": [],
+            },
+            "lastDate": "2026-01-04",
+            "datasetId": "test",
+            "fields": ["close"],
+        }
+
+    monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
+    store = materialize_feature_store(settings, "2026-01-02", "2026-01-03")
+    state["snapshot"] = "new"
+
+    updated = materialize_feature_store(settings, "2026-01-02", "2026-01-04")
+    loaded = load_feature_store(updated, "2026-01-02", "2026-01-04")
+
+    assert updated == store
+    assert len(calls) == 2
+    assert loaded.loc[(pd.Timestamp("2026-01-03"), "SH600000")].iloc[0] == 20.0
+    assert loaded.loc[(pd.Timestamp("2026-01-04"), "SH600000")].iloc[0] == 3.0

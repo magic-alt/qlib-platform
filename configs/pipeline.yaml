@@ -118,6 +118,8 @@ research:
   random_seed: 42
   num_threads: 8
   qlib_kernels: 4
+  # Joblib's robust process backend; required for supported Windows research runs.
+  joblib_backend: loky
   feature_store:
     enabled: true
     format: parquet

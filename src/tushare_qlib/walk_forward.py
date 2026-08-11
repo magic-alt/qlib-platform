@@ -24,6 +24,7 @@ from .lineage import dirty_research_override_enabled, git_revision, resolve_qlib
 from .universe import membership_fingerprint
 from .research_timing import effective_label_gap, label_timing_from_settings, shared_research_calendar
 from .train_select import _research_label_horizon_days, train_backtest_select
+from .canonical_config import StrategySpec
 from .feature_store import feature_store_enabled, prepare_feature_data
 
 
@@ -105,13 +106,11 @@ def _aggregate_component_timings(manifests: list[dict[str, Any]]) -> dict[str, f
     return {key: round(value, 6) for key, value in aggregate.items()}
 
 
-def _checkpoint_fingerprint(
+def _training_checkpoint_fingerprint(
     settings: Settings,
     fold: Fold,
     *,
     runtime_fingerprint: str,
-    benchmark: str,
-    topn: int | None,
 ) -> str:
     dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
     project_root = Path(__file__).resolve().parents[2]
@@ -120,28 +119,98 @@ def _checkpoint_fingerprint(
         project_root / "src" / "tushare_qlib" / "custom_handler.py",
         project_root / "src" / "tushare_qlib" / "processors.py",
         project_root / "src" / "tushare_qlib" / "research_timing.py",
-        project_root / "src" / "tushare_qlib" / "train_select.py",
+        project_root / "src" / "tushare_qlib" / "model_runtime.py",
     ]
+    research = settings.data.get("research", {})
+    research = research if isinstance(research, dict) else {}
     payload = {
         "runtimeFingerprint": runtime_fingerprint,
         "fold": asdict(fold),
-        "benchmark": benchmark,
-        "topn": topn,
-        "research": settings.data.get("research", {}),
+        "modelResearch": {
+            key: research.get(key)
+            for key in (
+                "random_seed",
+                "num_threads",
+                "label_horizon_days",
+                "feature_store",
+            )
+        },
         "universe": settings.data.get("universe", {}),
         "datasetUri": str(settings.qlib_data_uri),
         "datasetManifestSha256": sha256_file(dataset_manifest) if dataset_manifest.is_file() else None,
         "universeMembershipSha256": membership_fingerprint(settings),
-        "qlibPlatformCommit": git_revision(project_root).get("commit"),
         "qlibCommit": git_revision(resolve_qlib_repo(settings.qlib_repo)).get("commit"),
         "featureImplementationSha256": {
             path.name: sha256_file(path) for path in source_files if path.is_file()
         },
         "labelHorizonDays": _research_label_horizon_days(settings),
-        "promotionContract": "release-v2" if fold.final_holdout else "component-validation-v2",
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+def _portfolio_checkpoint_fingerprint(
+    settings: Settings,
+    *,
+    source_prediction_fingerprint: str,
+    benchmark: str,
+    topn: int | None,
+) -> str:
+    research = settings.data.get("research", {})
+    research = research if isinstance(research, dict) else {}
+    strategy = asdict(StrategySpec.from_settings(settings, topk_override=topn))
+    payload = {
+        "sourcePredictionFingerprint": source_prediction_fingerprint,
+        "benchmark": benchmark,
+        "strategy": strategy,
+        "backtestResearch": {
+            key: research.get(key)
+            for key in (
+                "backtest_account",
+                "deal_price",
+                "max_participation_rate",
+                "trade_unit",
+                "open_cost",
+                "close_cost",
+                "min_cost",
+                "signal_lag_days",
+            )
+        },
+        "portfolioImplementationSha256": sha256_file(
+            Path(__file__).resolve().parents[2] / "src" / "tushare_qlib" / "prediction_backtest.py"
+        ),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+def _checkpoint_fingerprint(
+    settings: Settings,
+    fold: Fold,
+    *,
+    runtime_fingerprint: str,
+    benchmark: str,
+    topn: int | None,
+) -> str:
+    training = _training_checkpoint_fingerprint(
+        settings,
+        fold,
+        runtime_fingerprint=runtime_fingerprint,
+    )
+    portfolio = _portfolio_checkpoint_fingerprint(
+        settings,
+        source_prediction_fingerprint=training,
+        benchmark=benchmark,
+        topn=topn,
+    )
+    payload = {
+        "trainingFingerprint": training,
+        "portfolioFingerprint": portfolio,
+        "promotionContract": "release-v3" if fold.final_holdout else "component-validation-v3",
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:16]
 
 
 def _validated_checkpoint_manifest(
@@ -422,6 +491,7 @@ def run_walk_forward(
                 promotion_mode="release" if fold.final_holdout else "component",
                 prepared_feature_data=prepared_feature_data,
                 feature_store_metadata=feature_store_metadata,
+                artifact_level="full" if fold.final_holdout else "minimal",
             )
             if fold.final_holdout and result_path.name != "manifest.json":
                 model_id = str(pd.read_csv(result_path)["model_id"].iloc[0])

@@ -94,6 +94,11 @@ qrun configs/workflow_lightgbm.yaml
 tq --config configs/pipeline.yaml train-select
 ```
 
+Windows 多进程研究任务必须通过 `tq`、`python -m tushare_qlib` 或带
+`if __name__ == "__main__":` 保护的 `.py` 文件启动。项目默认显式使用 Joblib `loky`；
+当 `qlib_kernels > 1` 时，stdin/管道（`python -`）和 `python -c` 会在 Qlib 初始化前失败，
+避免 Windows `spawn` 进入异常 worker/resource-tracker 生命周期。`qlib_kernels: 1` 仅用于短区间隔离诊断。
+
 一体化 runner 默认读取 `configs/model_profiles/lightgbm_auto.yaml`。模型家族由 profile 固定，`auto`
 只选择该模型可用的执行设备，不会因为换机器而把 LightGBM 改成 DNN。Linux 会探测 CUDA backend，Windows
 会探测 OpenCL `gpu` backend；两者都执行一个真实的一棵树训练，而不是只检查显卡。`auto` 探测失败会回退 CPU
@@ -124,10 +129,12 @@ CPU/CUDA/OpenCL LightGBM profiles 都使用 `max_bin=63`，因此可以在相同
 维度由 `TushareAlpha158Daily` 的实际字段数动态注入，不能按标准 Alpha158 固定写成 158。
 
 每次运行会在 `data/output/research/<model_id>/timings.json`、manifest、MLflow 和命令行 JSON 中记录
-`qlib_init / feature_store / handler_process / train / model_save / predict / signal_analysis / backtest /
+`qlib_init / feature_store / handler_process / train / model_save / predict / signal_analysis /
+benchmark_load / portfolio_engine /
 artifact_export / report` 耗时、wall time、peak RSS 与 LightGBM best iteration；Markdown/PDF 报告也会展示设备、
-降级原因和阶段耗时。`backtest` 包含 Qlib `PortAnaRecord` 绑定执行的组合风险/指标分析，且不代表回测已在
-GPU 上运行。
+降级原因和阶段耗时。timings 还记录 Audit quote query/transform、audit build、holdings build 等不重复计入
+total 的诊断子阶段，以及各顶层阶段的 handles/threads/children 变化。`portfolio_engine` 包含 Qlib
+`PortAnaRecord` 绑定执行的 Exchange 初始化和 simulator loop，且不代表回测已在 GPU 上运行。
 
 大批量特征实验先使用不运行 portfolio backtest、也绝不发布 selection 的 Signal Screen：
 
@@ -135,6 +142,17 @@ GPU 上运行。
 tq --config configs/pipeline.yaml research-run --mode fixed --stage signal \
   --model-profile configs/model_profiles/lightgbm_cpu_fast.yaml
 ```
+
+Signal Screen 生成的 immutable OOS prediction 可以独立测试策略参数，不会重新创建 Dataset 或训练模型：
+
+```bash
+tq --config configs/pipeline.yaml backtest-predictions \
+  data/output/research/<run_id>/oos_predictions.parquet \
+  --topn 30 --artifact-level minimal
+```
+
+`minimal` 保存 prediction、组合日表、持仓摘要、策略 audit 和 timings；`full` 额外渲染 Markdown/PDF。
+walk-forward 的 rolling folds 默认使用 `minimal`，只有 final holdout 使用 `full`。
 
 Signal Gate 通过后，再运行完整 fixed/walk-forward portfolio Gate。默认 walk-forward 使用 1500 日 train、126 日
 valid、63 日 test，累计 252 日 rolling OOS 与独立 252 日 final holdout，并统一使用 6 日 purge/embargo/label buffer。

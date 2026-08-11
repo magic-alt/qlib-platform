@@ -99,18 +99,58 @@ class StageTimings:
         self._clock = clock
         self._wall_started = clock()
         self._values: dict[str, float] = {}
+        self._diagnostics: dict[str, float] = {}
+        self._resource_deltas: dict[str, dict[str, int]] = {}
+
+    @staticmethod
+    def _process_resources() -> dict[str, int]:
+        try:
+            import psutil
+
+            process = psutil.Process()
+            snapshot = {
+                "threads": int(process.num_threads()),
+                "children": len(process.children(recursive=True)),
+            }
+            num_handles = getattr(process, "num_handles", None)
+            if callable(num_handles):
+                snapshot["handles"] = int(num_handles())
+            return snapshot
+        except (ImportError, OSError):
+            return {}
 
     @contextmanager
     def measure(self, stage: str) -> Iterator[None]:
         started = self._clock()
+        before = self._process_resources()
         try:
             yield
         finally:
             elapsed = max(0.0, self._clock() - started)
             self._values[stage] = self._values.get(stage, 0.0) + elapsed
+            after = self._process_resources()
+            if before and after:
+                keys = before.keys() & after.keys()
+                delta = {key: after[key] - before[key] for key in keys}
+                previous = self._resource_deltas.get(stage, {})
+                self._resource_deltas[stage] = {
+                    key: previous.get(key, 0) + value for key, value in delta.items()
+                }
+
+    @contextmanager
+    def measure_diagnostic(self, stage: str) -> Iterator[None]:
+        """Record a nested sub-stage without double-counting totalSeconds."""
+
+        started = self._clock()
+        try:
+            yield
+        finally:
+            elapsed = max(0.0, self._clock() - started)
+            self._diagnostics[stage] = self._diagnostics.get(stage, 0.0) + elapsed
 
     def to_dict(self) -> dict[str, Any]:
         phases = {key: round(value, 6) for key, value in self._values.items()}
+        diagnostics = {key: round(value, 6) for key, value in self._diagnostics.items()}
         peak_rss_mb: float | None = None
         try:
             import psutil
@@ -123,10 +163,13 @@ class StageTimings:
         return {
             "clock": "time.perf_counter",
             "phasesSeconds": phases,
+            "diagnosticPhasesSeconds": diagnostics,
             "totalSeconds": round(sum(self._values.values()), 6),
             "wallSeconds": round(max(0.0, self._clock() - self._wall_started), 6),
             "peakRssMb": peak_rss_mb,
             "reportRenderingIncluded": "report_seconds" in phases,
+            "processSnapshot": self._process_resources(),
+            "resourceDeltas": self._resource_deltas,
         }
 
 

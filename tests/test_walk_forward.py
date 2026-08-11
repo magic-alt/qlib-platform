@@ -104,6 +104,41 @@ def test_checkpoint_fingerprint_changes_with_profile_or_fold(tmp_path):
     assert base != other_fold
 
 
+def test_checkpoint_fingerprint_changes_with_strategy_or_execution(tmp_path):
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={
+            "research": {"open_cost": 0.00035},
+            "strategy": {"topk_dropout": {"topk": 30, "n_drop": 5, "hold_thresh": 5}},
+            "universe": {"instruments": "all"},
+        },
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    fold = Fold(
+        "rolling_00",
+        ("2020-01-01", "2021-01-01"),
+        ("2021-02-01", "2021-03-01"),
+        ("2021-04-01", "2021-05-01"),
+    )
+    base = _checkpoint_fingerprint(
+        settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=None
+    )
+    settings.data["strategy"]["topk_dropout"]["n_drop"] = 3
+    strategy_changed = _checkpoint_fingerprint(
+        settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=None
+    )
+    settings.data["research"]["open_cost"] = 0.0005
+    execution_changed = _checkpoint_fingerprint(
+        settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=None
+    )
+
+    assert strategy_changed != base
+    assert execution_changed != strategy_changed
+
+
 def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

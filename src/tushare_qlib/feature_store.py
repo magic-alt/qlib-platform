@@ -11,11 +11,11 @@ import pandas as pd
 
 from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .research_timing import label_timing_from_settings
+from .runtime_safety import resolve_qlib_parallel_runtime
 from .settings import Settings
 from .store import sha256_file
-from .universe import membership_fingerprint
 
-FEATURE_STORE_SCHEMA = "research_features_v1"
+FEATURE_STORE_SCHEMA = "research_features_v2"
 
 
 def _feature_store_config(settings: Settings) -> Mapping[str, Any]:
@@ -28,9 +28,26 @@ def feature_store_enabled(settings: Settings) -> bool:
     return bool(_feature_store_config(settings).get("enabled", False))
 
 
+def _dataset_snapshot(settings: Settings) -> dict[str, object]:
+    path = settings.qlib_data_uri / "dataset_manifest.json"
+    if not path.is_file():
+        return {"sha256": None, "mode": None, "syncContext": None, "lastDate": None}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    smoke = payload.get("smoke_test", {})
+    return {
+        "sha256": str(payload.get("sha256") or sha256_file(path)),
+        "mode": payload.get("mode"),
+        "syncContext": payload.get("sync_context"),
+        "lastDate": smoke.get("last_date") if isinstance(smoke, Mapping) else None,
+        "datasetId": payload.get("dataset_id"),
+        "fields": payload.get("fields"),
+    }
+
+
 def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, object]:
+    del start_time, end_time
     project_root = Path(__file__).resolve().parents[2]
-    manifest = settings.qlib_data_uri / "dataset_manifest.json"
+    snapshot = _dataset_snapshot(settings)
     implementation = [
         project_root / "src" / "tushare_qlib" / "custom_handler.py",
         project_root / "src" / "tushare_qlib" / "processors.py",
@@ -38,14 +55,11 @@ def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, o
     ]
     return {
         "schema": FEATURE_STORE_SCHEMA,
-        "startTime": str(pd.Timestamp(start_time).date()),
-        "endTime": str(pd.Timestamp(end_time).date()),
-        "datasetManifestSha256": sha256_file(manifest) if manifest.is_file() else None,
-        "universeMembershipSha256": membership_fingerprint(settings),
+        "datasetId": snapshot.get("datasetId") or settings.qlib_data_uri.name,
+        "datasetFields": snapshot.get("fields"),
         "labelTiming": label_timing_from_settings(settings).to_manifest(),
         "universe": settings.data.get("universe", {}),
         "implementationSha256": {path.name: sha256_file(path) for path in implementation if path.is_file()},
-        "qlibPlatformCommit": git_revision(project_root).get("commit"),
         "qlibCommit": git_revision(resolve_qlib_repo(settings.qlib_repo)).get("commit"),
     }
 
@@ -58,13 +72,19 @@ def _store_root(settings: Settings) -> Path:
     return settings.paths.root / "cache" / "features"
 
 
-def _raw_features(settings: Settings, start_time: str, end_time: str) -> pd.DataFrame:
+def _raw_features(
+    settings: Settings,
+    start_time: str,
+    end_time: str,
+    *,
+    instruments: object | None = None,
+) -> pd.DataFrame:
     from .custom_handler import TushareAlpha158Fundamental
 
     universe = settings.data.get("universe", {})
     timing = label_timing_from_settings(settings)
     handler = TushareAlpha158Fundamental(
-        instruments=universe.get("instruments", "all"),
+        instruments=instruments or universe.get("instruments", "all"),
         start_time=start_time,
         end_time=end_time,
         fit_start_time=start_time,
@@ -83,31 +103,31 @@ def _raw_features(settings: Settings, start_time: str, end_time: str) -> pd.Data
     return frame.sort_index()
 
 
-def materialize_feature_store(
-    settings: Settings, start_time: str, end_time: str, *, force: bool = False
+def _lookback_start(value: str | pd.Timestamp, trading_days: int) -> str:
+    from qlib.data import D
+
+    calendar = pd.DatetimeIndex(D.calendar(end_time=pd.Timestamp(value), freq="day"))
+    if calendar.empty:
+        return str(pd.Timestamp(value).date())
+    position = max(0, len(calendar) - max(1, trading_days) - 1)
+    return str(calendar[position].date())
+
+
+def _merge_recomputed(base: pd.DataFrame, replacement: pd.DataFrame) -> pd.DataFrame:
+    if replacement.empty:
+        return base
+    retained = base.loc[~base.index.isin(replacement.index)]
+    return pd.concat([retained, replacement]).sort_index()
+
+
+def _write_feature_store(
+    root: Path,
+    target: Path,
+    store_id: str,
+    contract: Mapping[str, object],
+    snapshot: Mapping[str, object],
+    frame: pd.DataFrame,
 ) -> Path:
-    contract = _contract(settings, start_time, end_time)
-    store_id = sha256_json(contract)[:32]
-    root = _store_root(settings)
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / store_id
-    manifest_path = target / "manifest.json"
-    if manifest_path.is_file() and not force:
-        return target
-
-    import qlib
-    from qlib.constant import REG_CN
-
-    research = settings.data.get("research", {})
-    kernels = int(research.get("qlib_kernels", 4)) if isinstance(research, Mapping) else 4
-    qlib.init(
-        provider_uri=str(settings.qlib_data_uri),
-        region=REG_CN,
-        expression_cache=None,
-        dataset_cache=None,
-        kernels=max(1, kernels),
-    )
-    frame = _raw_features(settings, start_time, end_time)
     building = Path(tempfile.mkdtemp(prefix=f".{store_id}.building.", dir=root))
     try:
         files: list[dict[str, object]] = []
@@ -120,7 +140,12 @@ def materialize_feature_store(
         manifest = {
             "schemaVersion": FEATURE_STORE_SCHEMA,
             "featureStoreId": store_id,
-            "contract": contract,
+            "contract": dict(contract),
+            "datasetSnapshot": dict(snapshot),
+            "coverage": {
+                "startTime": str(pd.Timestamp(datetimes.min()).date()),
+                "endTime": str(pd.Timestamp(datetimes.max()).date()),
+            },
             "rows": len(frame),
             "columns": [str(column) for column in frame.columns],
             "files": files,
@@ -128,21 +153,112 @@ def materialize_feature_store(
         (building / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        replaced: Path | None = None
         if target.exists():
-            if not force:
-                return target
-            backup = root / f"{store_id}.replaced"
-            if backup.exists():
-                raise FileExistsError(f"feature-store backup already exists: {backup}")
-            os.replace(target, backup)
-        os.replace(building, target)
+            replaced = root / f".{store_id}.replaced.{os.getpid()}"
+            if replaced.exists():
+                shutil.rmtree(replaced)
+            os.replace(target, replaced)
+        try:
+            os.replace(building, target)
+        except Exception:
+            if replaced is not None and replaced.exists() and not target.exists():
+                os.replace(replaced, target)
+            raise
+        else:
+            if replaced is not None:
+                shutil.rmtree(replaced, ignore_errors=True)
     finally:
         if building.exists():
             shutil.rmtree(building, ignore_errors=True)
     return target
 
 
-def load_feature_store(path: Path, start_time: str, end_time: str) -> pd.DataFrame:
+def materialize_feature_store(
+    settings: Settings, start_time: str, end_time: str, *, force: bool = False
+) -> Path:
+    contract = _contract(settings, start_time, end_time)
+    store_id = sha256_json(contract)[:32]
+    root = _store_root(settings)
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / store_id
+    manifest_path = target / "manifest.json"
+    snapshot = _dataset_snapshot(settings)
+    existing: dict[str, object] | None = None
+    if manifest_path.is_file():
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if loaded.get("schemaVersion") == FEATURE_STORE_SCHEMA:
+            existing = loaded
+            coverage = loaded.get("coverage", {})
+            previous_snapshot = loaded.get("datasetSnapshot", {})
+            if (
+                not force
+                and isinstance(coverage, Mapping)
+                and isinstance(previous_snapshot, Mapping)
+                and previous_snapshot.get("sha256") == snapshot.get("sha256")
+                and pd.Timestamp(coverage.get("startTime")) <= pd.Timestamp(start_time)
+                and pd.Timestamp(coverage.get("endTime")) >= pd.Timestamp(end_time)
+            ):
+                return target
+
+    import qlib
+    from qlib.constant import REG_CN
+
+    parallel = resolve_qlib_parallel_runtime(settings)
+    qlib.init(
+        provider_uri=str(settings.qlib_data_uri),
+        region=REG_CN,
+        expression_cache=None,
+        dataset_cache=None,
+        **parallel.qlib_init_kwargs(),
+    )
+    frame: pd.DataFrame | None = None
+    if existing is not None and not force:
+        coverage = existing.get("coverage", {})
+        sync_context = snapshot.get("syncContext")
+        mode = str(snapshot.get("mode") or "")
+        safe_delta = mode in {"update", "repair", "update_fix"} and isinstance(sync_context, Mapping)
+        if (
+            safe_delta
+            and isinstance(coverage, Mapping)
+            and pd.Timestamp(coverage.get("startTime")) <= pd.Timestamp(start_time)
+        ):
+            cached_start = str(coverage["startTime"])
+            cached_end = str(coverage["endTime"])
+            frame = load_feature_store(target, cached_start, cached_end)
+            changed = [
+                pd.Timestamp(value)
+                for value in sync_context.get("changed_trade_dates", [])
+                if pd.Timestamp(value) <= pd.Timestamp(end_time)
+            ]
+            refresh_points = list(changed)
+            if pd.Timestamp(end_time) > pd.Timestamp(cached_end):
+                refresh_points.append(pd.Timestamp(cached_end))
+            if refresh_points:
+                config = _feature_store_config(settings)
+                lookback = int(config.get("append_lookback_trading_days", 120))
+                refresh_start = _lookback_start(min(refresh_points), lookback)
+                replacement = _raw_features(settings, refresh_start, end_time)
+                frame = _merge_recomputed(frame, replacement)
+            revised = [str(value) for value in sync_context.get("revised_symbols", []) if value]
+            if revised:
+                replacement = _raw_features(
+                    settings, min(str(start_time), cached_start), end_time, instruments=revised
+                )
+                frame = _merge_recomputed(frame, replacement)
+            frame = frame.loc[pd.Timestamp(min(str(start_time), cached_start)) : pd.Timestamp(end_time)]
+    if frame is None:
+        frame = _raw_features(settings, start_time, end_time)
+    return _write_feature_store(root, target, store_id, contract, snapshot, frame)
+
+
+def load_feature_store(
+    path: Path,
+    start_time: str,
+    end_time: str,
+    *,
+    verify_checksums: bool = False,
+) -> pd.DataFrame:
     manifest_path = path / "manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"feature-store manifest is missing: {manifest_path}")
@@ -150,9 +266,15 @@ def load_feature_store(path: Path, start_time: str, end_time: str) -> pd.DataFra
     if manifest.get("schemaVersion") != FEATURE_STORE_SCHEMA:
         raise ValueError(f"unsupported feature-store schema: {manifest.get('schemaVersion')}")
     frames: list[pd.DataFrame] = []
+    requested_years = set(range(pd.Timestamp(start_time).year, pd.Timestamp(end_time).year + 1))
     for entry in manifest.get("files", []):
         file_path = path / str(entry["name"])
-        if not file_path.is_file() or sha256_file(file_path) != entry.get("sha256"):
+        match = str(entry["name"]).removeprefix("year=").removesuffix(".parquet")
+        if match.isdigit() and int(match) not in requested_years:
+            continue
+        if not file_path.is_file() or (
+            verify_checksums and sha256_file(file_path) != entry.get("sha256")
+        ):
             raise ValueError(f"feature-store partition checksum mismatch: {file_path}")
         frames.append(pd.read_parquet(file_path))
     if not frames:
