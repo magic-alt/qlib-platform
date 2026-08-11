@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tushare-qlib-a-share"
-version = "0.2.0"
+version = "0.3.0"
 description = "Auditable Tushare Pro to Qlib research pipeline with production trade-plan and LEAN bridge"
 requires-python = ">=3.10,<3.13"
 dependencies = [
@@ -27,15 +27,22 @@ data = [
   "pymysql>=1.1,<2.0",
 ]
 qlib = [
-  "lightgbm>=4.0,<5.0",
+  "pyqlib==0.9.7",
+  "lightgbm==4.6.0",
+]
+pytorch = [
+  "torch>=2.2,<3.0",
 ]
 all = [
   "tushare>=1.4.0,<2.0",
   "tenacity>=8.2,<10",
   "pymysql>=1.1,<2.0",
-  "lightgbm>=4.0,<5.0",
+  "pyqlib==0.9.7",
+  "lightgbm==4.6.0",
 ]
 dev = [
+  "pyqlib==0.9.7",
+  "lightgbm==4.6.0",
   "pytest>=8,<9",
   "pytest-cov>=5,<7",
   "ruff>=0.8,<1",

@@ -23,15 +23,15 @@ class PortfolioPolicy:
     def from_mapping(cls, data: Mapping[str, object] | None) -> "PortfolioPolicy":
         data = data or {}
         return cls(
-            top_n=int(data.get("top_n", cls.top_n)),
-            min_score=float(data["min_score"]) if data.get("min_score") is not None else None,
+            top_n=int(str(data.get("top_n", cls.top_n))),
+            min_score=float(str(data["min_score"])) if data.get("min_score") is not None else None,
             weighting=str(data.get("weighting", cls.weighting)),
-            max_position=float(data.get("max_position", cls.max_position)),
-            max_exposure=float(data.get("max_exposure", cls.max_exposure)),
-            max_group_exposure=float(data.get("max_group_exposure", cls.max_group_exposure)),
-            max_turnover=(float(data["max_turnover"]) if data.get("max_turnover") is not None else None),
-            min_position=float(data.get("min_position", cls.min_position)),
-            volatility_floor=float(data.get("volatility_floor", cls.volatility_floor)),
+            max_position=float(str(data.get("max_position", cls.max_position))),
+            max_exposure=float(str(data.get("max_exposure", cls.max_exposure))),
+            max_group_exposure=float(str(data.get("max_group_exposure", cls.max_group_exposure))),
+            max_turnover=(float(str(data["max_turnover"])) if data.get("max_turnover") is not None else None),
+            min_position=float(str(data.get("min_position", cls.min_position))),
+            volatility_floor=float(str(data.get("volatility_floor", cls.volatility_floor))),
         )
 
     def validate(self) -> None:
@@ -45,6 +45,10 @@ class PortfolioPolicy:
             raise ValueError("max_group_exposure must be in (0, 1]")
         if self.max_turnover is not None and self.max_turnover < 0:
             raise ValueError("max_turnover must be non-negative")
+        if not 0 <= self.min_position <= self.max_position:
+            raise ValueError("min_position must be in [0, max_position]")
+        if self.volatility_floor <= 0:
+            raise ValueError("volatility_floor must be positive")
         if self.weighting not in {"equal", "rank", "score", "score_vol"}:
             raise ValueError(f"unsupported weighting method: {self.weighting}")
 
@@ -155,7 +159,10 @@ def _current_weight_series(current: pd.DataFrame | pd.Series | None) -> pd.Serie
 
 def portfolio_turnover(target: pd.Series, current: pd.Series) -> float:
     universe = target.index.union(current.index)
-    return float(0.5 * (target.reindex(universe, fill_value=0.0) - current.reindex(universe, fill_value=0.0)).abs().sum())
+    return float(
+        0.5
+        * (target.reindex(universe, fill_value=0.0) - current.reindex(universe, fill_value=0.0)).abs().sum()
+    )
 
 
 def construct_target_portfolio(
@@ -213,5 +220,19 @@ def construct_target_portfolio(
     frame.loc[frame["target_weight"] < policy.min_position, "target_weight"] = 0.0
     frame["weighting"] = policy.weighting
     frame["pre_trade_turnover"] = pre_turnover
-    optional = [c for c in ("volatility", "group", "adv20_amount", "signal_date", "model_id", "dataset_id") if c in frame]
-    return frame[["instrument", "score", "target_weight", "weighting", *[c for c in optional if c != "group"], "group", "pre_trade_turnover"]]
+    optional = [
+        c
+        for c in ("volatility", "group", "adv20_amount", "signal_date", "model_id", "dataset_id")
+        if c in frame
+    ]
+    return frame[
+        [
+            "instrument",
+            "score",
+            "target_weight",
+            "weighting",
+            *[c for c in optional if c != "group"],
+            "group",
+            "pre_trade_turnover",
+        ]
+    ]

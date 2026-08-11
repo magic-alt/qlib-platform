@@ -81,6 +81,13 @@ qlib:
     - is_limit_down
     - is_st
     - listed_days
+    - roe_waa_pit
+    - roa_pit
+    - netprofit_margin_pit
+    - netprofit_yoy_pit
+    - or_yoy_pit
+    - debt_to_assets_pit
+    - ocf_to_or_pit
 
 universe:
   min_listed_days: 120
@@ -90,6 +97,8 @@ universe:
   allow_unknown_st: false
 
 research:
+  # Resolved relative to this pipeline config. Override with --model-profile.
+  model_profile: model_profiles/lightgbm_auto.yaml
   min_history_days: 700
   random_seed: 42
   num_threads: 8
@@ -104,6 +113,8 @@ research:
   signal_lag_days: 1
   trade_unit: 100
   max_participation_rate: 0.05
+  # Dirty revisions may produce research CANDIDATE runs, but can never be promoted.
+  allow_dirty_research: true
   promotion_thresholds:
     min_observations: 252
     min_ic_mean: 0.01
@@ -114,9 +125,8 @@ research:
     max_drawdown: 0.20
     require_unique_artifact: true
 
-execution:
-  # Exact Qlib-style strategy mode, consumed by `tq build-topk-orders`.
-  # The standard `build-trade-plan` route below remains the legacy risk-weighted mode.
+strategy:
+  # Canonical strategy source for research, manifests, and execution.
   topk_dropout:
     topk: 30
     n_drop: 5
@@ -124,6 +134,19 @@ execution:
     only_tradable: true
     forbid_all_trade_at_limit: true
     risk_degree: 0.95
+
+portfolio:
+  top_n: 20
+  min_score: null
+  weighting: score_vol
+  max_position: 0.08
+  max_exposure: 0.90
+  max_group_exposure: 0.25
+  max_turnover: 0.30
+  min_position: 0.002
+  volatility_floor: 0.01
+
+execution:
   board_lot: 100
   max_participation_rate: 0.05
   commission_rate: 0.00025
@@ -134,3 +157,13 @@ execution:
   price_buffer_sell: 0.002
   block_limit_up_buy: true
   block_limit_down_sell: true
+  # Execution snapshots are fail-closed without a current UTC capture timestamp.
+  max_quote_age_seconds: 120
+  max_position_age_seconds: 300
+
+risk:
+  max_gross_exposure: 0.95
+  max_single_name: 0.10
+  max_sector_exposure: 0.30
+  max_daily_loss: 0.03
+  kill_switch: false

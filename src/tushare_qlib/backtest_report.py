@@ -344,8 +344,10 @@ def _plot_font() -> object | None:
     return None
 
 
-def _plot_labels(font: object | None) -> dict[str, object]:
-    return {"fontproperties": font} if font is not None else {}
+def _set_title(axis: Any, title: str, font: object | None) -> None:
+    label = axis.set_title(title)
+    if font is not None:
+        label.set_fontproperties(font)
 
 
 def _apply_tick_font(axis: Any, font: object | None) -> None:
@@ -365,7 +367,6 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
         path.unlink()
     assets_dir.mkdir(parents=True, exist_ok=True)
     font = _plot_font()
-    labels = _plot_labels(font)
     report = data.report
     account = report["account"]
     net_value = account / account.iloc[0]
@@ -377,7 +378,7 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
     fig, ax = plt.subplots(figsize=(11.5, 5.4))
     ax.plot(date, net_value, label="Strategy", linewidth=2.1, color="#176B87")
     ax.plot(date, benchmark, label="Benchmark", linewidth=1.6, color="#D97706")
-    ax.set_title("策略与基准净值", **labels)
+    _set_title(ax, "策略与基准净值", font)
     ax.set_ylabel("Net value")
     ax.grid(alpha=0.22)
     ax.legend()
@@ -390,12 +391,12 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
     fig, axes = plt.subplots(2, 1, figsize=(11.5, 7.2), sharex=True, height_ratios=[1.2, 1])
     axes[0].plot(date, (account - account.iloc[0]) / 1_000_000, color="#176B87", linewidth=2)
     axes[0].axhline(0, color="#6B7280", linewidth=0.8)
-    axes[0].set_title("账户累计盈亏", **labels)
+    _set_title(axes[0], "账户累计盈亏", font)
     axes[0].set_ylabel("CNY million")
     axes[0].grid(alpha=0.22)
     axes[1].fill_between(date, drawdown, 0, color="#DC2626", alpha=0.22)
     axes[1].plot(date, drawdown, color="#DC2626", linewidth=1.3)
-    axes[1].set_title("回撤", **labels)
+    _set_title(axes[1], "回撤", font)
     axes[1].set_ylabel("Drawdown")
     axes[1].yaxis.set_major_formatter(lambda value, _: f"{value:.0%}")
     axes[1].grid(alpha=0.22)
@@ -413,12 +414,12 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
     fig, axes = plt.subplots(2, 1, figsize=(11.5, 7.2), sharex=True)
     axes[0].stackplot(date, value / account, cash / account, labels=["Stock value", "Cash"], colors=["#176B87", "#EAB308"], alpha=0.85)
     axes[0].set_ylim(0, 1.05)
-    axes[0].set_title("账户仓位与现金占比", **labels)
+    _set_title(axes[0], "账户仓位与现金占比", font)
     axes[0].set_ylabel("Account share")
     axes[0].legend(loc="upper right")
     axes[0].grid(alpha=0.2)
     axes[1].plot(date, count, color="#7C3AED", linewidth=1.8)
-    axes[1].set_title("每日持仓股票数量", **labels)
+    _set_title(axes[1], "每日持仓股票数量", font)
     axes[1].set_ylabel("Positions")
     axes[1].grid(alpha=0.22)
     fig.autofmt_xdate()
@@ -437,7 +438,7 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
         label = [f"{row.stock_name or ''} {row.instrument}".strip() for row in top.itertuples(index=False)]
         ax.barh(label, top["weight"] * 100, color="#176B87")
         ax.set_xlabel("Weight (%)")
-        ax.set_title("期末持仓权重 Top 15", **labels)
+        _set_title(ax, "期末持仓权重 Top 15", font)
         ax.grid(axis="x", alpha=0.22)
         _apply_tick_font(ax, font)
     fig.tight_layout()
@@ -458,13 +459,13 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
         ).groupby("trade_date")[["buy", "sell"]].sum()
         axes[0].bar(activity.index, activity["buy"], label="Buy", color="#15803D", width=0.8)
         axes[0].bar(activity.index, -activity["sell"], label="Sell", color="#DC2626", width=0.8)
-        axes[0].set_title("每日交易股票数", **labels)
+        _set_title(axes[0], "每日交易股票数", font)
         axes[0].set_ylabel("Buy / Sell")
         axes[0].legend()
         axes[0].grid(alpha=0.22)
         turnover = report["turnover"].fillna(0.0)
         axes[1].bar(date, turnover * 100, color="#7C3AED", width=0.8)
-        axes[1].set_title("每日换手率", **labels)
+        _set_title(axes[1], "每日换手率", font)
         axes[1].set_ylabel("Turnover (%)")
         axes[1].grid(alpha=0.22)
     fig.autofmt_xdate()
@@ -494,13 +495,13 @@ def _trade_rows(audit: pd.DataFrame) -> pd.DataFrame:
 def _fmt_number(value: object, digits: int = 2) -> str:
     if value is None or pd.isna(value):
         return "-"
-    return f"{float(value):,.{digits}f}"
+    return f"{float(str(value)):,.{digits}f}"
 
 
 def _fmt_percent(value: object) -> str:
     if value is None or pd.isna(value):
         return "-"
-    return f"{float(value):.2%}"
+    return f"{float(str(value)):.2%}"
 
 
 def _stock_label(row: Any) -> str:
@@ -547,10 +548,70 @@ def _metrics_rows(metrics: Mapping[str, float | int | None]) -> list[tuple[str, 
     ]
 
 
-def _fold_rows(data: RunData) -> list[list[object]]:
+def _runtime_rows(manifest: Mapping[str, Any]) -> list[tuple[str, str]]:
+    runtime = manifest.get("runtime", {})
+    if not isinstance(runtime, Mapping) or not runtime:
+        return []
+    versions = runtime.get("versions", {})
+    version_text = ", ".join(f"{key}={value}" for key, value in versions.items()) if isinstance(versions, Mapping) else "-"
+    return [
+        ("模型 Profile", str(runtime.get("modelProfile", "unknown"))),
+        ("模型家族", str(runtime.get("modelFamily", "unknown"))),
+        ("请求设备", str(runtime.get("requestedDevice", "unknown"))),
+        ("实际设备", str(runtime.get("resolvedDevice", "unknown"))),
+        ("降级原因", str(runtime.get("fallbackReason") or "-")),
+        ("MPS CPU fallback", "开启" if runtime.get("mpsFallbackEnabled") else "关闭"),
+        ("版本", version_text or "-"),
+    ]
+
+
+def _timing_rows(timings: object) -> list[tuple[str, str]]:
+    if not isinstance(timings, Mapping):
+        return []
+    phases = timings.get("phasesSeconds", {})
+    if not isinstance(phases, Mapping):
+        return []
+    labels = {
+        "data_seconds": "数据初始化与准备",
+        "train_seconds": "模型训练",
+        "predict_seconds": "模型预测",
+        "signal_analysis_seconds": "信号分析",
+        "backtest_seconds": "策略回测与组合分析",
+        "artifact_export_seconds": "研究产物导出",
+    }
+    rows = [(labels.get(str(key), str(key)), f"{float(value):.3f} s") for key, value in phases.items()]
+    if "totalSeconds" in timings:
+        rows.append(("阶段合计", f"{float(timings['totalSeconds']):.3f} s"))
+    if "orchestrationWallSeconds" in timings:
+        rows.append(("本次调度 wall time", f"{float(timings['orchestrationWallSeconds']):.3f} s"))
+    return rows
+
+
+def _fold_timing_rows(manifest: Mapping[str, Any]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for item in manifest.get("componentRuns", []):
+        if not isinstance(item, Mapping):
+            continue
+        timings = item.get("timings", {})
+        phases = timings.get("phasesSeconds", {}) if isinstance(timings, Mapping) else {}
+        rows.append(
+            [
+                str(item.get("key", "")),
+                "是" if item.get("checkpointReused") else "否",
+                f"{float(phases.get('data_seconds', 0.0)):.2f}",
+                f"{float(phases.get('train_seconds', 0.0)):.2f}",
+                f"{float(phases.get('predict_seconds', 0.0)):.2f}",
+                f"{float(phases.get('backtest_seconds', 0.0)):.2f}",
+                f"{float(timings.get('totalSeconds', 0.0)):.2f}",
+            ]
+        )
+    return rows
+
+
+def _fold_rows(data: RunData) -> list[list[str]]:
     if "fold_key" not in data.report:
         return []
-    rows: list[list[object]] = []
+    rows: list[list[str]] = []
     for key, frame in data.report.groupby("fold_key", sort=False):
         audit = data.audit.loc[data.audit["fold_key"] == key] if "fold_key" in data.audit else data.audit.iloc[0:0]
         metrics = _metric_values(frame, audit)
@@ -588,25 +649,50 @@ def _write_markdown(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[
             ],
         ),
         "",
-        "## 核心指标",
-        "",
-        _markdown_table(["指标", "数值"], _metrics_rows(metrics)),
-        "",
-        "## 图表",
-        "",
-        "![策略与基准净值](report_assets/performance.png)",
-        "",
-        "![账户盈亏与回撤](report_assets/pnl_drawdown.png)",
-        "",
-        "![账户仓位与持仓数](report_assets/exposure_positions.png)",
-        "",
-        "![期末持仓权重](report_assets/final_holdings.png)",
-        "",
-        "![每日交易活动](report_assets/trade_activity.png)",
-        "",
-        "## 期末持仓",
-        "",
     ]
+    runtime_rows = _runtime_rows(data.manifest)
+    timing_rows = _timing_rows(data.manifest.get("timings"))
+    if runtime_rows or timing_rows:
+        lines.extend(["## 运行环境与阶段耗时", ""])
+        if runtime_rows:
+            lines.extend([_markdown_table(["项目", "内容"], runtime_rows), ""])
+        if timing_rows:
+            lines.extend([_markdown_table(["阶段", "耗时"], timing_rows), ""])
+    fold_timing_rows = _fold_timing_rows(data.manifest)
+    if fold_timing_rows:
+        lines.extend(
+            [
+                "### Walk-forward 分折耗时",
+                "",
+                _markdown_table(
+                    ["折", "复用 checkpoint", "数据(s)", "训练(s)", "预测(s)", "回测(s)", "合计(s)"],
+                    fold_timing_rows,
+                ),
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## 核心指标",
+            "",
+            _markdown_table(["指标", "数值"], _metrics_rows(metrics)),
+            "",
+            "## 图表",
+            "",
+            "![策略与基准净值](report_assets/performance.png)",
+            "",
+            "![账户盈亏与回撤](report_assets/pnl_drawdown.png)",
+            "",
+            "![账户仓位与持仓数](report_assets/exposure_positions.png)",
+            "",
+            "![期末持仓权重](report_assets/final_holdings.png)",
+            "",
+            "![每日交易活动](report_assets/trade_activity.png)",
+            "",
+            "## 期末持仓",
+            "",
+        ]
+    )
     holding_rows = [
         [
             str(row.trade_date.date()),
@@ -757,10 +843,29 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
             body,
         ),
         Spacer(1, 3 * mm),
-        Paragraph("核心指标", heading),
-        Spacer(1, 2 * mm),
-        _pdf_table([["指标", "数值"]] + [[key, value] for key, value in _metrics_rows(metrics)], [155 * mm, 105 * mm]),
     ]
+    runtime_rows = _runtime_rows(data.manifest)
+    timing_rows = _timing_rows(data.manifest.get("timings"))
+    if runtime_rows or timing_rows:
+        story.extend([Paragraph("运行环境与阶段耗时", heading), Spacer(1, 2 * mm)])
+        if runtime_rows:
+            story.extend(
+                [_pdf_table([["项目", "内容"]] + [[key, value] for key, value in runtime_rows], [75 * mm, 185 * mm]), Spacer(1, 3 * mm)]
+            )
+        if timing_rows:
+            story.extend(
+                [_pdf_table([["阶段", "耗时"]] + [[key, value] for key, value in timing_rows], [155 * mm, 105 * mm]), Spacer(1, 3 * mm)]
+            )
+    story.extend(
+        [
+            Paragraph("核心指标", heading),
+            Spacer(1, 2 * mm),
+            _pdf_table(
+                [["指标", "数值"]] + [[key, value] for key, value in _metrics_rows(metrics)],
+                [155 * mm, 105 * mm],
+            ),
+        ]
+    )
     for filename, caption in zip(
         _ASSET_NAMES,
         ["策略与基准净值", "账户盈亏与回撤", "账户仓位与持仓数", "期末持仓权重", "每日交易活动"],
@@ -794,6 +899,16 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
         story.append(Paragraph("总账户净值按日收益连续复利重建。仓位与订单明细按各折独立模拟资金保留。", body))
         story.append(Spacer(1, 2 * mm))
         story.append(_pdf_table([["折", "开始", "结束", "收益", "最大回撤", "请求 / 成交"]] + fold_rows, [42 * mm, 35 * mm, 35 * mm, 35 * mm, 35 * mm, 40 * mm]))
+        fold_timing_rows = _fold_timing_rows(data.manifest)
+        if fold_timing_rows:
+            story.extend([Spacer(1, 4 * mm), Paragraph("分折耗时（秒）", body), Spacer(1, 2 * mm)])
+            story.append(
+                _pdf_table(
+                    [["折", "复用", "数据", "训练", "预测", "回测", "合计"]] + fold_timing_rows,
+                    [45 * mm, 25 * mm, 32 * mm, 32 * mm, 32 * mm, 32 * mm, 32 * mm],
+                    small=True,
+                )
+            )
         for key in data.report["fold_key"].dropna().drop_duplicates():
             subset = data.report.loc[data.report["fold_key"] == key]
             subset_holdings = data.holdings.loc[data.holdings["fold_key"] == key] if "fold_key" in data.holdings else data.holdings.iloc[0:0]

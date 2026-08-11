@@ -72,7 +72,7 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 
 ## 4. 训练、回测和选股
 
-YAML 工作流：
+YAML 工作流（仅用于探索和调试，不产生可准入执行链路的 artifact）：
 
 ```bash
 export QLIB_DATA_URI=/absolute/path/to/data/qlib/cn_tushare_v1
@@ -85,8 +85,47 @@ qrun configs/workflow_lightgbm.yaml
 tq --config configs/pipeline.yaml train-select
 ```
 
-选股结果位于 `data/output/selection_YYYYMMDD.csv`。该文件仍只表示模型 TopN；每个信号日同时会写入
-`data/output/signals/signal_scores_YYYYMMDD.parquet`，这是 TopkDropout 精确决策所需的全股票池分数与排名。
+一体化 runner 默认读取 `configs/model_profiles/lightgbm_auto.yaml`。模型家族由 profile 固定，`auto`
+只选择该模型可用的执行设备，不会因为换机器而把 LightGBM 改成 DNN。Linux 上会用一个极小训练任务验证
+当前 LightGBM 是否真的包含 CUDA backend；探测失败或在 macOS/Windows 上运行时会回退 CPU，并把原因写入
+运行 manifest。显式指定 CUDA 或 MPS 时不会静默回退。
+
+```bash
+# Apple Silicon：CPU LightGBM
+tq --config configs/pipeline.yaml train-select \
+  --model-profile configs/model_profiles/lightgbm_cpu_m5.yaml
+
+# Linux / WSL2 + CUDA build：NVIDIA LightGBM
+tq --config configs/pipeline.yaml research-run --mode walk-forward \
+  --model-profile configs/model_profiles/lightgbm_cuda_nvidia.yaml
+
+# Apple Silicon：Qlib DNN + PyTorch MPS
+pip install -e '.[pytorch]'
+tq --config configs/pipeline.yaml train-select \
+  --model-profile configs/model_profiles/pytorch_mps_m5.yaml
+```
+
+CPU/CUDA LightGBM profiles 都使用 `max_bin=63`，因此可以在相同模型参数下比较耗时与指标。DNN 的输入
+维度由 `TushareAlpha158Daily` 的实际字段数动态注入，不能按标准 Alpha158 固定写成 158。
+
+每次运行会在 `data/output/research/<model_id>/timings.json`、manifest、MLflow 和命令行 JSON 中记录
+`data / train / predict / signal_analysis / backtest / artifact_export` 耗时；Markdown/PDF 报告也会展示设备、
+降级原因和阶段耗时。`backtest` 包含 Qlib `PortAnaRecord` 绑定执行的组合风险/指标分析，且不代表回测已在
+GPU 上运行。报告渲染自身不计入阶段合计。
+
+一体化流程会自动从 OOS prediction、label 和组合报告计算 Research Gate。只有全部阈值通过且 lineage 完整的
+运行才标记为 `PROMOTED`，并发布 `data/output/selection_YYYYMMDD.csv` 与
+`data/output/signals/signal_scores_YYYYMMDD.parquet`；未通过的运行保留 manifest、回测产物和
+`research_gate.json` 后失败退出，不会生成执行候选。
+
+所有可进入执行链路的文件使用 schema `2.0`，并携带 `artifact_type / promotion_status / run_id / model_id` 与
+`dataset_id / lineage_id / manifest_path`。`selection_*.csv` 的类型是 `MODEL_TOPK`，仍只表示模型 TopN；完整分数
+文件的类型是 `MODEL_SCORE`，才是 TopkDropout 精确决策的合法输入。旧文件、`REJECTED` 模型、lineage 缺失或
+把 `MODEL_TOPK` 直接传给订单生成器都会失败关闭。
+
+升级后需要先重新执行 `stage-full → dump-full` 生成 schema `2.0` 的 `dataset_manifest.json`；旧数据集 manifest
+缺少 source snapshot 或 Qlib commit 时，Research Gate 会按 lineage 不完整拒绝发布。
+
 回测运行还会在 `data/output/research/<model_id>/strategy_audit.parquet` 输出“候选 → 指令 → 成交 → 持仓”的审计链。
 
 每次通过 `tq` 一体化流程运行的回测还会在同一运行目录生成可直接阅读的：
@@ -107,34 +146,60 @@ tq --config configs/pipeline.yaml research-report data/output/research/<run_id>
 ### 4.1 TopkDropout 实盘决策与持仓对账
 
 `TopkDropoutStrategy(topk=30, n_drop=5, hold_thresh=5)` 每日重算排名，但不是每日清仓重买 Top30。
-精确模式用 T−1 分数、券商 T−1 仓位和 T 日报价生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
-风险配权路径。
+精确模式用 T−1 分数、T 日盘前券商仓位快照和 T 日报价快照生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
+风险配权路径，只发布 `TARGET_PORTFOLIO`/`STRATEGY_DECISION`，不再发布可执行 `ORDER_INTENT`。
 
 先以券商仓位快照和成交回报更新本地持有期账本：
 
 ```bash
 tq --config configs/pipeline.yaml reconcile-holdings broker_positions.csv \
-  --fills broker_fills.csv --as-of-date 2026-08-08
+  --fills broker_fills.csv --as-of-date 2026-08-10
 ```
 
-仓位 CSV 必须包含 `instrument,quantity,available_quantity`；成交 CSV 必须包含
-`fill_id,trade_date,instrument,side,quantity,fill_price`。首次导入的既有仓位没有可追溯买入成交时，额外传入
-`--initial-holdings`（字段：`instrument,opened_trade_date`）。未能解释的券商持仓会失败关闭，避免错误绕过
+`broker_positions.csv` 是 execution position snapshot，必须包含：
+
+- `instrument,quantity,available_quantity`：券商可执行仓位；
+- `as_of_trade_date`：该快照所属交易日，必须与 `--as-of-date` 一致；
+- `snapshot_at_utc`：券商原始仓位响应的 UTC 采集时刻，不能填对账完成时刻；
+- `account_id`：可选但推荐；
+- `source`：可选，取值为 `broker` 或 `paper`，省略时按 `broker` 处理。
+
+对账输出可直接作为 `build-topk-orders` 的 positions 输入，字段为
+`instrument,quantity,available_quantity,holding_days,opened_trade_date,as_of_trade_date,snapshot_at_utc`，并保留可选
+`account_id` 与 `source`。持有期账本内部仍使用 `last_quantity` 和 `as_of_date`；这两个内部字段不会泄漏到执行快照。
+
+成交 CSV 必须包含 `fill_id,trade_date,instrument,side,quantity,fill_price`。首次导入的既有仓位没有可追溯买入成交时，
+额外传入 `--initial-holdings`（字段：`instrument,opened_trade_date`）。未能解释的券商持仓会失败关闭，避免错误绕过
 `hold_thresh`。
 
 在交易日读取完整分数、对账后仓位、报价和可用现金生成决策及订单：
 
 ```bash
 tq --config configs/pipeline.yaml build-topk-orders \
-  data/output/signals/signal_scores_20260808.parquet \
-  data/output/holdings_state_20260808.csv trade_quotes.csv \
-  --cash 1000000
+  data/output/signals/signal_scores_20260807.parquet \
+  data/output/holdings_state_20260810.csv trade_quotes.csv \
+  --cash 1000000 --daily-pnl-pct -0.002
 ```
 
 该命令生成 `strategy_decision_YYYYMMDD.csv`、`orders_YYYYMMDD.csv` 和
-`blocked_orders_YYYYMMDD.csv`。报价需包含 `instrument,price,paused,is_limit_up,is_limit_down`；可选
+`blocked_orders_YYYYMMDD.csv`。`--daily-pnl-pct` 是当日券商账户收益率，缺失时订单发布失败关闭。
+
+`trade_quotes.csv` 是 quote snapshot，必须包含
+`instrument,price,paused,is_limit_up,is_limit_down,sector,as_of_trade_date,snapshot_at_utc`。其中
+`as_of_trade_date` 必须等于信号 artifact 声明的 `trade_date`，`snapshot_at_utc` 必须是行情源实际采集时刻；仓位和报价
+各自只能包含一个快照时刻，并且都必须满足配置的最大 age。可选
 `adv20_volume` 以 `ADV20 × max_participation_rate` 约束实盘委托。回测仍使用当日实际成交量，因此审计文件应作为
 两种流动性口径的对照，而不是把回测成交量当作开盘前可知信息。
+
+`2026-08-07`（周五）信号对应 `2026-08-10`（周一）交易日；上面的日期仅用于说明文件配对。真实下单前必须使用
+当前交易日文件，并在采集券商仓位和行情后立即运行，复用原始 `snapshot_at_utc`，否则 freshness 检查会失败关闭。
+
+完整的 `reconcile → freshness → topk` 回归冒烟命令：
+
+```bash
+pytest -q tests/test_holdings_ledger.py tests/test_live_controls.py tests/test_topk_dropout.py
+ruff check src tests
+```
 
 ### 4.2 SH000300 基准回测结果解读（最新一次）
 

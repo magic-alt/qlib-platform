@@ -28,7 +28,7 @@ data_handler_config: &data_handler_config
         min_circ_mv_yuan: 2000000000
         min_money_20d_yuan: 20000000
         exclude_st: true
-        allow_unknown_st: true
+        allow_unknown_st: false
   infer_processors:
     - class: ProcessInf
     - class: RobustZScoreNorm
@@ -57,6 +57,8 @@ task:
       subsample: 0.8
       lambda_l1: 10.0
       lambda_l2: 50.0
+      device_type: cpu
+      max_bin: 63
       num_threads: 12
       early_stopping_rounds: 100
       num_boost_round: 2000
@@ -65,7 +67,7 @@ task:
     module_path: qlib.data.dataset
     kwargs:
       handler:
-        class: TushareAlpha158Daily
+        class: TushareAlpha158Fundamental
         module_path: tushare_qlib.custom_handler
         kwargs: *data_handler_config
       segments:

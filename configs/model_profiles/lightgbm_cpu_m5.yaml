@@ -1,0 +1,7 @@
+name: lightgbm_cpu_m5
+family: lightgbm
+device: cpu
+device_index: 0
+model_kwargs:
+  max_bin: 63
+  num_threads: 10

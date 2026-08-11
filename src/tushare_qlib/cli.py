@@ -44,13 +44,15 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("--valid", nargs=2, metavar=("START", "END"))
     ts.add_argument("--test", nargs=2, metavar=("START", "END"))
     ts.add_argument("--benchmark")
-    ts.add_argument("--topn", type=int, default=30)
+    ts.add_argument("--topn", type=int)
+    ts.add_argument("--model-profile")
     rr = sub.add_parser("research-run")
     rr.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
     rr.add_argument("--start")
     rr.add_argument("--end")
     rr.add_argument("--benchmark", default="SH000300")
-    rr.add_argument("--topn", type=int, default=30)
+    rr.add_argument("--topn", type=int)
+    rr.add_argument("--model-profile")
     rp = sub.add_parser("research-report")
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
@@ -83,6 +85,8 @@ def parser() -> argparse.ArgumentParser:
     pa = sub.add_parser("project-audit")
     pa.add_argument("--root", default=".")
     pa.add_argument("--output", default="docs/project_audit.json")
+    wc = sub.add_parser("validate-qrun-contract")
+    wc.add_argument("--workflow", default="configs/workflow_lightgbm.yaml")
 
     eo = sub.add_parser("build-orders")
     eo.add_argument("targets")
@@ -91,7 +95,26 @@ def parser() -> argparse.ArgumentParser:
     eo.add_argument("--trade-date", required=True)
     eo.add_argument("--portfolio-value", type=float, required=True)
     eo.add_argument("--cash", type=float, required=True)
+    eo.add_argument("--daily-pnl-pct", type=float, required=True)
     eo.add_argument("--output-dir", default="./data/output")
+
+    pr = sub.add_parser("pretrade-risk")
+    pr.add_argument("targets")
+    pr.add_argument("--daily-pnl-pct", type=float, required=True)
+
+    be = sub.add_parser("record-broker-event")
+    be.add_argument("ledger")
+    be.add_argument("order_id")
+    be.add_argument("state")
+    be.add_argument("--event-at-utc", required=True)
+    be.add_argument("--event-id")
+    be.add_argument("--broker-order-id")
+    be.add_argument("--fill-qty", type=float)
+    be.add_argument("--fill-price", type=float)
+    fi = sub.add_parser("ingest-pit-fundamentals")
+    fi.add_argument("reports")
+    fi.add_argument("--calendar")
+    fi.add_argument("--output")
 
     rh = sub.add_parser("reconcile-holdings")
     rh.add_argument("positions")
@@ -107,6 +130,7 @@ def parser() -> argparse.ArgumentParser:
     to.add_argument("quotes")
     to.add_argument("--trade-date")
     to.add_argument("--cash", type=float, required=True)
+    to.add_argument("--daily-pnl-pct", type=float, required=True)
     to.add_argument("--output-dir", default="./data/output")
     return p
 
@@ -119,38 +143,63 @@ def _first_value(frame: pd.DataFrame, column: str, fallback: str | None) -> str:
     raise ValueError(f"{column} must be supplied in file or CLI")
 
 
-def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -> dict[str, str]:
+def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -> dict[str, object]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     artifacts = {
         str(item.get("name")): str(item.get("localPath"))
         for item in manifest.get("artifacts", [])
         if isinstance(item, dict) and item.get("name") and item.get("localPath")
     }
-    payload = {
+    payload: dict[str, object] = {
         "runId": str(manifest.get("externalRunId", manifest_path.parent.name)),
-        "reportMarkdown": artifacts.get("backtest_report.md", str(manifest_path.parent / "backtest_report.md")),
+        "reportMarkdown": artifacts.get(
+            "backtest_report.md", str(manifest_path.parent / "backtest_report.md")
+        ),
         "reportPdf": artifacts.get("backtest_report.pdf", str(manifest_path.parent / "backtest_report.pdf")),
+        "timingsJson": artifacts.get("timings.json", str(manifest_path.parent / "timings.json")),
     }
     if latest_selection is not None:
         payload["latestSelection"] = str(latest_selection)
+    runtime = manifest.get("runtime", {})
+    timings = manifest.get("timings", {})
+    if isinstance(runtime, dict) and runtime:
+        payload["modelProfile"] = runtime.get("modelProfile", "unknown")
+        payload["resolvedDevice"] = runtime.get("resolvedDevice", "unknown")
+    if isinstance(timings, dict) and timings:
+        payload["timings"] = timings
     return payload
 
 
 def main() -> None:
     args = parser().parse_args()
     if args.command == "project-audit":
-        from .project_audit import audit_project, write_audit
+        from .project_audit import audit_project, write_audit as write_project_audit
 
         report = audit_project(args.root)
-        path = write_audit(report, args.output)
-        print(json.dumps({"score": report["score"], "passed": report["passed"], "report": str(path)}, ensure_ascii=False))
+        path = write_project_audit(report, args.output)
+        print(
+            json.dumps(
+                {"score": report["score"], "passed": report["passed"], "report": str(path)},
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "validate-qrun-contract":
+        from .workflow_contract import validate_qrun_contract
+
+        settings = Settings.load(args.config, create_dirs=False)
+        result = validate_qrun_contract(settings, args.workflow)
+        print(json.dumps(result, ensure_ascii=False))
+        if not result["passed"]:
+            raise SystemExit(2)
         return
 
     if args.command == "research-audit":
-        from .backtest_audit import audit_mlflow_run, write_audit
+        from .backtest_audit import audit_mlflow_run, write_audit as write_backtest_audit
 
         report = audit_mlflow_run(args.run_dir)
-        path = write_audit(report, args.output)
+        path = write_backtest_audit(report, args.output)
         print(json.dumps({"passed": report["passed"], "report": str(path)}, ensure_ascii=False))
         if not report["passed"]:
             raise SystemExit(2)
@@ -182,7 +231,9 @@ def main() -> None:
         metrics = json.loads(Path(args.metrics_json).read_text(encoding="utf-8"))
         cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {}
         research = cfg.get("research", {}) if isinstance(cfg, dict) else {}
-        thresholds = ResearchThresholds.from_mapping(research.get("promotion_thresholds", {}) if isinstance(research, dict) else {})
+        thresholds = ResearchThresholds.from_mapping(
+            research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
+        )
         report = evaluate_research_metrics(metrics, thresholds)
         output = args.output or "docs/research_gate.json"
         print(write_gate_report(report, output))
@@ -199,19 +250,35 @@ def main() -> None:
         model_id = _first_value(frame, "model_id", args.model_id or "unversioned")
         dataset_id = _first_value(frame, "dataset_id", args.dataset_id or "unversioned")
         out = args.output_dir or (Path(args.target_file).resolve().parent / "lean")
-        print(export_lean_targets(frame, out, signal_date=signal_date, trade_date=trade_date, model_id=model_id, dataset_id=dataset_id))
+        print(
+            export_lean_targets(
+                frame,
+                out,
+                signal_date=signal_date,
+                trade_date=trade_date,
+                model_id=model_id,
+                dataset_id=dataset_id,
+            )
+        )
         return
 
     if args.command == "build-orders":
-        import yaml
+        from dataclasses import asdict
+
+        from .canonical_config import ExecutionSpec
         from .execution import ExecutionPolicy, build_orders
 
-        cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {}
-        execution = cfg.get("execution", {}) if isinstance(cfg, dict) else {}
-        policy = ExecutionPolicy.from_mapping(execution if isinstance(execution, dict) else {})
+        execution_settings = Settings.load(args.config, create_dirs=False)
+        policy = ExecutionPolicy.from_mapping(asdict(ExecutionSpec.from_settings(execution_settings)))
         orders, blocked = build_orders(
-            pd.read_csv(args.targets), pd.read_csv(args.positions), pd.read_csv(args.quotes),
-            trade_date=args.trade_date, portfolio_value=args.portfolio_value, cash=args.cash, policy=policy,
+            pd.read_csv(args.targets),
+            pd.read_csv(args.positions),
+            pd.read_csv(args.quotes),
+            trade_date=args.trade_date,
+            portfolio_value=args.portfolio_value,
+            cash=args.cash,
+            policy=policy,
+            daily_pnl_pct=args.daily_pnl_pct,
         )
         out = Path(args.output_dir)
         out.mkdir(parents=True, exist_ok=True)
@@ -219,7 +286,54 @@ def main() -> None:
         blocked.to_csv(out / f"blocked_orders_{args.trade_date.replace('-', '')}.csv", index=False)
         return
 
-    settings = Settings.load(args.config, require_tushare=False, require_qlib_repo=args.command in {"dump-full", "dump-update"})
+    if args.command == "pretrade-risk":
+        from .risk_engine import HardRiskPolicy, pretrade_risk_check
+
+        artifact = pd.read_csv(args.targets)
+        # The target artifact's manifest is the release's policy authority.
+        from .artifacts import ArtifactType, load_artifact_manifest, validate_artifact
+
+        metadata = validate_artifact(artifact, ArtifactType.TARGET_PORTFOLIO)
+        manifest = load_artifact_manifest(metadata)
+        canonical = manifest.get("canonicalConfig", {})
+        risk = canonical.get("risk", {}) if isinstance(canonical, dict) else {}
+        print(
+            json.dumps(
+                pretrade_risk_check(
+                    artifact, HardRiskPolicy.from_mapping(risk), daily_pnl_pct=args.daily_pnl_pct
+                )
+            )
+        )
+        return
+
+    if args.command == "record-broker-event":
+        from .broker_state import record_broker_event
+
+        events = record_broker_event(
+            args.ledger,
+            args.order_id,
+            args.state,
+            event_at_utc=args.event_at_utc,
+            event_id=args.event_id,
+            broker_order_id=args.broker_order_id,
+            fill_qty=args.fill_qty,
+            fill_price=args.fill_price,
+        )
+        print(json.dumps({"ledger": str(args.ledger), "events": len(events)}))
+        return
+
+    if args.command == "ingest-pit-fundamentals":
+        from .fundamentals import ingest_pit_fundamentals
+
+        pit_settings = Settings.load(args.config, create_dirs=False)
+        calendar = args.calendar or str(pit_settings.paths.metadata / "trade_calendar.parquet")
+        output = args.output or str(pit_settings.paths.curated / "fundamentals_pit.parquet")
+        print(ingest_pit_fundamentals(args.reports, calendar, output))
+        return
+
+    settings = Settings.load(
+        args.config, require_tushare=False, require_qlib_repo=args.command in {"dump-full", "dump-update"}
+    )
 
     if args.command == "research-report":
         from .backtest_report import write_backtest_report
@@ -232,7 +346,11 @@ def main() -> None:
     if args.command == "reconcile-holdings":
         from .holdings_ledger import reconcile_holdings
 
-        ledger = Path(args.ledger_path).expanduser().resolve() if args.ledger_path else settings.paths.root / "state" / "topk_holdings.parquet"
+        ledger = (
+            Path(args.ledger_path).expanduser().resolve()
+            if args.ledger_path
+            else settings.paths.root / "state" / "topk_holdings.parquet"
+        )
         state = reconcile_holdings(
             pd.read_csv(args.positions),
             pd.read_csv(args.fills) if args.fills else None,
@@ -245,12 +363,19 @@ def main() -> None:
         out.mkdir(parents=True, exist_ok=True)
         key = pd.Timestamp(args.as_of_date).strftime("%Y%m%d")
         state.to_csv(out / f"holdings_state_{key}.csv", index=False)
-        print(json.dumps({"rows": len(state), "ledger": str(ledger), "state": str(out / f"holdings_state_{key}.csv")}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"rows": len(state), "ledger": str(ledger), "state": str(out / f"holdings_state_{key}.csv")},
+                ensure_ascii=False,
+            )
+        )
         return
 
     if args.command == "build-topk-orders":
+        from dataclasses import asdict
+
+        from .canonical_config import ExecutionSpec, StrategySpec
         from .execution import ExecutionPolicy, build_topk_orders
-        from .topk_dropout import TopkDropoutPolicy
 
         signal = pd.read_parquet(args.signal_file)
         required = {"signal_date", "trade_date", "instrument", "score"}
@@ -266,9 +391,7 @@ def main() -> None:
         trade_date = args.trade_date or implied_trade_date
         if pd.Timestamp(trade_date).normalize() != pd.Timestamp(implied_trade_date).normalize():
             raise ValueError("--trade-date must match the signal artifact's trade_date")
-        execution = settings.data.get("execution", {})
-        strategy_config = execution.get("topk_dropout", {}) if isinstance(execution, dict) else {}
-        strategy_policy = TopkDropoutPolicy.from_mapping(strategy_config if isinstance(strategy_config, dict) else {})
+        strategy_policy = StrategySpec.from_settings(settings).to_policy()
         artifact_policy_columns = {
             "topk": "strategy_topk",
             "n_drop": "strategy_n_drop",
@@ -281,11 +404,11 @@ def main() -> None:
             artifact_policy = {
                 key: signal[column].dropna().iloc[0] for key, column in artifact_policy_columns.items()
             }
-            strategy_policy = TopkDropoutPolicy.from_mapping(artifact_policy)
-        execution_policy = ExecutionPolicy.from_mapping(execution if isinstance(execution, dict) else {})
-        model_id = str(signal["model_id"].dropna().iloc[0]) if "model_id" in signal and signal["model_id"].notna().any() else "unversioned"
+            if artifact_policy != strategy_policy.__dict__:
+                raise ValueError("signal artifact strategy does not match the canonical strategy config")
+        execution_policy = ExecutionPolicy.from_mapping(asdict(ExecutionSpec.from_settings(settings)))
         decision, orders, blocked = build_topk_orders(
-            signal.set_index("instrument")["score"],
+            signal,
             pd.read_csv(args.positions),
             pd.read_csv(args.quotes),
             signal_date=signal_date,
@@ -293,7 +416,7 @@ def main() -> None:
             cash=args.cash,
             strategy_policy=strategy_policy,
             execution_policy=execution_policy,
-            model_id=model_id,
+            daily_pnl_pct=args.daily_pnl_pct,
         )
         out = Path(args.output_dir).expanduser().resolve()
         out.mkdir(parents=True, exist_ok=True)
@@ -301,7 +424,12 @@ def main() -> None:
         decision.to_csv(out / f"strategy_decision_{key}.csv", index=False)
         orders.to_csv(out / f"orders_{key}.csv", index=False)
         blocked.to_csv(out / f"blocked_orders_{key}.csv", index=False)
-        print(json.dumps({"decision_rows": len(decision), "orders": len(orders), "blocked": len(blocked)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"decision_rows": len(decision), "orders": len(orders), "blocked": len(blocked)},
+                ensure_ascii=False,
+            )
+        )
         return
 
     if args.command in {"init-metadata", "backfill", "source-preflight", "sync-benchmark"}:
@@ -310,16 +438,35 @@ def main() -> None:
         ext = Extractor(settings)
         if args.command == "init-metadata":
             ext.fetch_stock_master()
-            ext.fetch_calendar(settings.data["start_date"], settings.data.get("calendar_end_date", settings.data["end_date"]))
+            ext.fetch_calendar(
+                settings.data["start_date"], settings.data.get("calendar_end_date", settings.data["end_date"])
+            )
         elif args.command == "backfill":
-            ext.backfill(args.start or settings.data["start_date"], args.end or settings.data["end_date"], args.force)
+            ext.backfill(
+                args.start or settings.data["start_date"], args.end or settings.data["end_date"], args.force
+            )
         elif args.command == "source-preflight":
-            print(json.dumps(ext.source_preflight(args.start or settings.data["start_date"], args.end or settings.data["end_date"]), ensure_ascii=False, default=str))
+            print(
+                json.dumps(
+                    ext.source_preflight(
+                        args.start or settings.data["start_date"], args.end or settings.data["end_date"]
+                    ),
+                    ensure_ascii=False,
+                    default=str,
+                )
+            )
         else:
-            frame = ext.sync_benchmark(args.symbol, args.start or settings.data["start_date"], args.end or settings.data["end_date"])
+            frame = ext.sync_benchmark(
+                args.symbol, args.start or settings.data["start_date"], args.end or settings.data["end_date"]
+            )
             print(json.dumps({"symbol": args.symbol, "rows": len(frame)}, ensure_ascii=False))
     elif args.command in {"curate", "curate-day", "stage-full", "stage-update"}:
-        from .normalize import build_all_curated, build_curated_day, export_full_staging, export_incremental_staging
+        from .normalize import (
+            build_all_curated,
+            build_curated_day,
+            export_full_staging,
+            export_incremental_staging,
+        )
 
         if args.command == "curate":
             build_all_curated(settings, args.start, args.end)
@@ -332,7 +479,11 @@ def main() -> None:
     elif args.command in {"dump-full", "dump-update"}:
         from .qlib_export import dump_full, dump_update
 
-        path = dump_full(settings, single_thread=args.single_thread) if args.command == "dump-full" else dump_update(settings, single_thread=args.single_thread)
+        path = (
+            dump_full(settings, single_thread=args.single_thread)
+            if args.command == "dump-full"
+            else dump_update(settings, single_thread=args.single_thread)
+        )
         print(path)
     elif args.command in {"train-select", "research-run"}:
         from .train_select import train_backtest_select
@@ -346,10 +497,16 @@ def main() -> None:
                 end_date=args.end or settings.data["end_date"],
                 benchmark=args.benchmark,
                 topn=args.topn,
+                model_profile=args.model_profile,
             )
             print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
         elif args.command == "research-run":
-            selection = train_backtest_select(settings, benchmark=args.benchmark, topn=args.topn)
+            selection = train_backtest_select(
+                settings,
+                benchmark=args.benchmark,
+                topn=args.topn,
+                model_profile=args.model_profile,
+            )
             model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
             manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
             print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
@@ -357,7 +514,15 @@ def main() -> None:
             train = tuple(args.train) if args.train else None
             valid = tuple(args.valid) if args.valid else None
             test = tuple(args.test) if args.test else None
-            selection = train_backtest_select(settings, train=train, valid=valid, test=test, benchmark=args.benchmark, topn=args.topn)
+            selection = train_backtest_select(
+                settings,
+                train=train,
+                valid=valid,
+                test=test,
+                benchmark=args.benchmark,
+                topn=args.topn,
+                model_profile=args.model_profile,
+            )
             model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
             manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
             print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))

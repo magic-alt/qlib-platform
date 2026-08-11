@@ -10,6 +10,13 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 
+def _json_object(raw: bytes | str, *, name: str) -> dict[str, Any]:
+    loaded = json.loads(raw)
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{name} response must be a JSON object")
+    return dict(loaded)
+
+
 def _headers() -> dict[str, str]:
     headers = {"Accept": "application/json"}
     token = os.getenv("LEAN_API_TOKEN", "").strip()
@@ -31,12 +38,12 @@ def _upload(base_url: str, object_key: str, path: Path) -> dict[str, Any]:
     headers = {**_headers(), "Content-Type": f"multipart/form-data; boundary={boundary}"}
     request = Request(f"{base_url.rstrip('/')}/api/object-store/{object_key}", data=body, headers=headers, method="POST")
     with urlopen(request, timeout=120) as response:
-        return json.loads(response.read())
+        return _json_object(response.read(), name="object-store upload")
 
 
 def register_manifest(manifest_path: str | Path, *, base_url: str | None = None) -> dict[str, Any]:
     path = Path(manifest_path).expanduser().resolve()
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = _json_object(path.read_text(encoding="utf-8"), name="manifest")
     url = (base_url or os.getenv("LEAN_API_URL") or "http://127.0.0.1:8000").rstrip("/")
     external_run_id = str(payload.get("externalRunId") or payload.get("external_run_id") or "").strip()
     if not external_run_id:
@@ -58,4 +65,4 @@ def register_manifest(manifest_path: str | Path, *, base_url: str | None = None)
     headers = {**_headers(), "Content-Type": "application/json", "Idempotency-Key": external_run_id}
     request = Request(f"{url}/api/research/imports/qlib", data=body, headers=headers, method="POST")
     with urlopen(request, timeout=60) as response:
-        return json.loads(response.read())
+        return _json_object(response.read(), name="manifest registration")

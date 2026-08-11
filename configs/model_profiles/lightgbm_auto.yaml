@@ -1,0 +1,6 @@
+name: lightgbm_auto
+family: lightgbm
+device: auto
+device_index: 0
+model_kwargs:
+  max_bin: 63

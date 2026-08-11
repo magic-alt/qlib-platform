@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import importlib.metadata
 import json
 import os
@@ -14,6 +13,8 @@ from typing import Any
 
 from loguru import logger
 
+from .fundamentals import PIT_FIELDS
+from .lineage import git_revision, sha256_json
 from .settings import Settings
 from .store import sha256_file
 
@@ -31,6 +32,8 @@ def _read_staging_manifest(data_path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"staging manifest not found: {path}")
     manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError(f"staging manifest must be a JSON object: {path}")
     files = manifest.get("files", {})
     if not isinstance(files, dict) or not files:
         raise ValueError(f"staging manifest contains no files: {path}")
@@ -41,7 +44,7 @@ def _read_staging_manifest(data_path: Path) -> dict[str, Any]:
         actual = sha256_file(file_path)
         if actual != expected:
             raise ValueError(f"staging file checksum mismatch: {file_path}")
-    return manifest
+    return dict(manifest)
 
 
 def _run(
@@ -96,7 +99,8 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
     sample = instruments[: min(3, len(instruments))]
     start = calendar[max(0, len(calendar) - 5)]
     end = calendar[-1]
-    features = D.features(sample, ["$close", "$volume", "$factor"], start_time=start, end_time=end, freq="day")
+    queried_fields = ["$close", "$volume", "$factor", *(f"${field}" for field in PIT_FIELDS)]
+    features = D.features(sample, queried_fields, start_time=start, end_time=end, freq="day")
     if features.empty:
         raise RuntimeError("Qlib smoke test failed: feature query returned empty")
     return {
@@ -104,6 +108,7 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
         "instrument_count": len(instruments),
         "sample_instruments": sample,
         "sample_rows": len(features),
+        "queried_fields": queried_fields,
         "last_date": str(calendar[-1]),
     }
 
@@ -169,7 +174,9 @@ def dump_update(settings: Settings, *, single_thread: bool = False) -> Path:
     if not target.exists():
         raise FileNotFoundError(f"base Qlib dataset not found: {target}")
     export_cfg = settings.data.get("qlib", {}).get("export", {})
-    copy_on_write = bool(export_cfg.get("copy_on_write_update", True)) if isinstance(export_cfg, dict) else True
+    copy_on_write = (
+        bool(export_cfg.get("copy_on_write_update", True)) if isinstance(export_cfg, dict) else True
+    )
     if not copy_on_write:
         raise RuntimeError(
             "In-place dump_update is disabled by the commercial baseline. "
@@ -204,22 +211,41 @@ def _package_versions() -> dict[str, str]:
 def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]) -> Path:
     stage = settings.paths.staging_full if mode == "full" else settings.paths.staging_update
     stage_manifest = stage / "staging_manifest.json"
-    payload: dict[str, object] = {
-        "schema_version": "1.1",
+    platform_git = git_revision(Path(__file__).resolve().parents[2])
+    qlib_git = git_revision(settings.qlib_repo)
+    content: dict[str, object] = {
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
-        "dataset_dir": _portable_dataset_dir(settings),
         "mode": mode,
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "fields": settings.data["qlib"]["include_fields"],
         "staging_manifest_sha256": sha256_file(stage_manifest),
         "pipeline_config_sha256": sha256_file(settings.config_path),
+        "qlib_platform_git_commit": platform_git.get("commit"),
+        "qlib_git_commit": qlib_git.get("commit"),
         "package_versions": _package_versions(),
         "smoke_test": smoke,
     }
-    content_hash = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    payload["sha256"] = content_hash
+    content_hash = sha256_json(content)
+    generated_at = datetime.now(timezone.utc)
+    payload: dict[str, object] = {
+        "schema_version": "2.0",
+        "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
+        "dataset_build_id": f"{generated_at.strftime('%Y%m%dT%H%M%SZ')}-{content_hash[:12]}",
+        "dataset_dir": str(settings.qlib_data_uri),
+        "mode": mode,
+        "generated_at_utc": generated_at.isoformat(),
+        "fields": settings.data["qlib"]["include_fields"],
+        "staging_manifest_sha256": sha256_file(stage_manifest),
+        "source_snapshot_id": sha256_file(stage_manifest),
+        "pipeline_config_sha256": sha256_file(settings.config_path),
+        "qlib_platform_git_commit": platform_git.get("commit"),
+        "qlib_platform_git_dirty": platform_git.get("dirty"),
+        "qlib_git_commit": qlib_git.get("commit"),
+        "qlib_git_dirty": qlib_git.get("dirty"),
+        "package_versions": _package_versions(),
+        "smoke_test": smoke,
+        "content": content,
+        "sha256": content_hash,
+    }
     path = settings.qlib_data_uri / "dataset_manifest.json"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -27,12 +27,12 @@ class TopkDropoutPolicy:
     def from_mapping(cls, data: Mapping[str, object] | None) -> "TopkDropoutPolicy":
         data = data or {}
         return cls(
-            topk=int(data.get("topk", cls.topk)),
-            n_drop=int(data.get("n_drop", cls.n_drop)),
-            hold_thresh=int(data.get("hold_thresh", cls.hold_thresh)),
+            topk=int(str(data.get("topk", cls.topk))),
+            n_drop=int(str(data.get("n_drop", cls.n_drop))),
+            hold_thresh=int(str(data.get("hold_thresh", cls.hold_thresh))),
             only_tradable=bool(data.get("only_tradable", cls.only_tradable)),
             forbid_all_trade_at_limit=bool(data.get("forbid_all_trade_at_limit", cls.forbid_all_trade_at_limit)),
-            risk_degree=float(data.get("risk_degree", cls.risk_degree)),
+            risk_degree=float(str(data.get("risk_degree", cls.risk_degree))),
         )
 
     def validate(self) -> None:
