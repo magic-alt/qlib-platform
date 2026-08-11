@@ -32,11 +32,17 @@ def _upload(base_url: str, object_key: str, path: Path) -> dict[str, Any]:
     boundary = f"----qlib-{uuid.uuid4().hex}"
     mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     body = (
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n"
-        f"Content-Type: {mime}\r\n\r\n"
-    ).encode() + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+            f"Content-Type: {mime}\r\n\r\n"
+        ).encode()
+        + path.read_bytes()
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
     headers = {**_headers(), "Content-Type": f"multipart/form-data; boundary={boundary}"}
-    request = Request(f"{base_url.rstrip('/')}/api/object-store/{object_key}", data=body, headers=headers, method="POST")
+    request = Request(
+        f"{base_url.rstrip('/')}/api/object-store/{object_key}", data=body, headers=headers, method="POST"
+    )
     with urlopen(request, timeout=120) as response:
         return _json_object(response.read(), name="object-store upload")
 

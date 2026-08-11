@@ -177,6 +177,13 @@ def build_lean_canonical_endpoints(
             "WHERE c.market='china' AND REPLACE(c.trade_date,'-','') BETWEEN %(start_date)s AND %(end_date)s "
             "ORDER BY c.trade_date"
         ),
+        "index_weight": (
+            f"SELECT u.universe_code index_code,{_symbol_sql('u')} con_code,"
+            "REPLACE(COALESCE(u.effective_date,u.start_date),'-','') trade_date,NULL weight "
+            "FROM universe_membership u WHERE u.universe_code=%(index_code)s "
+            "AND REPLACE(COALESCE(u.effective_date,u.start_date),'-','') "
+            "BETWEEN %(start_date)s AND %(end_date)s ORDER BY trade_date,u.symbol"
+        ),
     }
     optional = optional_endpoints or {}
     result: dict[str, dict[str, Any]] = {}
@@ -184,7 +191,12 @@ def build_lean_canonical_endpoints(
         enabled = bool(optional.get(name, True)) if name not in MYSQL_METADATA_ENDPOINTS else True
         if name == "moneyflow":
             enabled = bool(optional.get(name, False))
-        result[name] = {"query": query, "required": name in {"daily", "adj_factor", "daily_basic", "stock_basic", "trade_cal"}, "enabled": enabled}
+        result[name] = {
+            "query": query,
+            "required": name
+            in {"daily", "adj_factor", "daily_basic", "stock_basic", "trade_cal", "index_weight"},
+            "enabled": enabled,
+        }
     return result
 
 
@@ -288,7 +300,12 @@ def build_connection_kwargs(mysql_cfg: Mapping[str, Any]) -> dict[str, Any]:
     kwargs.setdefault("port", 3306)
     kwargs.setdefault("charset", "utf8mb4")
 
-    if not kwargs.get("host") or not kwargs.get("user") or kwargs.get("password") is None or not kwargs.get("database"):
+    if (
+        not kwargs.get("host")
+        or not kwargs.get("user")
+        or kwargs.get("password") is None
+        or not kwargs.get("database")
+    ):
         raise ValueError("MySQL connection requires host, user, password, and database")
     return kwargs
 
@@ -320,7 +337,9 @@ def build_mysql_endpoints(
 
     table_overrides = cfg.get("tables") if isinstance(cfg.get("tables"), Mapping) else {}
     endpoint_overrides = cfg.get("endpoints") if isinstance(cfg.get("endpoints"), Mapping) else {}
-    configured_optional = cfg.get("optional_endpoints") if isinstance(cfg.get("optional_endpoints"), Mapping) else {}
+    configured_optional = (
+        cfg.get("optional_endpoints") if isinstance(cfg.get("optional_endpoints"), Mapping) else {}
+    )
     optional = optional_endpoints if optional_endpoints is not None else configured_optional
 
     endpoints: dict[str, dict[str, Any]] = {}
@@ -342,11 +361,19 @@ def build_mysql_endpoints(
                 spec["enabled"] = bool(override["enabled"])
                 override_has_enabled = True
 
-        if name not in MYSQL_METADATA_ENDPOINTS and isinstance(optional, Mapping) and not override_has_enabled:
+        if (
+            name not in MYSQL_METADATA_ENDPOINTS
+            and isinstance(optional, Mapping)
+            and not override_has_enabled
+        ):
             spec["enabled"] = bool(optional.get(name, spec["enabled"]))
 
         if not spec["query"]:
-            table = str(table_overrides.get(name, name)).strip() if isinstance(table_overrides, Mapping) else str(name)
+            table = (
+                str(table_overrides.get(name, name)).strip()
+                if isinstance(table_overrides, Mapping)
+                else str(name)
+            )
             spec["query"] = _build_default_query(name, table)
 
         endpoints[name] = {
@@ -375,7 +402,9 @@ class MysqlClient:
         try:
             pymysql = importlib.import_module("pymysql")
         except ImportError as exc:  # pragma: no cover - optional path
-            raise RuntimeError("pymysql is required for lean_mysql. Install project extra: .[data] or .[all]") from exc
+            raise RuntimeError(
+                "pymysql is required for lean_mysql. Install project extra: .[data] or .[all]"
+            ) from exc
 
         kwargs = self.connection.copy()
         kwargs.setdefault("cursorclass", pymysql.cursors.DictCursor)
@@ -420,7 +449,9 @@ class MysqlClient:
                     return FetchResult(pd.DataFrame(), "failed", attempt, str(exc))
         return FetchResult(pd.DataFrame(), "failed", attempts, f"{api_name} unknown failure")
 
-    def call(self, api_name: str, *, fields: str | None = None, required: bool = True, **params: Any) -> pd.DataFrame:
+    def call(
+        self, api_name: str, *, fields: str | None = None, required: bool = True, **params: Any
+    ) -> pd.DataFrame:
         return self.fetch(api_name, fields=fields, required=required, **params).data
 
 
@@ -430,8 +461,14 @@ def lean_mysql_preflight(
     """Run bounded, read-only coverage checks against Lean canonical tables."""
     client = MysqlClient(connection=build_connection_kwargs(mysql_cfg), endpoint_queries={})
     required_tables = [
-        "securities", "trade_calendar", "ashare_daily_bars", "adjustment_factors",
-        "ashare_trade_status", "factor_values", "universe_membership", "market_daily_bars",
+        "securities",
+        "trade_calendar",
+        "ashare_daily_bars",
+        "adjustment_factors",
+        "ashare_trade_status",
+        "factor_values",
+        "universe_membership",
+        "market_daily_bars",
     ]
     source = str(mysql_cfg.get("source", "tushare")).strip()
     selected_universe = str(universe or mysql_cfg.get("universe", "CSI300")).strip()
@@ -455,15 +492,29 @@ def lean_mysql_preflight(
                 "membership": "SELECT COUNT(*) rows_count,COUNT(DISTINCT symbol) symbols,MIN(start_date) first_date,MAX(COALESCE(end_date,start_date)) last_date FROM universe_membership WHERE universe_code=%(universe)s",
                 "calendar": "SELECT SUM(is_open) rows_count,MIN(trade_date) first_date,MAX(trade_date) last_date FROM trade_calendar WHERE market='china' AND trade_date BETWEEN %(start)s AND %(end)s",
             }
-            params = {"source": source, "universe": selected_universe, "start": pd.Timestamp(start_date).strftime("%Y-%m-%d"), "end": pd.Timestamp(end_date).strftime("%Y-%m-%d")}
+            params = {
+                "source": source,
+                "universe": selected_universe,
+                "start": pd.Timestamp(start_date).strftime("%Y-%m-%d"),
+                "end": pd.Timestamp(end_date).strftime("%Y-%m-%d"),
+            }
             for name, query in queries.items():
                 cursor.execute(query, params)
                 checks[name] = dict(cursor.fetchone() or {})
     passed = all(int((checks[name] or {}).get("rows_count") or 0) > 0 for name in checks)
-    return {"passed": passed, "source": source, "universe": selected_universe, "start_date": start_date, "end_date": end_date, "checks": checks}
+    return {
+        "passed": passed,
+        "source": source,
+        "universe": selected_universe,
+        "start_date": start_date,
+        "end_date": end_date,
+        "checks": checks,
+    }
 
 
-def fetch_lean_benchmark(mysql_cfg: Mapping[str, Any], symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+def fetch_lean_benchmark(
+    mysql_cfg: Mapping[str, Any], symbol: str, start_date: str, end_date: str
+) -> pd.DataFrame:
     ticker = str(symbol).upper().replace("SH", "").replace("SZ", "").replace("BJ", "")
     client = MysqlClient(connection=build_connection_kwargs(mysql_cfg), endpoint_queries={})
     query = (

@@ -53,7 +53,9 @@ def momentum_quality_lowvol_signals(
     frame["mom60"] = grouped["close"].pct_change(60)
     frame["rev5"] = grouped["close"].pct_change(5)
     daily_return = grouped["close"].pct_change()
-    frame["vol20"] = daily_return.groupby(frame[instrument_col]).rolling(20).std().reset_index(level=0, drop=True)
+    frame["vol20"] = (
+        daily_return.groupby(frame[instrument_col]).rolling(20).std().reset_index(level=0, drop=True)
+    )
     frame["money20"] = grouped["money"].rolling(20).mean().reset_index(level=0, drop=True)
     frame["history_count"] = grouped.cumcount() + 1
     latest_date = frame["date"].max()

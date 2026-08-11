@@ -9,10 +9,17 @@ import pandas as pd
 from loguru import logger
 
 from .client import RetryPolicy, TushareClient
-from .mysql_source import MysqlClient, build_connection_kwargs, build_mysql_endpoints, fetch_lean_benchmark, lean_mysql_preflight
+from .mysql_source import (
+    MysqlClient,
+    build_connection_kwargs,
+    build_mysql_endpoints,
+    fetch_lean_benchmark,
+    lean_mysql_preflight,
+)
 from .quality import assert_quality, validate_raw_day, write_report
 from .settings import Settings
 from .store import PartitionStore
+from .universe import build_membership_intervals, configured_universe, write_membership
 
 DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
 ADJ_FIELDS = "ts_code,trade_date,adj_factor"
@@ -93,31 +100,19 @@ class Extractor:
                 "daily",
                 DAILY_FIELDS,
                 True,
-                enabled=(
-                    bool(optional.get("daily", True))
-                    if isinstance(optional, Mapping)
-                    else True
-                ),
+                enabled=(bool(optional.get("daily", True)) if isinstance(optional, Mapping) else True),
             ),
             Endpoint(
                 "adj_factor",
                 ADJ_FIELDS,
                 True,
-                enabled=(
-                    bool(optional.get("adj_factor", True))
-                    if isinstance(optional, Mapping)
-                    else True
-                ),
+                enabled=(bool(optional.get("adj_factor", True)) if isinstance(optional, Mapping) else True),
             ),
             Endpoint(
                 "daily_basic",
                 BASIC_FIELDS,
                 True,
-                enabled=(
-                    bool(optional.get("daily_basic", True))
-                    if isinstance(optional, Mapping)
-                    else True
-                ),
+                enabled=(bool(optional.get("daily_basic", True)) if isinstance(optional, Mapping) else True),
             ),
             Endpoint(
                 "moneyflow",
@@ -163,7 +158,9 @@ class Extractor:
         )
         frames = []
         for status in ("L", "D", "P", "G"):
-            df = self.client.call("stock_basic", fields=fields, required=True, exchange="", list_status=status)
+            df = self.client.call(
+                "stock_basic", fields=fields, required=True, exchange="", list_status=status
+            )
             if not df.empty:
                 frames.append(df)
         if not frames:
@@ -202,7 +199,9 @@ class Extractor:
         available_start = pd.to_datetime(cal["cal_date"]).min()
         available_end = pd.to_datetime(cal["cal_date"]).max()
         if start < available_start or end > available_end:
-            cal = self.fetch_calendar(min(start, available_start).strftime("%Y%m%d"), max(end, available_end).strftime("%Y%m%d"))
+            cal = self.fetch_calendar(
+                min(start, available_start).strftime("%Y%m%d"), max(end, available_end).strftime("%Y%m%d")
+            )
         mask = (cal["is_open"] == 1) & (cal["cal_date"] >= start) & (cal["cal_date"] <= end)
         return [str(value) for value in cal.loc[mask, "cal_date"].dt.strftime("%Y%m%d").tolist()]
 
@@ -242,10 +241,18 @@ class Extractor:
                     raise RuntimeError(f"Required endpoint {endpoint.name} returned empty for {trade_date}")
                 self.store.write(endpoint.name, trade_date, result.data, metadata, status=result.status)
                 fetched[endpoint.name] = result.data
-                logger.info("{} {}: status={}, rows={}", trade_date, endpoint.name, result.status, len(result.data))
+                logger.info(
+                    "{} {}: status={}, rows={}", trade_date, endpoint.name, result.status, len(result.data)
+                )
             else:
                 self.store.write_status(endpoint.name, trade_date, status=result.status, metadata=metadata)
-                logger.warning("{} {}: status={}, will {}", trade_date, endpoint.name, result.status, "retry" if result.status == "failed" else "skip")
+                logger.warning(
+                    "{} {}: status={}, will {}",
+                    trade_date,
+                    endpoint.name,
+                    result.status,
+                    "retry" if result.status == "failed" else "skip",
+                )
 
         for required_name in ("daily", "adj_factor", "daily_basic"):
             if required_name not in fetched:
@@ -280,15 +287,32 @@ class Extractor:
                 raise ValueError("sync-benchmark requires data_source.mysql configuration")
             frame = fetch_lean_benchmark(mysql_cfg, normalized_symbol, start_date, end_date)
         else:
-            if len(normalized_symbol) == 8 and normalized_symbol[:2] in {"SH", "SZ", "BJ"} and normalized_symbol[2:].isdigit():
+            if (
+                len(normalized_symbol) == 8
+                and normalized_symbol[:2] in {"SH", "SZ", "BJ"}
+                and normalized_symbol[2:].isdigit()
+            ):
                 ts_code = f"{normalized_symbol[2:]}.{normalized_symbol[:2]}"
-            elif len(normalized_symbol) == 9 and normalized_symbol[:6].isdigit() and normalized_symbol[6:] in {".SH", ".SZ", ".BJ"}:
+            elif (
+                len(normalized_symbol) == 9
+                and normalized_symbol[:6].isdigit()
+                and normalized_symbol[6:] in {".SH", ".SZ", ".BJ"}
+            ):
                 ts_code = normalized_symbol
             else:
                 raise ValueError(f"unsupported benchmark symbol: {symbol}")
-            frame = self.client.call("index_daily", required=True, ts_code=ts_code, start_date=start_date, end_date=end_date, fields=INDEX_DAILY_FIELDS)
+            frame = self.client.call(
+                "index_daily",
+                required=True,
+                ts_code=ts_code,
+                start_date=start_date,
+                end_date=end_date,
+                fields=INDEX_DAILY_FIELDS,
+            )
         if frame.empty:
-            raise RuntimeError(f"benchmark source has no index {normalized_symbol} for {start_date}..{end_date}")
+            raise RuntimeError(
+                f"benchmark source has no index {normalized_symbol} for {start_date}..{end_date}"
+            )
         frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise")
         if frame["trade_date"].duplicated().any():
             raise ValueError(f"duplicate benchmark dates for {symbol}; configure one canonical source")
@@ -298,3 +322,64 @@ class Extractor:
         frame.to_parquet(target, index=False)
         logger.info("Saved benchmark {}: {} rows -> {}", normalized_symbol, len(frame), target)
         return frame
+
+    def sync_universe_membership(self, start_date: str, end_date: str) -> pd.DataFrame:
+        configured = configured_universe(self.settings)
+        if configured is None:
+            raise ValueError("sync-universe requires a named point-in-time universe")
+        _, index_code, _ = configured
+        universe_cfg = self.settings.data.get("universe", {})
+        lag = int(universe_cfg.get("membership_effective_lag_days", 1))
+        start = pd.Timestamp(start_date)
+        end = pd.Timestamp(end_date)
+        if start > end:
+            raise ValueError("universe start_date must not be after end_date")
+        frames: list[pd.DataFrame] = []
+        if self.source_is_mysql:
+            source_cfg = self.settings.data.get("data_source", {})
+            mysql_cfg = source_cfg.get("mysql", {}) if isinstance(source_cfg, Mapping) else {}
+            universe_code = str(mysql_cfg.get("universe", index_code))
+            frame = self.client.call(
+                "index_weight",
+                required=True,
+                index_code=universe_code,
+                start_date=start.strftime("%Y%m%d"),
+                end_date=end.strftime("%Y%m%d"),
+            )
+            frames.append(frame)
+        else:
+            # Query month-by-month: index_weight is snapshot-oriented and large ranges
+            # may be truncated by the upstream service.
+            for period in pd.period_range(start=start, end=end, freq="M"):
+                month_start = max(start, period.start_time)
+                month_end = min(end, period.end_time)
+                frame = self.client.call(
+                    "index_weight",
+                    required=True,
+                    index_code=index_code,
+                    start_date=month_start.strftime("%Y%m%d"),
+                    end_date=month_end.strftime("%Y%m%d"),
+                    fields="index_code,con_code,trade_date,weight",
+                )
+                if not frame.empty:
+                    frames.append(frame)
+        snapshots = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        calendar_path = self.settings.paths.metadata / "trade_calendar.parquet"
+        if not calendar_path.is_file():
+            self.fetch_calendar(start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
+        calendar_frame = pd.read_parquet(calendar_path)
+        calendar = pd.DatetimeIndex(
+            pd.to_datetime(
+                calendar_frame.loc[calendar_frame["is_open"].astype(int) == 1, "cal_date"],
+                errors="coerce",
+            ).dropna()
+        )
+        intervals = build_membership_intervals(
+            snapshots,
+            calendar,
+            universe_code=index_code,
+            effective_lag_days=lag,
+        )
+        path = write_membership(self.settings, intervals)
+        logger.info("Saved PIT universe {}: {} intervals -> {}", index_code, len(intervals), path)
+        return intervals

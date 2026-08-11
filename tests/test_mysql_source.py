@@ -28,7 +28,13 @@ def test_build_mysql_endpoints_default_and_override():
 
 
 def test_build_connection_kwargs_env_fallback(monkeypatch):
-    for key in ["LEAN_MYSQL_HOST", "LEAN_MYSQL_USER", "LEAN_MYSQL_PASSWORD", "LEAN_MYSQL_DB", "LEAN_MYSQL_PORT"]:
+    for key in [
+        "LEAN_MYSQL_HOST",
+        "LEAN_MYSQL_USER",
+        "LEAN_MYSQL_PASSWORD",
+        "LEAN_MYSQL_DB",
+        "LEAN_MYSQL_PORT",
+    ]:
         monkeypatch.delenv(key, raising=False)
 
     monkeypatch.setenv("LEAN_MYSQL_HOST", "127.0.0.1")
@@ -37,7 +43,9 @@ def test_build_connection_kwargs_env_fallback(monkeypatch):
     monkeypatch.setenv("LEAN_MYSQL_DB", "market")
     monkeypatch.setenv("LEAN_MYSQL_PORT", "3307")
 
-    kwargs = build_connection_kwargs({"host": "", "user": "", "password": "", "database": "", "readonly": True})
+    kwargs = build_connection_kwargs(
+        {"host": "", "user": "", "password": "", "database": "", "readonly": True}
+    )
 
     assert kwargs["host"] == "127.0.0.1"
     assert kwargs["user"] == "tester"

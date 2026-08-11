@@ -29,7 +29,9 @@ def build_pit_fundamentals(reports: pd.DataFrame, calendar: pd.DataFrame) -> pd.
         raise ValueError(f"fundamental reports missing columns: {sorted(missing)}")
     if "cal_date" not in calendar or "is_open" not in calendar:
         raise ValueError("calendar must contain cal_date and is_open")
-    dates = pd.to_datetime(calendar.loc[pd.to_numeric(calendar["is_open"], errors="coerce") == 1, "cal_date"], errors="coerce")
+    dates = pd.to_datetime(
+        calendar.loc[pd.to_numeric(calendar["is_open"], errors="coerce") == 1, "cal_date"], errors="coerce"
+    )
     dates = pd.DatetimeIndex(dates.dropna().sort_values().unique())
     records = reports.copy()
     records["ann_date"] = pd.to_datetime(records["ann_date"], errors="coerce").dt.normalize()
@@ -55,10 +57,16 @@ def build_pit_fundamentals(reports: pd.DataFrame, calendar: pd.DataFrame) -> pd.
         expanded = expanded.loc[expanded[list(PIT_FIELDS)].notna().any(axis=1)]
         expanded.insert(0, "ts_code", str(code))
         rows.append(expanded)
-    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame(columns=["ts_code", "trade_date", *PIT_FIELDS])
+    return (
+        pd.concat(rows, ignore_index=True)
+        if rows
+        else pd.DataFrame(columns=["ts_code", "trade_date", *PIT_FIELDS])
+    )
 
 
-def ingest_pit_fundamentals(reports_path: str | Path, calendar_path: str | Path, output_path: str | Path) -> Path:
+def ingest_pit_fundamentals(
+    reports_path: str | Path, calendar_path: str | Path, output_path: str | Path
+) -> Path:
     result = build_pit_fundamentals(pd.read_parquet(reports_path), pd.read_parquet(calendar_path))
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)

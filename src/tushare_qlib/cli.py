@@ -25,6 +25,9 @@ def parser() -> argparse.ArgumentParser:
     sb.add_argument("--symbol", default="SH000300")
     sb.add_argument("--start")
     sb.add_argument("--end")
+    su_members = sub.add_parser("sync-universe")
+    su_members.add_argument("--start")
+    su_members.add_argument("--end")
     c = sub.add_parser("curate")
     c.add_argument("--start")
     c.add_argument("--end")
@@ -39,6 +42,12 @@ def parser() -> argparse.ArgumentParser:
     su.add_argument("trade_dates", nargs="+")
     du = sub.add_parser("dump-update")
     du.add_argument("--single-thread", action="store_true")
+    fs = sub.add_parser("feature-store")
+    fs.add_argument("--start")
+    fs.add_argument("--end")
+    fs.add_argument("--force", action="store_true")
+    runtime_probe = sub.add_parser("runtime-probe")
+    runtime_probe.add_argument("--model-profile", required=True)
     ts = sub.add_parser("train-select")
     ts.add_argument("--train", nargs=2, metavar=("START", "END"))
     ts.add_argument("--valid", nargs=2, metavar=("START", "END"))
@@ -46,6 +55,7 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("--benchmark")
     ts.add_argument("--topn", type=int)
     ts.add_argument("--model-profile")
+    ts.add_argument("--stage", choices=["signal", "release"], default="release")
     rr = sub.add_parser("research-run")
     rr.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
     rr.add_argument("--start")
@@ -53,6 +63,7 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--benchmark", default="SH000300")
     rr.add_argument("--topn", type=int)
     rr.add_argument("--model-profile")
+    rr.add_argument("--stage", choices=["signal", "release"], default="release")
     rp = sub.add_parser("research-report")
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
@@ -433,7 +444,13 @@ def main() -> None:
         )
         return
 
-    if args.command in {"init-metadata", "backfill", "source-preflight", "sync-benchmark"}:
+    if args.command in {
+        "init-metadata",
+        "backfill",
+        "source-preflight",
+        "sync-benchmark",
+        "sync-universe",
+    }:
         from .extract import Extractor
 
         ext = Extractor(settings)
@@ -456,11 +473,16 @@ def main() -> None:
                     default=str,
                 )
             )
-        else:
+        elif args.command == "sync-benchmark":
             frame = ext.sync_benchmark(
                 args.symbol, args.start or settings.data["start_date"], args.end or settings.data["end_date"]
             )
             print(json.dumps({"symbol": args.symbol, "rows": len(frame)}, ensure_ascii=False))
+        else:
+            frame = ext.sync_universe_membership(
+                args.start or settings.data["start_date"], args.end or settings.data["end_date"]
+            )
+            print(json.dumps({"intervals": len(frame)}, ensure_ascii=False))
     elif args.command in {"curate", "curate-day", "stage-full", "stage-update"}:
         from .normalize import (
             build_all_curated,
@@ -486,10 +508,27 @@ def main() -> None:
             else dump_update(settings, single_thread=args.single_thread)
         )
         print(path)
+    elif args.command == "runtime-probe":
+        from .model_runtime import load_model_profile, resolve_runtime
+
+        runtime = resolve_runtime(load_model_profile(settings, args.model_profile))
+        print(json.dumps(runtime.to_manifest(), ensure_ascii=False))
+    elif args.command == "feature-store":
+        from .feature_store import prepare_feature_data
+
+        _, metadata = prepare_feature_data(
+            settings,
+            args.start or settings.data["start_date"],
+            args.end or settings.data["end_date"],
+            force=args.force,
+        )
+        print(json.dumps(metadata, ensure_ascii=False))
     elif args.command in {"train-select", "research-run"}:
         from .train_select import train_backtest_select
 
         if args.command == "research-run" and args.mode == "walk-forward":
+            if args.stage != "release":
+                raise ValueError("walk-forward currently requires --stage release")
             from .walk_forward import run_walk_forward
 
             manifest_path = run_walk_forward(
@@ -502,15 +541,19 @@ def main() -> None:
             )
             print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
         elif args.command == "research-run":
-            selection = train_backtest_select(
+            result = train_backtest_select(
                 settings,
                 benchmark=args.benchmark,
                 topn=args.topn,
                 model_profile=args.model_profile,
+                promotion_mode="signal" if args.stage == "signal" else "release",
             )
-            model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
-            manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
-            print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
+            if result.name == "manifest.json":
+                print(json.dumps(_report_payload(result), ensure_ascii=False))
+            else:
+                model_id = str(pd.read_csv(result)["model_id"].iloc[0])
+                manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+                print(json.dumps(_report_payload(manifest_path, result), ensure_ascii=False))
         else:
             train = tuple(args.train) if args.train else None
             valid = tuple(args.valid) if args.valid else None
@@ -523,10 +566,14 @@ def main() -> None:
                 benchmark=args.benchmark,
                 topn=args.topn,
                 model_profile=args.model_profile,
+                promotion_mode="signal" if args.stage == "signal" else "release",
             )
-            model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
-            manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
-            print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
+            if selection.name == "manifest.json":
+                print(json.dumps(_report_payload(selection), ensure_ascii=False))
+            else:
+                model_id = str(pd.read_csv(selection)["model_id"].iloc[0])
+                manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+                print(json.dumps(_report_payload(manifest_path, selection), ensure_ascii=False))
     else:
         raise AssertionError(args.command)
 

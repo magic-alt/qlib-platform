@@ -21,7 +21,12 @@ def population_stability_index(
     ref_pct = pd.cut(ref, edges, include_lowest=True).value_counts(normalize=True, sort=False)
     cur_pct = pd.cut(cur, edges, include_lowest=True).value_counts(normalize=True, sort=False)
     epsilon = 1e-6
-    return float(((cur_pct.clip(lower=epsilon) - ref_pct.clip(lower=epsilon)) * np.log(cur_pct.clip(lower=epsilon) / ref_pct.clip(lower=epsilon))).sum())
+    return float(
+        (
+            (cur_pct.clip(lower=epsilon) - ref_pct.clip(lower=epsilon))
+            * np.log(cur_pct.clip(lower=epsilon) / ref_pct.clip(lower=epsilon))
+        ).sum()
+    )
 
 
 def portfolio_risk_snapshot(
@@ -38,7 +43,11 @@ def portfolio_risk_snapshot(
     hhi = float((weights**2).sum())
     effective_names = 1.0 / hhi if hhi > 0 else 0.0
     group_exposure = (
-        targets.assign(_weight=weights).groupby(group_col)["_weight"].sum().sort_values(ascending=False).to_dict()
+        targets.assign(_weight=weights)
+        .groupby(group_col)["_weight"]
+        .sum()
+        .sort_values(ascending=False)
+        .to_dict()
         if group_col in targets.columns
         else {}
     )

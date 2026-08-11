@@ -251,7 +251,9 @@ def _normalise_holdings(frame: pd.DataFrame, names: Mapping[str, str]) -> pd.Dat
         holdings[column] = pd.to_numeric(holdings[column], errors="coerce")
     if holdings["market_value"].isna().any():
         holdings["market_value"] = holdings["market_value"].fillna(holdings["quantity"] * holdings["price"])
-    return holdings.sort_values(["trade_date", "weight", "instrument"], ascending=[True, False, True], kind="stable")
+    return holdings.sort_values(
+        ["trade_date", "weight", "instrument"], ascending=[True, False, True], kind="stable"
+    )
 
 
 def load_run_data(
@@ -296,7 +298,9 @@ def _metric_values(report: pd.DataFrame, audit: pd.DataFrame) -> dict[str, float
     drawdown = account / account.cummax() - 1.0
     active_returns = returns.iloc[1:]
     orders = audit.loc[audit["order_requested"].fillna(False).astype(bool)] if not audit.empty else audit
-    filled = orders.loc[orders["execution_status"].isin(["FILLED", "PARTIAL"])] if not orders.empty else orders
+    filled = (
+        orders.loc[orders["execution_status"].isin(["FILLED", "PARTIAL"])] if not orders.empty else orders
+    )
     return {
         "initial_account": float(account.iloc[0]),
         "ending_account": float(account.iloc[-1]),
@@ -407,12 +411,23 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
     plt.close(fig)
     paths.append(path)
 
-    positions_count = data.holdings.groupby("trade_date")["instrument"].nunique() if not data.holdings.empty else pd.Series(dtype=float)
+    positions_count = (
+        data.holdings.groupby("trade_date")["instrument"].nunique()
+        if not data.holdings.empty
+        else pd.Series(dtype=float)
+    )
     count = positions_count.reindex(date, fill_value=0)
     value = report["value"].fillna(account - report["cash"].fillna(0.0))
     cash = report["cash"].fillna(0.0)
     fig, axes = plt.subplots(2, 1, figsize=(11.5, 7.2), sharex=True)
-    axes[0].stackplot(date, value / account, cash / account, labels=["Stock value", "Cash"], colors=["#176B87", "#EAB308"], alpha=0.85)
+    axes[0].stackplot(
+        date,
+        value / account,
+        cash / account,
+        labels=["Stock value", "Cash"],
+        colors=["#176B87", "#EAB308"],
+        alpha=0.85,
+    )
     axes[0].set_ylim(0, 1.05)
     _set_title(axes[0], "账户仓位与现金占比", font)
     axes[0].set_ylabel("Account share")
@@ -453,10 +468,14 @@ def _save_charts(data: RunData, assets_dir: Path) -> list[Path]:
         axes[0].text(0.5, 0.5, "No requested orders", ha="center", va="center")
         axes[1].text(0.5, 0.5, "No requested orders", ha="center", va="center")
     else:
-        activity = trades.assign(
-            buy=trades["actual_action"].eq("BUY").astype(int),
-            sell=trades["actual_action"].eq("SELL").astype(int),
-        ).groupby("trade_date")[["buy", "sell"]].sum()
+        activity = (
+            trades.assign(
+                buy=trades["actual_action"].eq("BUY").astype(int),
+                sell=trades["actual_action"].eq("SELL").astype(int),
+            )
+            .groupby("trade_date")[["buy", "sell"]]
+            .sum()
+        )
         axes[0].bar(activity.index, activity["buy"], label="Buy", color="#15803D", width=0.8)
         axes[0].bar(activity.index, -activity["sell"], label="Sell", color="#DC2626", width=0.8)
         _set_title(axes[0], "每日交易股票数", font)
@@ -553,7 +572,11 @@ def _runtime_rows(manifest: Mapping[str, Any]) -> list[tuple[str, str]]:
     if not isinstance(runtime, Mapping) or not runtime:
         return []
     versions = runtime.get("versions", {})
-    version_text = ", ".join(f"{key}={value}" for key, value in versions.items()) if isinstance(versions, Mapping) else "-"
+    version_text = (
+        ", ".join(f"{key}={value}" for key, value in versions.items())
+        if isinstance(versions, Mapping)
+        else "-"
+    )
     return [
         ("模型 Profile", str(runtime.get("modelProfile", "unknown"))),
         ("模型家族", str(runtime.get("modelFamily", "unknown"))),
@@ -613,7 +636,11 @@ def _fold_rows(data: RunData) -> list[list[str]]:
         return []
     rows: list[list[str]] = []
     for key, frame in data.report.groupby("fold_key", sort=False):
-        audit = data.audit.loc[data.audit["fold_key"] == key] if "fold_key" in data.audit else data.audit.iloc[0:0]
+        audit = (
+            data.audit.loc[data.audit["fold_key"] == key]
+            if "fold_key" in data.audit
+            else data.audit.iloc[0:0]
+        )
         metrics = _metric_values(frame, audit)
         rows.append(
             [
@@ -628,7 +655,9 @@ def _fold_rows(data: RunData) -> list[list[str]]:
     return rows
 
 
-def _write_markdown(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, float | int | None]) -> None:
+def _write_markdown(
+    data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, float | int | None]
+) -> None:
     report = data.report
     final = _final_holdings(data.holdings)
     trades = _trade_rows(data.audit)
@@ -742,7 +771,20 @@ def _write_markdown(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[
     ]
     lines.append(
         _markdown_table(
-            ["日期", "折", "股票", "计划", "实际", "请求数量", "成交数量", "成交价", "成交额", "成本", "状态", "原因"],
+            [
+                "日期",
+                "折",
+                "股票",
+                "计划",
+                "实际",
+                "请求数量",
+                "成交数量",
+                "成交价",
+                "成交额",
+                "成本",
+                "状态",
+                "原因",
+            ],
             trade_rows,
         )
         if trade_rows
@@ -767,7 +809,9 @@ def _write_markdown(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[
         if not isinstance(item, Mapping) or not item.get("localPath"):
             continue
         path = Path(str(item["localPath"]))
-        artifact_rows.append([str(item.get("name", path.name)), f"[{path.name}]({_relative(path, data.run_dir)})"])
+        artifact_rows.append(
+            [str(item.get("name", path.name)), f"[{path.name}]({_relative(path, data.run_dir)})"]
+        )
     lines.append(_markdown_table(["产物", "路径"], artifact_rows))
     artifacts.markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -808,7 +852,9 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
         from reportlab.pdfbase.cidfonts import UnicodeCIDFont
         from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer
     except ImportError as exc:  # pragma: no cover - dependency check is packaging-owned
-        raise RuntimeError("PDF reporting requires reportlab. Install project dependencies and retry.") from exc
+        raise RuntimeError(
+            "PDF reporting requires reportlab. Install project dependencies and retry."
+        ) from exc
 
     try:
         pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
@@ -828,12 +874,24 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
     )
     styles = getSampleStyleSheet()
     title = ParagraphStyle(
-        "ReportTitle", parent=styles["Title"], fontName="STSong-Light", fontSize=22, leading=28, alignment=TA_CENTER
+        "ReportTitle",
+        parent=styles["Title"],
+        fontName="STSong-Light",
+        fontSize=22,
+        leading=28,
+        alignment=TA_CENTER,
     )
     heading = ParagraphStyle(
-        "ReportHeading", parent=styles["Heading2"], fontName="STSong-Light", fontSize=13, leading=18, textColor=colors.HexColor("#176B87")
+        "ReportHeading",
+        parent=styles["Heading2"],
+        fontName="STSong-Light",
+        fontSize=13,
+        leading=18,
+        textColor=colors.HexColor("#176B87"),
     )
-    body = ParagraphStyle("ReportBody", parent=styles["BodyText"], fontName="STSong-Light", fontSize=8.5, leading=13)
+    body = ParagraphStyle(
+        "ReportBody", parent=styles["BodyText"], fontName="STSong-Light", fontSize=8.5, leading=13
+    )
     story: list[Any] = [
         Paragraph("回测报告", title),
         Spacer(1, 5 * mm),
@@ -850,11 +908,23 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
         story.extend([Paragraph("运行环境与阶段耗时", heading), Spacer(1, 2 * mm)])
         if runtime_rows:
             story.extend(
-                [_pdf_table([["项目", "内容"]] + [[key, value] for key, value in runtime_rows], [75 * mm, 185 * mm]), Spacer(1, 3 * mm)]
+                [
+                    _pdf_table(
+                        [["项目", "内容"]] + [[key, value] for key, value in runtime_rows],
+                        [75 * mm, 185 * mm],
+                    ),
+                    Spacer(1, 3 * mm),
+                ]
             )
         if timing_rows:
             story.extend(
-                [_pdf_table([["阶段", "耗时"]] + [[key, value] for key, value in timing_rows], [155 * mm, 105 * mm]), Spacer(1, 3 * mm)]
+                [
+                    _pdf_table(
+                        [["阶段", "耗时"]] + [[key, value] for key, value in timing_rows],
+                        [155 * mm, 105 * mm],
+                    ),
+                    Spacer(1, 3 * mm),
+                ]
             )
     story.extend(
         [
@@ -896,9 +966,16 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
     fold_rows = _fold_rows(data)
     if fold_rows:
         story.extend([PageBreak(), Paragraph("Walk-forward 分折汇总", heading), Spacer(1, 2 * mm)])
-        story.append(Paragraph("总账户净值按日收益连续复利重建。仓位与订单明细按各折独立模拟资金保留。", body))
+        story.append(
+            Paragraph("总账户净值按日收益连续复利重建。仓位与订单明细按各折独立模拟资金保留。", body)
+        )
         story.append(Spacer(1, 2 * mm))
-        story.append(_pdf_table([["折", "开始", "结束", "收益", "最大回撤", "请求 / 成交"]] + fold_rows, [42 * mm, 35 * mm, 35 * mm, 35 * mm, 35 * mm, 40 * mm]))
+        story.append(
+            _pdf_table(
+                [["折", "开始", "结束", "收益", "最大回撤", "请求 / 成交"]] + fold_rows,
+                [42 * mm, 35 * mm, 35 * mm, 35 * mm, 35 * mm, 40 * mm],
+            )
+        )
         fold_timing_rows = _fold_timing_rows(data.manifest)
         if fold_timing_rows:
             story.extend([Spacer(1, 4 * mm), Paragraph("分折耗时（秒）", body), Spacer(1, 2 * mm)])
@@ -911,24 +988,45 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
             )
         for key in data.report["fold_key"].dropna().drop_duplicates():
             subset = data.report.loc[data.report["fold_key"] == key]
-            subset_holdings = data.holdings.loc[data.holdings["fold_key"] == key] if "fold_key" in data.holdings else data.holdings.iloc[0:0]
+            subset_holdings = (
+                data.holdings.loc[data.holdings["fold_key"] == key]
+                if "fold_key" in data.holdings
+                else data.holdings.iloc[0:0]
+            )
             story.extend([PageBreak(), Paragraph(f"分折: {key}", heading), Spacer(1, 2 * mm)])
-            subset_audit = data.audit.loc[data.audit["fold_key"] == key] if "fold_key" in data.audit else data.audit.iloc[0:0]
+            subset_audit = (
+                data.audit.loc[data.audit["fold_key"] == key]
+                if "fold_key" in data.audit
+                else data.audit.iloc[0:0]
+            )
             subset_metrics = _metric_values(subset, subset_audit)
-            story.append(_pdf_table([["指标", "数值"]] + [[name, value] for name, value in _metrics_rows(subset_metrics)[:10]], [155 * mm, 105 * mm]))
+            story.append(
+                _pdf_table(
+                    [["指标", "数值"]]
+                    + [[name, value] for name, value in _metrics_rows(subset_metrics)[:10]],
+                    [155 * mm, 105 * mm],
+                )
+            )
             fold_final = _final_holdings(subset_holdings)
             if not fold_final.empty:
                 story.append(Spacer(1, 3 * mm))
                 story.append(Paragraph("折末持仓 Top 10", body))
                 rows = [["股票", "权重", "市值", "持有天数"]] + [
-                    [_stock_label(row), _fmt_percent(row.weight), _fmt_number(row.market_value), _fmt_number(row.holding_days, 0)]
+                    [
+                        _stock_label(row),
+                        _fmt_percent(row.weight),
+                        _fmt_number(row.market_value),
+                        _fmt_number(row.holding_days, 0),
+                    ]
                     for row in fold_final.head(10).itertuples(index=False)
                 ]
                 story.append(_pdf_table(rows, [85 * mm, 35 * mm, 50 * mm, 35 * mm]))
 
     trades = _trade_rows(data.audit)
     story.extend([PageBreak(), Paragraph("逐笔委托与成交", heading), Spacer(1, 2 * mm)])
-    trade_rows = [["日期", "折", "股票", "计划", "实际", "请求", "成交", "成交价", "成交额", "成本", "状态", "原因"]]
+    trade_rows = [
+        ["日期", "折", "股票", "计划", "实际", "请求", "成交", "成交价", "成交额", "成本", "状态", "原因"]
+    ]
     trade_rows.extend(
         [
             [
@@ -951,7 +1049,20 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
     story.append(
         _pdf_table(
             trade_rows,
-            [21 * mm, 21 * mm, 38 * mm, 16 * mm, 16 * mm, 22 * mm, 22 * mm, 20 * mm, 28 * mm, 24 * mm, 22 * mm, 40 * mm],
+            [
+                21 * mm,
+                21 * mm,
+                38 * mm,
+                16 * mm,
+                16 * mm,
+                22 * mm,
+                22 * mm,
+                20 * mm,
+                28 * mm,
+                24 * mm,
+                22 * mm,
+                40 * mm,
+            ],
             small=True,
         )
     )

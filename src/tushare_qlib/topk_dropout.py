@@ -31,7 +31,9 @@ class TopkDropoutPolicy:
             n_drop=int(str(data.get("n_drop", cls.n_drop))),
             hold_thresh=int(str(data.get("hold_thresh", cls.hold_thresh))),
             only_tradable=bool(data.get("only_tradable", cls.only_tradable)),
-            forbid_all_trade_at_limit=bool(data.get("forbid_all_trade_at_limit", cls.forbid_all_trade_at_limit)),
+            forbid_all_trade_at_limit=bool(
+                data.get("forbid_all_trade_at_limit", cls.forbid_all_trade_at_limit)
+            ),
             risk_degree=float(str(data.get("risk_degree", cls.risk_degree))),
         )
 
@@ -183,8 +185,12 @@ def topk_dropout_decision(
     theoretical_sell = last[last.isin(_last_n(comb, policy.n_drop, sell_filter))]
     buy = today[: len(theoretical_sell) + policy.topk - len(last)]
 
-    holding_days = current.set_index("instrument")["holding_days"] if not current.empty else pd.Series(dtype=int)
-    relevant = pd.Index(last).union(today).union(ranked.head(policy.topk).index).union(theoretical_sell).union(buy)
+    holding_days = (
+        current.set_index("instrument")["holding_days"] if not current.empty else pd.Series(dtype=int)
+    )
+    relevant = (
+        pd.Index(last).union(today).union(ranked.head(policy.topk).index).union(theoretical_sell).union(buy)
+    )
     rows: list[dict[str, object]] = []
     sell_order = {str(instrument): idx for idx, instrument in enumerate(theoretical_sell)}
     buy_order = {str(instrument): idx for idx, instrument in enumerate(buy)}
@@ -217,8 +223,12 @@ def topk_dropout_decision(
             action, reason = "HOLD", "CANDIDATE_NOT_SELECTED"
         rows.append(
             {
-                "signal_date": pd.Timestamp(signal_date).strftime("%Y-%m-%d") if signal_date is not None else None,
-                "trade_date": pd.Timestamp(trade_date).strftime("%Y-%m-%d") if trade_date is not None else None,
+                "signal_date": pd.Timestamp(signal_date).strftime("%Y-%m-%d")
+                if signal_date is not None
+                else None,
+                "trade_date": pd.Timestamp(trade_date).strftime("%Y-%m-%d")
+                if trade_date is not None
+                else None,
                 "instrument": instrument,
                 "score": float(score.get(instrument, np.nan)),
                 "score_rank": int(score_rank[instrument]) if instrument in score_rank else pd.NA,

@@ -39,7 +39,9 @@ def test_tushare_benchmark_sync_writes_canonical_series(tmp_path):
         def call(self, endpoint, **kwargs):
             assert endpoint == "index_daily"
             assert kwargs["ts_code"] == "000300.SH"
-            return pd.DataFrame({"trade_date": ["20260807", "20260806"], "close": [4100.0, 4050.0], "open": [4080.0, 4040.0]})
+            return pd.DataFrame(
+                {"trade_date": ["20260807", "20260806"], "close": [4100.0, 4050.0], "open": [4080.0, 4040.0]}
+            )
 
     extractor = object.__new__(Extractor)
     extractor.settings = settings

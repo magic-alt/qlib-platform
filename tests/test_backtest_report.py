@@ -91,7 +91,11 @@ def _write_run(settings: Settings, *, holdings: bool = True) -> Path:
         }
     ).to_parquet(run_dir / "strategy_audit.parquet", index=False)
     artifacts: list[dict[str, object]] = [
-        {"name": "portfolio_report.parquet", "localPath": str(run_dir / "portfolio_report.parquet"), "rows": 3},
+        {
+            "name": "portfolio_report.parquet",
+            "localPath": str(run_dir / "portfolio_report.parquet"),
+            "rows": 3,
+        },
         {"name": "strategy_audit.parquet", "localPath": str(run_dir / "strategy_audit.parquet"), "rows": 2},
     ]
     if holdings:
@@ -108,7 +112,9 @@ def _write_run(settings: Settings, *, holdings: bool = True) -> Path:
                 "account": [102_000.0, 101_000.0],
             }
         ).to_parquet(run_dir / "holdings.parquet", index=False)
-        artifacts.append({"name": "holdings.parquet", "localPath": str(run_dir / "holdings.parquet"), "rows": 2})
+        artifacts.append(
+            {"name": "holdings.parquet", "localPath": str(run_dir / "holdings.parquet"), "rows": 2}
+        )
     manifest = {
         "schemaVersion": "1.1",
         "externalRunId": "run-1",
@@ -166,12 +172,18 @@ def test_report_writes_markdown_pdf_charts_and_transaction_appendix(tmp_path: Pa
 def test_report_loads_legacy_mlflow_position_snapshot(tmp_path: Path):
     settings = _settings(tmp_path)
     run_dir = _write_run(settings, holdings=False)
-    position_path = tmp_path / "mlruns" / "1" / "run-1" / "artifacts" / "portfolio_analysis" / "positions_normal_1day.pkl"
+    position_path = (
+        tmp_path / "mlruns" / "1" / "run-1" / "artifacts" / "portfolio_analysis" / "positions_normal_1day.pkl"
+    )
     position_path.parent.mkdir(parents=True)
     positions = {
         pd.Timestamp("2026-01-05"): _Position(100_000.0, {}),
-        pd.Timestamp("2026-01-06"): _Position(2_000.0, {"SZ000001": {"amount": 10_000.0, "price": 10.0, "days": 1}}),
-        pd.Timestamp("2026-01-07"): _Position(4_000.0, {"SH600000": {"amount": 8_000.0, "price": 12.0, "days": 2}}),
+        pd.Timestamp("2026-01-06"): _Position(
+            2_000.0, {"SZ000001": {"amount": 10_000.0, "price": 10.0, "days": 1}}
+        ),
+        pd.Timestamp("2026-01-07"): _Position(
+            4_000.0, {"SH600000": {"amount": 8_000.0, "price": 12.0, "days": 2}}
+        ),
     }
     with position_path.open("wb") as handle:
         pickle.dump(positions, handle)

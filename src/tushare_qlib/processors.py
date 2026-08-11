@@ -52,11 +52,10 @@ class AshareUniverseFilter(Processor):
 class ProcessInfSingleThread(Processor):
     """Replace infinities with each date's finite column mean without worker copies."""
 
-    _BATCH_COLUMNS = 16
+    _BATCH_COLUMNS = 32
 
-    def __init__(self, fields_group=None, n_jobs: int = 1):
+    def __init__(self, fields_group=None):
         self.fields_group = fields_group
-        self.n_jobs = n_jobs
 
     def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
         # Alpha158 contains millions of rows. The previous datetime-group

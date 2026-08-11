@@ -42,9 +42,23 @@ class TushareAlpha158Daily(Alpha158):
             "$is_limit_down",
         ]
         custom_names = [
-            "TURNOVER_F", "VOLUME_RATIO", "LOG_CIRC_MV", "CIRC_MV", "PE_TTM", "PB", "PS_TTM", "DV_TTM",
-            "MONEY20", "NET_MF_5", "NET_MF_20", "BIG_NET_5", "PAUSED", "IS_ST", "LISTED_DAYS",
-            "IS_LIMIT_UP", "IS_LIMIT_DOWN",
+            "TURNOVER_F",
+            "VOLUME_RATIO",
+            "LOG_CIRC_MV",
+            "CIRC_MV",
+            "PE_TTM",
+            "PB",
+            "PS_TTM",
+            "DV_TTM",
+            "MONEY20",
+            "NET_MF_5",
+            "NET_MF_20",
+            "BIG_NET_5",
+            "PAUSED",
+            "IS_ST",
+            "LISTED_DAYS",
+            "IS_LIMIT_UP",
+            "IS_LIMIT_DOWN",
         ]
         return list(fields) + custom_fields, list(names) + custom_names
 

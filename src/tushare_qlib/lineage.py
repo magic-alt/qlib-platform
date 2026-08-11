@@ -10,6 +10,7 @@ from typing import Mapping
 from .canonical_config import CanonicalConfig
 from .settings import Settings
 from .store import sha256_file
+from .universe import membership_fingerprint
 
 
 def sha256_json(value: object) -> str:
@@ -85,6 +86,7 @@ def build_lineage(
         "secondaryFilters": config.dataset.secondary_filters,
         "sourceSnapshotId": dataset_manifest.get("source_snapshot_id")
         or dataset_manifest.get("staging_manifest_sha256"),
+        "membershipSnapshotSha256": dataset_manifest.get("universe_membership_sha256"),
     }
     required = {
         "qlibPlatformCommit": platform_git.get("commit"),
@@ -98,6 +100,15 @@ def build_lineage(
         "modelParametersSha256": model_hash,
         "universeSpecSha256": sha256_json(universe_payload),
     }
+    universe_membership_matches_dataset = True
+    if config.dataset.membership_type == "point_in_time":
+        current_membership_hash = membership_fingerprint(settings)
+        required["universeMembershipSha256"] = current_membership_hash
+        required["datasetUniverseMembershipSha256"] = dataset_manifest.get("universe_membership_sha256")
+        universe_payload["currentMembershipSha256"] = current_membership_hash
+        universe_membership_matches_dataset = current_membership_hash == dataset_manifest.get(
+            "universe_membership_sha256"
+        )
     required_fields_complete = all(value not in {None, "", "unversioned"} for value in required.values())
     qlib_commit_matches_dataset = bool(qlib_git.get("commit")) and qlib_git.get(
         "commit"
@@ -105,6 +116,7 @@ def build_lineage(
     complete = (
         required_fields_complete
         and qlib_commit_matches_dataset
+        and universe_membership_matches_dataset
         and platform_git.get("dirty") is False
         and qlib_git.get("dirty") is False
     )
@@ -117,6 +129,7 @@ def build_lineage(
         "modelParameters": config.model.parameters,
         "universe": universe_payload,
         "qlibCommitMatchesDataset": qlib_commit_matches_dataset,
+        "universeMembershipMatchesDataset": universe_membership_matches_dataset,
         "complete": complete,
     }
     payload["lineageId"] = sha256_json(payload)[:32]
@@ -137,4 +150,5 @@ def dirty_research_override_enabled(settings: Settings, lineage: Mapping[str, ob
         and (platform_dirty is True or qlib_dirty is True)
         and lineage.get("requiredFieldsComplete") is True
         and lineage.get("qlibCommitMatchesDataset") is True
+        and lineage.get("universeMembershipMatchesDataset", True) is True
     )

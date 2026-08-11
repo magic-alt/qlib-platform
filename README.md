@@ -50,11 +50,13 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 先做缩短验证周期的冒烟验证，命令如下（示例 `20250101-20260805`）：
 
 ```bash
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20230801 --end 20260807
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20230801 --end 20260807
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-universe --start 20160104 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20160104 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20160104 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20160104 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full --single-thread
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml feature-store --start 20160104 --end 20260810
 ```
 
 若上述步骤通过，再执行全量构建（与日常首次一致）：
@@ -63,9 +65,9 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 
 ```bash
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml init-metadata
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20230801 --end 20260807
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20230801 --end 20260807
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20230801 --end 20260807
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20230801 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20230801 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20230801 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full --single-thread
 ```
@@ -86,9 +88,9 @@ tq --config configs/pipeline.yaml train-select
 ```
 
 一体化 runner 默认读取 `configs/model_profiles/lightgbm_auto.yaml`。模型家族由 profile 固定，`auto`
-只选择该模型可用的执行设备，不会因为换机器而把 LightGBM 改成 DNN。Linux 上会用一个极小训练任务验证
-当前 LightGBM 是否真的包含 CUDA backend；探测失败或在 macOS/Windows 上运行时会回退 CPU，并把原因写入
-运行 manifest。显式指定 CUDA 或 MPS 时不会静默回退。
+只选择该模型可用的执行设备，不会因为换机器而把 LightGBM 改成 DNN。Linux 会探测 CUDA backend，Windows
+会探测 OpenCL `gpu` backend；两者都执行一个真实的一棵树训练，而不是只检查显卡。`auto` 探测失败会回退 CPU
+并写入 manifest；显式指定 CUDA、OpenCL GPU 或 MPS 时不会静默回退。
 
 ```bash
 # Apple Silicon：CPU LightGBM
@@ -99,19 +101,36 @@ tq --config configs/pipeline.yaml train-select \
 tq --config configs/pipeline.yaml research-run --mode walk-forward \
   --model-profile configs/model_profiles/lightgbm_cuda_nvidia.yaml
 
+# Windows 原生 OpenCL：先按 docs/windows_lightgbm_gpu.md 编译，再验证
+tq --config configs/pipeline.yaml runtime-probe \
+  --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
+tq --config configs/pipeline.yaml train-select \
+  --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
+
 # Apple Silicon：Qlib DNN + PyTorch MPS
 pip install -e '.[pytorch]'
 tq --config configs/pipeline.yaml train-select \
   --model-profile configs/model_profiles/pytorch_mps_m5.yaml
 ```
 
-CPU/CUDA LightGBM profiles 都使用 `max_bin=63`，因此可以在相同模型参数下比较耗时与指标。DNN 的输入
+CPU/CUDA/OpenCL LightGBM profiles 都使用 `max_bin=63`，因此可以在相同模型参数下比较耗时与指标。DNN 的输入
 维度由 `TushareAlpha158Daily` 的实际字段数动态注入，不能按标准 Alpha158 固定写成 158。
 
 每次运行会在 `data/output/research/<model_id>/timings.json`、manifest、MLflow 和命令行 JSON 中记录
-`data / train / predict / signal_analysis / backtest / artifact_export` 耗时；Markdown/PDF 报告也会展示设备、
+`qlib_init / feature_store / handler_process / train / model_save / predict / signal_analysis / backtest /
+artifact_export / report` 耗时、wall time、peak RSS 与 LightGBM best iteration；Markdown/PDF 报告也会展示设备、
 降级原因和阶段耗时。`backtest` 包含 Qlib `PortAnaRecord` 绑定执行的组合风险/指标分析，且不代表回测已在
-GPU 上运行。报告渲染自身不计入阶段合计。
+GPU 上运行。
+
+大批量特征实验先使用不运行 portfolio backtest、也绝不发布 selection 的 Signal Screen：
+
+```bash
+tq --config configs/pipeline.yaml research-run --mode fixed --stage signal \
+  --model-profile configs/model_profiles/lightgbm_cpu_fast.yaml
+```
+
+Signal Gate 通过后，再运行完整 fixed/walk-forward portfolio Gate。默认 walk-forward 使用 1500 日 train、126 日
+valid、63 日 test，累计 252 日 rolling OOS 与独立 252 日 final holdout，并统一使用 6 日 purge/embargo/label buffer。
 
 一体化流程会自动从 OOS prediction、label 和组合报告计算 Research Gate。只有全部阈值通过且 lineage 完整的
 运行才标记为 `PROMOTED`，并发布 `data/output/selection_YYYYMMDD.csv` 与

@@ -76,7 +76,9 @@ def test_reconcile_resets_holding_period_after_full_close_and_reopen(tmp_path):
             "fill_price": [10.0],
         }
     )
-    reconcile_holdings(position, first_fill, as_of_date="2026-01-05", calendar_path=calendar, ledger_path=ledger)
+    reconcile_holdings(
+        position, first_fill, as_of_date="2026-01-05", calendar_path=calendar, ledger_path=ledger
+    )
     reconcile_holdings(
         pd.DataFrame(
             columns=[
@@ -136,9 +138,7 @@ def test_reconcile_returns_execution_snapshot_and_keeps_internal_ledger_private(
         as_of_date="2026-01-06",
         calendar_path=calendar,
         ledger_path=ledger,
-        initial_holdings=pd.DataFrame(
-            {"instrument": ["SH600000"], "opened_trade_date": ["2026-01-05"]}
-        ),
+        initial_holdings=pd.DataFrame({"instrument": ["SH600000"], "opened_trade_date": ["2026-01-05"]}),
     )
 
     assert state.columns.tolist() == [

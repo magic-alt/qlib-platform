@@ -1,0 +1,14 @@
+name: lightgbm_cpu_fast
+family: lightgbm
+device: cpu
+device_index: 0
+model_kwargs:
+  learning_rate: 0.05
+  num_boost_round: 800
+  early_stopping_rounds: 50
+  max_bin: 63
+  subsample: 0.8
+  bagging_freq: 1
+  colsample_bytree: 0.8
+  force_row_wise: true
+  num_threads: 8

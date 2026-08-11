@@ -92,9 +92,7 @@ task:
     return workflow
 
 
-def test_qrun_contract_certifies_equivalent_static_semantics(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_qrun_contract_certifies_equivalent_static_semantics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     real_import = builtins.__import__
 
     def reject_runtime_imports(name: str, *args, **kwargs):
@@ -115,12 +113,13 @@ def test_qrun_contract_certifies_equivalent_static_semantics(
     ("limit", "actual"),
     [
         ("0.095", 0.095),
-        ('["$close == $up_limit", "$close == $down_limit"]', ("$close == $up_limit", "$close == $down_limit")),
+        (
+            '["$close == $up_limit", "$close == $down_limit"]',
+            ("$close == $up_limit", "$close == $down_limit"),
+        ),
     ],
 )
-def test_qrun_contract_reports_scalar_and_tuple_limit_mismatches(
-    tmp_path: Path, limit: str, actual: object
-):
+def test_qrun_contract_reports_scalar_and_tuple_limit_mismatches(tmp_path: Path, limit: str, actual: object):
     result = validate_qrun_contract(_settings(tmp_path), _write_workflow(tmp_path, limit))
 
     assert result["passed"] is False

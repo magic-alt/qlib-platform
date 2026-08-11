@@ -96,9 +96,13 @@ class PartitionStore:
             df.to_parquet(target, index=False)
             actual_status = status or ("empty" if df.empty else "success")
             fallback_meta: dict[str, Any] = {
-                "dataset": dataset, "trade_date": trade_date, "status": actual_status,
-                "rows": int(len(df)), "columns": [str(c) for c in df.columns],
-                "bytes": target.stat().st_size, "sha256": sha256_file(target),
+                "dataset": dataset,
+                "trade_date": trade_date,
+                "status": actual_status,
+                "rows": int(len(df)),
+                "columns": [str(c) for c in df.columns],
+                "bytes": target.stat().st_size,
+                "sha256": sha256_file(target),
                 "written_at_utc": datetime.now(timezone.utc).isoformat(),
             }
             if metadata:

@@ -9,16 +9,17 @@ sys:
 qlib_init:
   provider_uri: "{{ QLIB_DATA_URI }}"
   region: cn
+  kernels: 4
 
 experiment_name: tushare_alpha158_lgb
-market: &market all
+market: &market csi300
 benchmark: &benchmark SH000300
 
 data_handler_config: &data_handler_config
-  start_time: "2023-08-01"
-  end_time: "2026-08-06"
-  fit_start_time: "2023-08-01"
-  fit_end_time: "2025-01-14"
+  start_time: "2018-10-01"
+  end_time: "2026-08-10"
+  fit_start_time: "2018-10-01"
+  fit_end_time: "2024-12-27"
   instruments: *market
   # Match the 5-day TopkDropout holding horizon: buy at T+1 and
   # measure the return through T+6.
@@ -35,7 +36,8 @@ data_handler_config: &data_handler_config
         exclude_st: true
         allow_unknown_st: false
   infer_processors:
-    - class: ProcessInf
+    - class: ProcessInfSingleThread
+      module_path: tushare_qlib.processors
     - class: RobustZScoreNorm
       kwargs:
         fields_group: feature
@@ -64,7 +66,7 @@ task:
       lambda_l2: 50.0
       device_type: cpu
       max_bin: 63
-      num_threads: 12
+      num_threads: 8
       early_stopping_rounds: 100
       num_boost_round: 2000
   dataset:
@@ -76,9 +78,9 @@ task:
         module_path: tushare_qlib.custom_handler
         kwargs: *data_handler_config
       segments:
-        train: ["2023-08-01", "2025-01-14"]
-        valid: ["2025-01-15", "2025-07-15"]
-        test: ["2025-07-16", "2026-08-06"]
+        train: ["2018-10-01", "2024-12-27"]
+        valid: ["2025-01-08", "2025-07-02"]
+        test: ["2025-07-11", "2026-08-10"]
   record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
@@ -112,15 +114,12 @@ task:
               time_per_step: day
               generate_portfolio_metrics: true
           backtest:
-            start_time: "2025-07-16"
-            end_time: "2026-08-06"
+            start_time: "2025-07-11"
+            end_time: "2026-08-10"
             account: 500000
             benchmark: *benchmark
             exchange_kwargs:
-              # Approximation. Calibrate against your broker and historical fee regime.
-              # qrun's safe YAML loader cannot express Qlib's tuple-based
-              # per-side limit expressions; use the A-share approximation.
-              limit_threshold: 0.095
+              limit_threshold: ["$is_limit_up > 0", "$is_limit_down > 0"]
               deal_price: open
               volume_threshold: [current, "$volume * 0.05"]
               trade_unit: 100

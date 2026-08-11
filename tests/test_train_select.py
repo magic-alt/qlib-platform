@@ -20,6 +20,10 @@ def test_default_splits_reserve_release_observations_and_future_trade_day(tmp_pa
     qlib_data = tmp_path / "qlib"
     (qlib_data / "calendars").mkdir(parents=True)
     (qlib_data / "calendars" / "day.txt").write_text("\n".join(dates.strftime("%Y-%m-%d")), encoding="utf-8")
+    paths.metadata.mkdir(parents=True)
+    pd.DataFrame({"cal_date": dates, "is_open": 1}).to_parquet(
+        paths.metadata / "trade_calendar.parquet", index=False
+    )
     settings = Settings(
         config_path=tmp_path / "configs" / "pipeline.yaml",
         data={
@@ -35,7 +39,7 @@ def test_default_splits_reserve_release_observations_and_future_trade_day(tmp_pa
         qlib_data_uri=qlib_data,
     )
     monkeypatch.setattr(
-        "tushare_qlib.train_select.PartitionStore",
+        "tushare_qlib.research_timing.PartitionStore",
         lambda root: SimpleNamespace(list_dates=lambda dataset: dates.strftime("%Y%m%d").tolist()),
     )
 
@@ -69,6 +73,10 @@ def test_default_splits_fail_fast_when_qlib_calendar_is_stale(tmp_path, monkeypa
     (qlib_data / "calendars" / "day.txt").write_text(
         "\n".join(qlib_dates.strftime("%Y-%m-%d")), encoding="utf-8"
     )
+    paths.metadata.mkdir(parents=True)
+    pd.DataFrame({"cal_date": raw_dates, "is_open": 1}).to_parquet(
+        paths.metadata / "trade_calendar.parquet", index=False
+    )
     settings = Settings(
         config_path=tmp_path / "configs" / "pipeline.yaml",
         data={"research": {"min_history_days": 700}},
@@ -78,11 +86,38 @@ def test_default_splits_fail_fast_when_qlib_calendar_is_stale(tmp_path, monkeypa
         qlib_data_uri=qlib_data,
     )
     monkeypatch.setattr(
-        "tushare_qlib.train_select.PartitionStore",
+        "tushare_qlib.research_timing.PartitionStore",
         lambda root: SimpleNamespace(list_dates=lambda dataset: raw_dates.strftime("%Y%m%d").tolist()),
     )
 
     with pytest.raises(ValueError, match="shared raw/Qlib trading days; detected 384"):
+        _default_splits_from_data(settings)
+
+
+def test_default_splits_fail_fast_when_official_calendar_is_stale(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2023-01-02", periods=732)
+    paths = Paths.from_root(tmp_path / "data")
+    qlib_data = tmp_path / "qlib"
+    (qlib_data / "calendars").mkdir(parents=True)
+    (qlib_data / "calendars" / "day.txt").write_text("\n".join(dates.strftime("%Y-%m-%d")), encoding="utf-8")
+    paths.metadata.mkdir(parents=True)
+    pd.DataFrame({"cal_date": dates[:-5], "is_open": 1}).to_parquet(
+        paths.metadata / "trade_calendar.parquet", index=False
+    )
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={"research": {"min_history_days": 700}},
+        paths=paths,
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=qlib_data,
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.research_timing.PartitionStore",
+        lambda root: SimpleNamespace(list_dates=lambda dataset: dates.strftime("%Y%m%d").tolist()),
+    )
+
+    with pytest.raises(ValueError, match="official trading calendar is stale"):
         _default_splits_from_data(settings)
 
 

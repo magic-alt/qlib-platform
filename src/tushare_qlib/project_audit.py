@@ -28,7 +28,9 @@ _SECRET_PATTERNS = [
 def audit_project(root: str | Path) -> dict[str, object]:
     base = Path(root).expanduser().resolve()
     findings: list[AuditFinding] = []
-    forbidden = sorted(str(p.relative_to(base)) for p in base.rglob("*") if p.is_dir() and p.name in _FORBIDDEN_DIRS)
+    forbidden = sorted(
+        str(p.relative_to(base)) for p in base.rglob("*") if p.is_dir() and p.name in _FORBIDDEN_DIRS
+    )
     findings.append(
         AuditFinding(
             "SEC-001",
@@ -71,9 +73,21 @@ def audit_project(root: str | Path) -> dict[str, object]:
     )
     required = ["pyproject.toml", ".gitignore", "README.md", "Makefile", ".github/workflows/ci.yml"]
     missing = [name for name in required if not (base / name).exists()]
-    findings.append(AuditFinding("ENG-001", "P1", not missing, f"missing={missing}", "Add reproducible packaging and CI files."))
+    findings.append(
+        AuditFinding(
+            "ENG-001", "P1", not missing, f"missing={missing}", "Add reproducible packaging and CI files."
+        )
+    )
     tests = list((base / "tests").glob("test_*.py")) if (base / "tests").exists() else []
-    findings.append(AuditFinding("QA-001", "P1", len(tests) >= 6, f"test_files={len(tests)}", "Cover data, portfolio, execution, research gate and bridge contracts."))
+    findings.append(
+        AuditFinding(
+            "QA-001",
+            "P1",
+            len(tests) >= 6,
+            f"test_files={len(tests)}",
+            "Cover data, portfolio, execution, research gate and bridge contracts.",
+        )
+    )
     findings.append(
         AuditFinding(
             "OPS-001",

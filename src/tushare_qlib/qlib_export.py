@@ -17,6 +17,7 @@ from .fundamentals import PIT_FIELDS
 from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .settings import Settings
 from .store import sha256_file
+from .universe import install_qlib_universe, membership_fingerprint
 
 
 def _dump_script(settings: Settings) -> Path:
@@ -63,12 +64,9 @@ def _run(
     dump_script = _dump_script(settings)
     qlib_repo = dump_script.parent.parent
     fields = ",".join(settings.data["qlib"]["include_fields"])
-    workers_raw = "1" if single_thread else os.getenv("TUSHARE_QLIB_MAX_WORKERS", "1")
-    try:
-        max_workers = max(1, int(workers_raw))
-    except ValueError:
-        logger.warning("Invalid TUSHARE_QLIB_MAX_WORKERS={}, fallback to 1", workers_raw)
-        max_workers = 1
+    export_cfg = settings.data.get("qlib", {}).get("export", {})
+    configured_workers = export_cfg.get("max_workers", 4) if isinstance(export_cfg, dict) else 4
+    max_workers = 1 if single_thread else max(1, int(configured_workers))
     cmd = [
         sys.executable,
         str(dump_script),
@@ -167,6 +165,7 @@ def dump_full(settings: Settings, *, single_thread: bool = False) -> Path:
     candidate = Path(tempfile.mkdtemp(prefix=f".{target.name}.building.", dir=target.parent))
     try:
         _run(settings, "dump_all", settings.paths.staging_full, candidate, single_thread=single_thread)
+        install_qlib_universe(settings, candidate)
         smoke = _smoke_test_dataset_subprocess(candidate)
         backup = _replace_directory_atomic(candidate, target)
         write_fingerprint(settings, mode="full", smoke=smoke)
@@ -196,6 +195,7 @@ def dump_update(settings: Settings, *, single_thread: bool = False) -> Path:
     shutil.copytree(target, candidate)
     try:
         _run(settings, "dump_update", settings.paths.staging_update, candidate, single_thread=single_thread)
+        install_qlib_universe(settings, candidate)
         smoke = _smoke_test_dataset_subprocess(candidate)
         backup = _replace_directory_atomic(candidate, target)
         write_fingerprint(settings, mode="update", smoke=smoke)
@@ -221,12 +221,14 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
     stage_manifest = stage / "staging_manifest.json"
     platform_git = git_revision(Path(__file__).resolve().parents[2])
     qlib_git = git_revision(resolve_qlib_repo(settings.qlib_repo))
+    universe_hash = membership_fingerprint(settings)
     content: dict[str, object] = {
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
         "mode": mode,
         "fields": settings.data["qlib"]["include_fields"],
         "staging_manifest_sha256": sha256_file(stage_manifest),
         "pipeline_config_sha256": sha256_file(settings.config_path),
+        "universe_membership_sha256": universe_hash,
         "qlib_platform_git_commit": platform_git.get("commit"),
         "qlib_git_commit": qlib_git.get("commit"),
         "package_versions": _package_versions(),
@@ -244,6 +246,7 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
         "fields": settings.data["qlib"]["include_fields"],
         "staging_manifest_sha256": sha256_file(stage_manifest),
         "source_snapshot_id": sha256_file(stage_manifest),
+        "universe_membership_sha256": universe_hash,
         "pipeline_config_sha256": sha256_file(settings.config_path),
         "qlib_platform_git_commit": platform_git.get("commit"),
         "qlib_platform_git_dirty": platform_git.get("dirty"),

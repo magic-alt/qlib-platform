@@ -1,0 +1,9 @@
+name: lightgbm_cpu_quantized
+family: lightgbm
+device: cpu
+device_index: 0
+model_kwargs:
+  max_bin: 63
+  use_quantized_grad: true
+  num_grad_quant_bins: 4
+  num_threads: 8

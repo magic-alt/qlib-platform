@@ -26,7 +26,11 @@ def audit_mlflow_run(run_dir: str | Path) -> dict[str, Any]:
         with config_path.open("rb") as fp:
             loaded = pickle.load(fp)
         config = loaded if isinstance(loaded, dict) else {}
-    pred_dates = pred.index.get_level_values("datetime") if not pred.empty and "datetime" in pred.index.names else pd.Index([])
+    pred_dates = (
+        pred.index.get_level_values("datetime")
+        if not pred.empty and "datetime" in pred.index.names
+        else pd.Index([])
+    )
     if len(pred_dates) and not report.empty:
         if pd.Timestamp(report.index.min()) < pd.Timestamp(pred_dates.min()):
             errors.append("portfolio_starts_before_predictions")
@@ -55,11 +59,21 @@ def audit_mlflow_run(run_dir: str | Path) -> dict[str, Any]:
         if column in report:
             values = pd.to_numeric(report[column], errors="coerce").dropna()
             summary[f"{column}_total"] = float((1.0 + values).prod() - 1.0)
-    return {"schema_version": "1.0", "passed": not errors, "errors": errors, "summary": summary, "run_dir": str(root)}
+    return {
+        "schema_version": "1.0",
+        "passed": not errors,
+        "errors": errors,
+        "summary": summary,
+        "run_dir": str(root),
+    }
 
 
 def write_audit(report: dict[str, Any], output: str | Path | None = None) -> Path:
-    path = Path(output).expanduser().resolve() if output else Path(report["run_dir"]) / "qlib_backtest_audit.json"
+    path = (
+        Path(output).expanduser().resolve()
+        if output
+        else Path(report["run_dir"]) / "qlib_backtest_audit.json"
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return path

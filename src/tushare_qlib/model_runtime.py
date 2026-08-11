@@ -47,6 +47,7 @@ class ModelProfile:
     device_index: int
     model_kwargs: dict[str, Any]
     source: str
+    gpu_platform_id: int = 0
 
     @property
     def fingerprint(self) -> str:
@@ -55,6 +56,7 @@ class ModelProfile:
             "family": self.family,
             "device": self.device,
             "device_index": self.device_index,
+            "gpu_platform_id": self.gpu_platform_id,
             "model_kwargs": self.model_kwargs,
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
@@ -74,7 +76,8 @@ class ResolvedRuntime:
         return hashlib.sha256(payload).hexdigest()[:16]
 
     def to_manifest(self) -> dict[str, Any]:
-        device_index = self.profile.device_index if self.resolved_device.startswith("cuda") else None
+        accelerated = self.resolved_device.startswith(("cuda", "gpu"))
+        device_index = self.profile.device_index if accelerated else None
         return {
             "modelProfile": self.profile.name,
             "profileSource": self.profile.source,
@@ -84,6 +87,7 @@ class ResolvedRuntime:
             "requestedDevice": self.profile.device,
             "resolvedDevice": self.resolved_device,
             "deviceIndex": device_index,
+            "gpuPlatformId": self.profile.gpu_platform_id if accelerated else None,
             "fallbackReason": self.fallback_reason,
             "mpsFallbackEnabled": os.getenv("PYTORCH_ENABLE_MPS_FALLBACK") == "1",
             "versions": self.versions,
@@ -93,6 +97,7 @@ class ResolvedRuntime:
 class StageTimings:
     def __init__(self, clock: Callable[[], float] = time.perf_counter):
         self._clock = clock
+        self._wall_started = clock()
         self._values: dict[str, float] = {}
 
     @contextmanager
@@ -106,11 +111,22 @@ class StageTimings:
 
     def to_dict(self) -> dict[str, Any]:
         phases = {key: round(value, 6) for key, value in self._values.items()}
+        peak_rss_mb: float | None = None
+        try:
+            import psutil
+
+            memory = psutil.Process().memory_info()
+            peak_bytes = getattr(memory, "peak_wset", memory.rss)
+            peak_rss_mb = round(float(peak_bytes) / (1024.0 * 1024.0), 3)
+        except (ImportError, OSError):
+            pass
         return {
             "clock": "time.perf_counter",
             "phasesSeconds": phases,
             "totalSeconds": round(sum(self._values.values()), 6),
-            "reportRenderingIncluded": False,
+            "wallSeconds": round(max(0.0, self._clock() - self._wall_started), 6),
+            "peakRssMb": peak_rss_mb,
+            "reportRenderingIncluded": "report_seconds" in phases,
         }
 
 
@@ -126,7 +142,7 @@ def _profile_path(settings: Settings, override: str | Path | None) -> Path | Non
 
 
 def _validate_profile(data: Mapping[str, Any], source: str) -> ModelProfile:
-    allowed = {"name", "family", "device", "device_index", "model_kwargs"}
+    allowed = {"name", "family", "device", "device_index", "gpu_platform_id", "model_kwargs"}
     unknown = set(data) - allowed
     if unknown:
         raise ValueError(f"model profile has unknown keys: {sorted(unknown)}")
@@ -137,16 +153,21 @@ def _validate_profile(data: Mapping[str, Any], source: str) -> ModelProfile:
         raise ValueError("model profile name is required")
     if family not in {"lightgbm", "pytorch_dnn"}:
         raise ValueError("model profile family must be lightgbm or pytorch_dnn")
-    allowed_devices = {"auto", "cpu", "cuda"} if family == "lightgbm" else {"auto", "cpu", "cuda", "mps"}
+    allowed_devices = (
+        {"auto", "cpu", "cuda", "gpu"} if family == "lightgbm" else {"auto", "cpu", "cuda", "mps"}
+    )
     if device not in allowed_devices:
         raise ValueError(f"device {device!r} is not supported by {family}")
     device_index = int(data.get("device_index", 0))
     if device_index < 0:
         raise ValueError("device_index must be non-negative")
+    gpu_platform_id = int(data.get("gpu_platform_id", 0))
+    if gpu_platform_id < 0:
+        raise ValueError("gpu_platform_id must be non-negative")
     kwargs = data.get("model_kwargs", {})
     if not isinstance(kwargs, Mapping):
         raise ValueError("model_kwargs must be a mapping")
-    return ModelProfile(name, family, device, device_index, dict(kwargs), source)
+    return ModelProfile(name, family, device, device_index, dict(kwargs), source, gpu_platform_id)
 
 
 def load_model_profile(settings: Settings, override: str | Path | None = None) -> ModelProfile:
@@ -186,6 +207,33 @@ def _probe_lightgbm_cuda(device_index: int) -> tuple[bool, str | None, str]:
     return True, None, str(lgb.__version__)
 
 
+def _probe_lightgbm_opencl(platform_id: int, device_index: int) -> tuple[bool, str | None, str]:
+    """Probe LightGBM's OpenCL ``gpu`` backend with a real one-tree fit."""
+
+    import lightgbm as lgb
+
+    features = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=np.float32)
+    labels = np.asarray([0.0, 1.0, 0.0, 1.0], dtype=np.float32)
+    try:
+        lgb.train(
+            {
+                "objective": "regression",
+                "device_type": "gpu",
+                "gpu_platform_id": platform_id,
+                "gpu_device_id": device_index,
+                "gpu_use_dp": False,
+                "max_bin": 63,
+                "min_data_in_leaf": 1,
+                "verbosity": -1,
+            },
+            lgb.Dataset(features, label=labels),
+            num_boost_round=1,
+        )
+    except Exception as exc:
+        return False, f"LightGBM OpenCL GPU probe failed: {exc}", str(lgb.__version__)
+    return True, None, str(lgb.__version__)
+
+
 def resolve_runtime(profile: ModelProfile) -> ResolvedRuntime:
     try:
         import qlib
@@ -200,6 +248,21 @@ def resolve_runtime(profile: ModelProfile) -> ResolvedRuntime:
 
             versions["lightgbm"] = str(lgb.__version__)
             return ResolvedRuntime(profile, "cpu", None, versions)
+        if profile.device == "gpu":
+            available, reason, version = _probe_lightgbm_opencl(profile.gpu_platform_id, profile.device_index)
+            versions["lightgbm"] = version
+            if not available:
+                raise RuntimeError(reason or "LightGBM OpenCL GPU is unavailable")
+            return ResolvedRuntime(profile, f"gpu:{profile.device_index}", None, versions)
+        if profile.device == "auto" and sys.platform.startswith("win"):
+            available, reason, version = _probe_lightgbm_opencl(profile.gpu_platform_id, profile.device_index)
+            versions["lightgbm"] = version
+            return ResolvedRuntime(
+                profile,
+                f"gpu:{profile.device_index}" if available else "cpu",
+                None if available else reason,
+                versions,
+            )
         available, reason, version = _probe_lightgbm_cuda(profile.device_index)
         versions["lightgbm"] = version
         if profile.device == "cuda":
@@ -252,13 +315,25 @@ def resolved_model_parameters(
                 "feature_fraction_seed": seed,
                 "bagging_seed": seed,
                 "data_random_seed": seed,
-                "device_type": "cuda" if runtime.resolved_device.startswith("cuda") else "cpu",
+                "device_type": (
+                    "cuda"
+                    if runtime.resolved_device.startswith("cuda")
+                    else "gpu"
+                    if runtime.resolved_device.startswith("gpu")
+                    else "cpu"
+                ),
             }
         )
         if runtime.resolved_device.startswith("cuda"):
             params["gpu_device_id"] = runtime.profile.device_index
+        elif runtime.resolved_device.startswith("gpu"):
+            params["gpu_platform_id"] = runtime.profile.gpu_platform_id
+            params["gpu_device_id"] = runtime.profile.device_index
+            params.setdefault("gpu_use_dp", False)
         else:
             params.pop("gpu_device_id", None)
+            params.pop("gpu_platform_id", None)
+            params.pop("gpu_use_dp", None)
         return params
 
     pt_kwargs = dict(kwargs.pop("pt_model_kwargs", {}))

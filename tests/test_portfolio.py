@@ -11,7 +11,9 @@ def test_weights_stay_attached_to_instruments_regression():
             "volatility": [0.02, 0.03, 0.025],
         }
     )
-    policy = PortfolioPolicy(top_n=3, max_position=0.4, max_exposure=0.9, max_group_exposure=0.9, max_turnover=None)
+    policy = PortfolioPolicy(
+        top_n=3, max_position=0.4, max_exposure=0.9, max_group_exposure=0.9, max_turnover=None
+    )
     result = construct_target_portfolio(selection, policy)
     assert set(result["instrument"]) == set(selection["instrument"])
     assert (result["target_weight"] > 0).all()
@@ -37,4 +39,7 @@ def test_group_and_position_caps():
     result = construct_target_portfolio(selection, policy)
     assert result["target_weight"].max() <= 0.3000001
     assert result.groupby("group")["target_weight"].sum().max() <= 0.4000001
-    assert portfolio_turnover(result.set_index("instrument")["target_weight"], pd.Series(dtype=float)) <= 0.4 + 1e-9
+    assert (
+        portfolio_turnover(result.set_index("instrument")["target_weight"], pd.Series(dtype=float))
+        <= 0.4 + 1e-9
+    )

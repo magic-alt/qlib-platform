@@ -10,6 +10,7 @@ from tushare_qlib.model_runtime import (
     StageTimings,
     build_model,
     load_model_profile,
+    resolved_model_parameters,
     resolve_runtime,
 )
 from tushare_qlib.settings import Paths, Settings
@@ -60,7 +61,15 @@ def test_profile_rejects_unknown_keys(tmp_path):
 
 @pytest.mark.parametrize(
     "name",
-    ["lightgbm_auto", "lightgbm_cpu_m5", "lightgbm_cuda_nvidia", "pytorch_mps_m5"],
+    [
+        "lightgbm_auto",
+        "lightgbm_cpu_m5",
+        "lightgbm_cpu_fast",
+        "lightgbm_cpu_quantized",
+        "lightgbm_cuda_nvidia",
+        "lightgbm_gpu_windows",
+        "pytorch_mps_m5",
+    ],
 )
 def test_bundled_model_profiles_are_valid(tmp_path, name):
     settings = _settings(tmp_path)
@@ -70,6 +79,7 @@ def test_bundled_model_profiles_are_valid(tmp_path, name):
 
 
 def test_lightgbm_auto_falls_back_but_explicit_cuda_fails(monkeypatch):
+    monkeypatch.setattr("tushare_qlib.model_runtime.sys.platform", "linux")
     monkeypatch.setattr(
         "tushare_qlib.model_runtime._probe_lightgbm_cuda",
         lambda device_index: (False, "CUDA build missing", "4.7.0"),
@@ -85,6 +95,24 @@ def test_lightgbm_auto_falls_back_but_explicit_cuda_fails(monkeypatch):
         resolve_runtime(explicit)
 
 
+def test_lightgbm_windows_auto_uses_opencl_gpu(monkeypatch):
+    monkeypatch.setattr("tushare_qlib.model_runtime.sys.platform", "win32")
+    monkeypatch.setattr(
+        "tushare_qlib.model_runtime._probe_lightgbm_opencl",
+        lambda platform_id, device_index: (True, None, "4.7"),
+    )
+    profile = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test", 2)
+
+    runtime = resolve_runtime(profile)
+    params = resolved_model_parameters(runtime, feature_count=8, seed=42, num_threads=4)
+
+    assert runtime.resolved_device == "gpu:0"
+    assert params["device_type"] == "gpu"
+    assert params["gpu_platform_id"] == 2
+    assert params["gpu_device_id"] == 0
+    assert params["gpu_use_dp"] is False
+
+
 def test_runtime_fingerprint_includes_resolved_device():
     profile = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test")
 
@@ -95,7 +123,7 @@ def test_runtime_fingerprint_includes_resolved_device():
 
 
 def test_stage_timings_use_monotonic_injected_clock():
-    values = iter([10.0, 11.5, 20.0, 23.0])
+    values = iter([0.0, 10.0, 11.5, 20.0, 23.0, 30.0])
     timings = StageTimings(clock=lambda: next(values))
 
     with timings.measure("data_seconds"):
@@ -106,6 +134,7 @@ def test_stage_timings_use_monotonic_injected_clock():
     payload = timings.to_dict()
     assert payload["phasesSeconds"] == {"data_seconds": 1.5, "train_seconds": 3.0}
     assert payload["totalSeconds"] == 4.5
+    assert payload["wallSeconds"] == 30.0
 
 
 def test_lightgbm_model_uses_profile_threads_and_resolved_cpu():
@@ -121,9 +150,7 @@ def test_lightgbm_model_uses_profile_threads_and_resolved_cpu():
 
 
 def test_dnn_rejects_stale_configured_input_dimension_before_importing_torch():
-    profile = ModelProfile(
-        "dnn", "pytorch_dnn", "mps", 0, {"pt_model_kwargs": {"input_dim": 158}}, "test"
-    )
+    profile = ModelProfile("dnn", "pytorch_dnn", "mps", 0, {"pt_model_kwargs": {"input_dim": 158}}, "test")
     runtime = ResolvedRuntime(profile, "mps", None, {"torch": "test"})
 
     with pytest.raises(ValueError, match="does not match dataset feature count 175"):

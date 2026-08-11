@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
 
 from .model_runtime import ResolvedRuntime
@@ -31,7 +31,7 @@ class DatasetSpec:
         source = "tushare" if settings.uses_tushare_source() else "lean_mysql"
         configured = mysql.get("universe") if source == "lean_mysql" else universe.get("instruments")
         name = str(universe.get("label") or configured or "all")
-        membership_type = "point_in_time" if source == "lean_mysql" and mysql.get("universe") else "filtered"
+        membership_type = "point_in_time" if configured and str(configured).lower() != "all" else "filtered"
         return cls(
             dataset_id=str(qlib.get("dataset_version", settings.qlib_data_uri.name)),
             source=source,
@@ -150,6 +150,7 @@ class RiskSpec:
     max_sector_exposure: float = 0.30
     max_daily_loss: float = 0.03
     kill_switch: bool = False
+    exposure_overlay: dict[str, object] = field(default_factory=dict)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "RiskSpec":
@@ -164,6 +165,9 @@ class RiskSpec:
             raise ValueError("risk.max_sector_exposure must be in (0, 1]")
         if not 0 < spec.max_daily_loss < 1:
             raise ValueError("risk.max_daily_loss must be in (0, 1)")
+        from .risk_engine import ExposureOverlayPolicy
+
+        ExposureOverlayPolicy.from_mapping(spec.exposure_overlay)
         return spec
 
 

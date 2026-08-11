@@ -20,7 +20,13 @@ from .symbols import ts_to_qlib
 BASIC_PERCENT_FIELDS = ["turnover_rate", "turnover_rate_f", "dv_ratio", "dv_ttm"]
 SHARE_10K_FIELDS = ["total_share", "float_share", "free_share"]
 MV_10K_FIELDS = ["total_mv", "circ_mv"]
-MONEYFLOW_10K_FIELDS = ["buy_lg_amount", "sell_lg_amount", "buy_elg_amount", "sell_elg_amount", "net_mf_amount"]
+MONEYFLOW_10K_FIELDS = [
+    "buy_lg_amount",
+    "sell_lg_amount",
+    "buy_elg_amount",
+    "sell_elg_amount",
+    "net_mf_amount",
+]
 MONEYFLOW_HAND_FIELDS = ["buy_lg_vol", "sell_lg_vol", "buy_elg_vol", "sell_elg_vol", "net_mf_vol"]
 
 
@@ -40,14 +46,19 @@ def _active_master(master: pd.DataFrame, trade_date: pd.Timestamp) -> pd.DataFra
     return master.loc[listed & not_delisted].copy()
 
 
-def _merge_pit_fundamentals(frame: pd.DataFrame, settings: Settings, trade_date: str) -> pd.DataFrame:
+def _merge_pit_fundamentals(
+    frame: pd.DataFrame,
+    settings: Settings,
+    trade_date: str,
+    fundamentals: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     path = settings.paths.curated / "fundamentals_pit.parquet"
     if not path.exists():
         result = frame.copy()
         for field in PIT_FIELDS:
             result[field] = np.nan
         return result
-    fundamentals = pd.read_parquet(path)
+    fundamentals = pd.read_parquet(path) if fundamentals is None else fundamentals
     required = {"ts_code", "trade_date", *PIT_FIELDS}
     missing = required - set(fundamentals.columns)
     if missing:
@@ -62,7 +73,14 @@ def _merge_pit_fundamentals(frame: pd.DataFrame, settings: Settings, trade_date:
     return frame.merge(fundamentals, on=["ts_code", "trade_date"], how="left", validate="one_to_one")
 
 
-def build_curated_day(settings: Settings, trade_date: str, force: bool = False) -> Path:
+def build_curated_day(
+    settings: Settings,
+    trade_date: str,
+    force: bool = False,
+    *,
+    master: pd.DataFrame | None = None,
+    pit_fundamentals: pd.DataFrame | None = None,
+) -> Path:
     trade_date = _normalize_trade_date(trade_date)
     out_dir = settings.paths.curated / f"trade_date={trade_date}"
     out_path = out_dir / "data.parquet"
@@ -73,7 +91,7 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
     master_path = settings.paths.metadata / "stock_master.parquet"
     if not master_path.exists():
         raise FileNotFoundError(f"stock master not found: {master_path}")
-    master = pd.read_parquet(master_path)
+    master = pd.read_parquet(master_path) if master is None else master.copy()
     master["list_date"] = pd.to_datetime(master["list_date"])
     master["delist_date"] = pd.to_datetime(master["delist_date"])
     dt = pd.Timestamp(trade_date)
@@ -92,7 +110,7 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
     for source in (daily, adj, basic, moneyflow, limit_df):
         if not source.empty:
             frame = frame.merge(source, on=["ts_code", "trade_date"], how="left", validate="one_to_one")
-    frame = _merge_pit_fundamentals(frame, settings, trade_date)
+    frame = _merge_pit_fundamentals(frame, settings, trade_date, pit_fundamentals)
 
     suspended_codes = (
         set(suspend.loc[suspend.get("suspend_type", pd.Series(dtype=str)) == "S", "ts_code"])
@@ -124,7 +142,15 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
         "sha256": sha256_file(out_path),
         "source_manifests": {
             name: raw.read_manifest(name, trade_date)
-            for name in ("daily", "adj_factor", "daily_basic", "moneyflow", "stk_limit", "suspend_d", "stock_st")
+            for name in (
+                "daily",
+                "adj_factor",
+                "daily_basic",
+                "moneyflow",
+                "stk_limit",
+                "suspend_d",
+                "stock_st",
+            )
         },
         "pit_fundamentals": {
             "path": str(settings.paths.curated / "fundamentals_pit.parquet"),
@@ -136,7 +162,9 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
         },
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logger.info(
         "Curated {}: active={}, traded={}, paused={}",
         trade_date,
@@ -149,6 +177,12 @@ def build_curated_day(settings: Settings, trade_date: str, force: bool = False) 
 
 def build_all_curated(settings: Settings, start_date: str | None = None, end_date: str | None = None) -> None:
     raw = PartitionStore(settings.paths.raw)
+    master_path = settings.paths.metadata / "stock_master.parquet"
+    if not master_path.is_file():
+        raise FileNotFoundError(f"stock master not found: {master_path}")
+    master = pd.read_parquet(master_path)
+    fundamentals_path = settings.paths.curated / "fundamentals_pit.parquet"
+    pit_fundamentals = pd.read_parquet(fundamentals_path) if fundamentals_path.is_file() else None
     start = _normalize_trade_date(start_date) if start_date else None
     end = _normalize_trade_date(end_date) if end_date else None
     for trade_date in raw.list_dates("daily"):
@@ -156,7 +190,12 @@ def build_all_curated(settings: Settings, start_date: str | None = None, end_dat
             continue
         if end and trade_date > end:
             continue
-        build_curated_day(settings, trade_date)
+        build_curated_day(
+            settings,
+            trade_date,
+            master=master,
+            pit_fundamentals=pit_fundamentals,
+        )
 
 
 def _load_open_calendar(settings: Settings) -> pd.DatetimeIndex:
@@ -241,7 +280,19 @@ def normalize_symbol(
     list_date = pd.Timestamp(df["list_date"].dropna().iloc[0])
     df["listed_days"] = _trading_age(df["date"], list_date, calendar)
 
-    market_fields = ["open", "high", "low", "close", "volume", "money", "vwap", "factor", "change", "up_limit", "down_limit"]
+    market_fields = [
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "money",
+        "vwap",
+        "factor",
+        "change",
+        "up_limit",
+        "down_limit",
+    ]
     paused = df["paused"].fillna(1).astype(bool)
     df.loc[paused, market_fields] = np.nan
 
@@ -311,10 +362,14 @@ def _benchmark_staging_frame(settings: Settings, calendar: pd.DatetimeIndex) -> 
         frame[column] = pd.to_numeric(frame[column], errors="coerce") if column in frame else close
         frame[column] = frame[column].fillna(close)
     for raw_column, output_column, scale in (("vol", "volume", 100.0), ("amount", "money", 1000.0)):
-        frame[output_column] = pd.to_numeric(frame[raw_column], errors="coerce") * scale if raw_column in frame else np.nan
+        frame[output_column] = (
+            pd.to_numeric(frame[raw_column], errors="coerce") * scale if raw_column in frame else np.nan
+        )
     frame["vwap"] = frame["money"] / frame["volume"]
     frame["factor"] = 1.0
-    frame["change"] = pd.to_numeric(frame["pct_chg"], errors="coerce") / 100.0 if "pct_chg" in frame else np.nan
+    frame["change"] = (
+        pd.to_numeric(frame["pct_chg"], errors="coerce") / 100.0 if "pct_chg" in frame else np.nan
+    )
     frame["paused"] = 0.0
     frame["symbol"] = "SH000300"
     for column in settings.data["qlib"]["include_fields"]:
@@ -368,7 +423,8 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
     con.execute("SET memory_limit='8GB'")
     spill_dir = stage / ".duckdb_spill"
     spill_dir.mkdir(parents=True, exist_ok=True)
-    con.execute(f"SET temp_directory='{str(spill_dir).replace('\\', '/')} '")
+    spill_path = str(spill_dir).replace("\\", "/")
+    con.execute(f"SET temp_directory='{spill_path}'")
     glob = _curated_glob(settings)
     raw_by_symbol = stage / ".curated_by_symbol"
     source_sql = glob.replace("'", "''")
@@ -414,7 +470,9 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
     shutil.rmtree(raw_by_symbol)
     shutil.rmtree(spill_dir, ignore_errors=True)
     _write_stage_parquet(_benchmark_staging_frame(settings, calendar), stage / "SH000300.parquet")
-    pd.DataFrame([{"symbol": k, "base_adj_close": v} for k, v in sorted(bases.items())]).to_parquet(base_path, index=False)
+    pd.DataFrame([{"symbol": k, "base_adj_close": v} for k, v in sorted(bases.items())]).to_parquet(
+        base_path, index=False
+    )
     _write_staging_manifest(stage, "full")
     return stage
 
@@ -427,7 +485,11 @@ def export_incremental_staging(settings: Settings, trade_dates: list[str], force
     stage.mkdir(parents=True, exist_ok=True)
     calendar = _load_open_calendar(settings)
     base_path = settings.paths.metadata / "normalization_base.parquet"
-    bases = pd.read_parquet(base_path).set_index("symbol")["base_adj_close"].to_dict() if base_path.exists() else {}
+    bases = (
+        pd.read_parquet(base_path).set_index("symbol")["base_adj_close"].to_dict()
+        if base_path.exists()
+        else {}
+    )
     frames = []
     for trade_date in normalized_dates:
         path = settings.paths.curated / f"trade_date={trade_date}" / "data.parquet"

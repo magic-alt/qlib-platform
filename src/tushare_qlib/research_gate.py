@@ -69,6 +69,48 @@ def _as_series(value: pd.Series | pd.DataFrame, name: str) -> pd.Series:
     return value
 
 
+def derive_signal_metrics(
+    predictions: pd.Series | pd.DataFrame,
+    labels: pd.Series | pd.DataFrame,
+    *,
+    unique_artifact: bool,
+    lineage_complete: bool,
+    label_horizon_days: int = 1,
+) -> dict[str, object]:
+    """Derive portfolio-independent metrics used by the fast signal screen."""
+
+    if label_horizon_days < 1:
+        raise ValueError("label_horizon_days must be at least 1")
+    score = pd.to_numeric(_as_series(predictions, "predictions"), errors="coerce").rename("score")
+    label = pd.to_numeric(_as_series(labels, "labels"), errors="coerce").rename("label")
+    paired = pd.concat([score, label], axis=1, join="inner").dropna()
+    if not isinstance(paired.index, pd.MultiIndex) or "datetime" not in paired.index.names:
+        raise ValueError("predictions and labels must use a MultiIndex containing datetime")
+    by_date = paired.groupby(level="datetime", sort=True)
+    ic = by_date.apply(lambda frame: frame["score"].corr(frame["label"])).dropna()
+    rank_ic = by_date.apply(lambda frame: frame["score"].corr(frame["label"], method="spearman")).dropna()
+
+    def long_short(frame: pd.DataFrame) -> float:
+        count = max(1, len(frame) // 5)
+        ranked = frame.sort_values("score", ascending=False)
+        return float(ranked.head(count)["label"].mean() - ranked.tail(count)["label"].mean())
+
+    long_short_daily = by_date.apply(long_short).dropna()
+    std = float(ic.std(ddof=1))
+    icir = float(ic.mean()) / std if np.isfinite(std) and std > 0 else float("-inf")
+    return {
+        "observations": int(min(len(ic), len(rank_ic))),
+        "ic_mean": float(ic.mean()) if len(ic) else float("-inf"),
+        "rank_ic_mean": float(rank_ic.mean()) if len(rank_ic) else float("-inf"),
+        "icir": icir,
+        "long_short_annualized": float(long_short_daily.mean() * 252.0 / label_horizon_days)
+        if len(long_short_daily)
+        else float("-inf"),
+        "unique_artifact": bool(unique_artifact),
+        "lineage_complete": bool(lineage_complete),
+    }
+
+
 def derive_research_metrics(
     predictions: pd.Series | pd.DataFrame,
     labels: pd.Series | pd.DataFrame,
@@ -131,6 +173,71 @@ def derive_research_metrics(
         "max_drawdown": float(drawdown.min()) if len(drawdown) else float("-inf"),
         "unique_artifact": bool(unique_artifact),
         "lineage_complete": bool(lineage_complete),
+    }
+
+
+def evaluate_signal_metrics(
+    metrics: Mapping[str, object],
+    thresholds: ResearchThresholds | None = None,
+    *,
+    allow_dirty_research: bool = False,
+) -> dict[str, object]:
+    """Screen signal quality only; passing never authorizes portfolio promotion."""
+
+    thresholds = thresholds or ResearchThresholds()
+    values = {
+        "observations": int(str(metrics.get("observations", 0))),
+        "ic_mean": float(str(metrics.get("ic_mean", float("-inf")))),
+        "rank_ic_mean": float(str(metrics.get("rank_ic_mean", float("-inf")))),
+        "icir": float(str(metrics.get("icir", float("-inf")))),
+        "long_short_annualized": float(str(metrics.get("long_short_annualized", float("-inf")))),
+    }
+    checks = [
+        GateCheck(
+            "observations",
+            values["observations"],
+            thresholds.min_observations,
+            values["observations"] >= thresholds.min_observations,
+        ),
+        GateCheck(
+            "ic_mean", values["ic_mean"], thresholds.min_ic_mean, values["ic_mean"] >= thresholds.min_ic_mean
+        ),
+        GateCheck(
+            "rank_ic_mean",
+            values["rank_ic_mean"],
+            thresholds.min_rank_ic_mean,
+            values["rank_ic_mean"] >= thresholds.min_rank_ic_mean,
+        ),
+        GateCheck("icir", values["icir"], thresholds.min_icir, values["icir"] >= thresholds.min_icir),
+        GateCheck(
+            "long_short_annualized",
+            values["long_short_annualized"],
+            thresholds.min_long_short_annualized,
+            values["long_short_annualized"] >= thresholds.min_long_short_annualized,
+        ),
+        GateCheck(
+            "unique_artifact",
+            bool(metrics.get("unique_artifact", False)),
+            True,
+            bool(metrics.get("unique_artifact", False)),
+        ),
+        GateCheck(
+            "lineage_complete",
+            bool(metrics.get("lineage_complete", False)),
+            "complete or dirty-research override" if allow_dirty_research else True,
+            bool(metrics.get("lineage_complete", False)) or allow_dirty_research,
+        ),
+    ]
+    passed = all(check.passed for check in checks)
+    return {
+        "schema_version": "1.0",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "decision": "SIGNAL_SCREEN_PASS" if passed else "REJECT",
+        "passed": passed,
+        "promotionAuthorized": False,
+        "metrics": dict(metrics),
+        "thresholds": asdict(thresholds),
+        "checks": [asdict(check) for check in checks],
     }
 
 

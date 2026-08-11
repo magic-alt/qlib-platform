@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -19,7 +20,11 @@ from .research_gate import (
     write_gate_report,
 )
 from .store import sha256_file
+from .lineage import dirty_research_override_enabled, git_revision, resolve_qlib_repo
+from .universe import membership_fingerprint
+from .research_timing import effective_label_gap, label_timing_from_settings, shared_research_calendar
 from .train_select import _research_label_horizon_days, train_backtest_select
+from .feature_store import feature_store_enabled, prepare_feature_data
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,15 @@ def _checkpoint_fingerprint(
     benchmark: str,
     topn: int | None,
 ) -> str:
+    dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
+    project_root = Path(__file__).resolve().parents[2]
+    source_files = [
+        Path(__file__),
+        project_root / "src" / "tushare_qlib" / "custom_handler.py",
+        project_root / "src" / "tushare_qlib" / "processors.py",
+        project_root / "src" / "tushare_qlib" / "research_timing.py",
+        project_root / "src" / "tushare_qlib" / "train_select.py",
+    ]
     payload = {
         "runtimeFingerprint": runtime_fingerprint,
         "fold": asdict(fold),
@@ -116,10 +130,55 @@ def _checkpoint_fingerprint(
         "research": settings.data.get("research", {}),
         "universe": settings.data.get("universe", {}),
         "datasetUri": str(settings.qlib_data_uri),
+        "datasetManifestSha256": sha256_file(dataset_manifest) if dataset_manifest.is_file() else None,
+        "universeMembershipSha256": membership_fingerprint(settings),
+        "qlibPlatformCommit": git_revision(project_root).get("commit"),
+        "qlibCommit": git_revision(resolve_qlib_repo(settings.qlib_repo)).get("commit"),
+        "featureImplementationSha256": {
+            path.name: sha256_file(path) for path in source_files if path.is_file()
+        },
+        "labelHorizonDays": _research_label_horizon_days(settings),
         "promotionContract": "release-v2" if fold.final_holdout else "component-validation-v2",
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()[:16]
+
+
+def _validated_checkpoint_manifest(
+    settings: Settings, checkpoint: Path, expected_fingerprint: str
+) -> Path | None:
+    if not checkpoint.is_file():
+        return None
+    try:
+        payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+        if payload.get("checkpointFingerprint") != expected_fingerprint:
+            return None
+        manifest_path = Path(str(payload["manifest"]))
+        if not manifest_path.is_file():
+            return None
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
+    if dataset_manifest.is_file():
+        current_dataset = json.loads(dataset_manifest.read_text(encoding="utf-8"))
+        current_fingerprint = str(
+            current_dataset.get("sha256", current_dataset.get("dataset_id", "unversioned"))
+        )
+        if str(manifest.get("dataset", {}).get("fingerprint")) != current_fingerprint:
+            return None
+    lineage = manifest.get("lineage", {})
+    if not isinstance(lineage, dict) or not lineage.get("lineageId"):
+        return None
+    if not lineage.get("complete") and not dirty_research_override_enabled(settings, lineage):
+        return None
+    artifacts = manifest.get("artifacts", [])
+    if not isinstance(artifacts, list) or not artifacts:
+        return None
+    for artifact in artifacts:
+        if not isinstance(artifact, dict) or not Path(str(artifact.get("localPath", ""))).is_file():
+            return None
+    return manifest_path
 
 
 def _at_or_after(calendar: pd.DatetimeIndex, value: pd.Timestamp) -> pd.Timestamp:
@@ -141,42 +200,54 @@ def build_walk_forward_plan(
     start_date: str,
     end_date: str,
     *,
-    train_years: int = 5,
-    valid_months: int = 6,
-    test_months: int = 3,
-    holdout_months: int = 12,
-    purge_days: int = 5,
-    embargo_days: int = 5,
+    train_days: int = 1500,
+    valid_days: int = 126,
+    test_days: int = 63,
+    label_buffer_days: int = 6,
+    purge_days: int = 6,
+    embargo_days: int = 6,
+    min_rolling_oos_observations: int = 252,
     min_holdout_observations: int = 252,
 ) -> list[Fold]:
     dates = calendar[(calendar >= pd.Timestamp(start_date)) & (calendar <= pd.Timestamp(end_date))]
-    if len(dates) < 252 * 6:
-        raise ValueError("walk-forward requires at least six years of trading dates")
-    calendar_holdout_start = _at_or_after(
-        dates, dates[-1] - pd.DateOffset(months=holdout_months) + pd.Timedelta(days=1)
+    positive = {
+        "train_days": train_days,
+        "valid_days": valid_days,
+        "test_days": test_days,
+        "min_rolling_oos_observations": min_rolling_oos_observations,
+        "min_holdout_observations": min_holdout_observations,
+    }
+    invalid = [name for name, value in positive.items() if value <= 0]
+    if invalid:
+        raise ValueError(f"walk-forward day counts must be positive: {invalid}")
+    if min_rolling_oos_observations % test_days:
+        raise ValueError("min_rolling_oos_observations must be divisible by test_days")
+    if min(purge_days, embargo_days, label_buffer_days) < 0:
+        raise ValueError("walk-forward gaps and label buffer must be non-negative")
+    holdout_span = min_holdout_observations + label_buffer_days
+    required = (
+        train_days + purge_days + valid_days + embargo_days + min_rolling_oos_observations + holdout_span + 1
     )
-    if min_holdout_observations <= 0 or len(dates) <= min_holdout_observations:
-        raise ValueError("min_holdout_observations must fit inside the walk-forward calendar")
-    observation_holdout_start = dates[-(min_holdout_observations + 1)]
-    holdout_start = min(calendar_holdout_start, observation_holdout_start)
-    test_start = _at_or_after(dates, dates[0] + pd.DateOffset(years=train_years, months=valid_months))
+    if len(dates) < required:
+        raise ValueError(
+            f"walk-forward requires at least {required} shared trading days for the configured windows; "
+            f"detected {len(dates)}"
+        )
+    holdout_start_pos = len(dates) - holdout_span - 1
+    holdout_start = dates[holdout_start_pos]
+    test_start_pos = train_days + purge_days + valid_days + embargo_days
     folds: list[Fold] = []
     index = 0
-    while test_start < holdout_start:
-        test_end = _at_or_before(
-            dates,
-            min(
-                test_start + pd.DateOffset(months=test_months) - pd.Timedelta(days=1),
-                holdout_start - pd.Timedelta(days=1),
-            ),
-        )
-        valid_end_pos = dates.get_loc(test_start) - embargo_days - 1
+    while test_start_pos + test_days <= holdout_start_pos:
+        test_start = dates[test_start_pos]
+        test_end = dates[test_start_pos + test_days - 1]
+        valid_end_pos = test_start_pos - embargo_days - 1
         valid_end = dates[valid_end_pos]
-        valid_start = _at_or_after(
-            dates, valid_end - pd.DateOffset(months=valid_months) + pd.Timedelta(days=1)
-        )
-        train_end = dates[dates.get_loc(valid_start) - purge_days - 1]
-        train_start = _at_or_after(dates, train_end - pd.DateOffset(years=train_years) + pd.Timedelta(days=1))
+        valid_start_pos = valid_end_pos - valid_days + 1
+        valid_start = dates[valid_start_pos]
+        train_end_pos = valid_start_pos - purge_days - 1
+        train_end = dates[train_end_pos]
+        train_start = dates[train_end_pos - train_days + 1]
         folds.append(
             Fold(
                 f"rolling_{index:02d}",
@@ -186,11 +257,22 @@ def build_walk_forward_plan(
             )
         )
         index += 1
-        test_start = _at_or_after(dates, test_end + pd.Timedelta(days=1))
-    valid_end = dates[dates.get_loc(holdout_start) - embargo_days - 1]
-    valid_start = _at_or_after(dates, valid_end - pd.DateOffset(months=valid_months) + pd.Timedelta(days=1))
-    train_end = dates[dates.get_loc(valid_start) - purge_days - 1]
-    train_start = _at_or_after(dates, train_end - pd.DateOffset(years=train_years) + pd.Timedelta(days=1))
+        test_start_pos += test_days
+    rolling_observations = sum(
+        len(dates[(dates >= fold.test[0]) & (dates <= fold.test[1])]) for fold in folds
+    )
+    if rolling_observations < min_rolling_oos_observations:
+        raise ValueError(
+            f"walk-forward rolling OOS requires {min_rolling_oos_observations} observations; "
+            f"planned {rolling_observations}"
+        )
+    valid_end_pos = holdout_start_pos - embargo_days - 1
+    valid_end = dates[valid_end_pos]
+    valid_start_pos = valid_end_pos - valid_days + 1
+    valid_start = dates[valid_start_pos]
+    train_end_pos = valid_start_pos - purge_days - 1
+    train_end = dates[train_end_pos]
+    train_start = dates[train_end_pos - train_days + 1]
     folds.append(
         Fold(
             "final_holdout",
@@ -258,30 +340,53 @@ def run_walk_forward(
 ) -> Path:
     orchestration_started = time.perf_counter()
     runtime = resolve_runtime(load_model_profile(settings, model_profile))
-    calendar_frame = pd.read_parquet(settings.paths.metadata / "trade_calendar.parquet")
-    calendar = pd.DatetimeIndex(
-        pd.to_datetime(
-            calendar_frame.loc[pd.to_numeric(calendar_frame["is_open"], errors="coerce") == 1, "cal_date"]
-        )
-        .dropna()
-        .sort_values()
-        .unique()
-    )
+    calendar = shared_research_calendar(settings)
     research = settings.data.get("research", {})
     thresholds = ResearchThresholds.from_mapping(
         research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
     )
-    label_buffer_days = (
-        int(research.get("walk_forward_label_buffer_days", 5)) if isinstance(research, dict) else 5
+    timing = label_timing_from_settings(settings)
+    walk_cfg = research.get("walk_forward", {}) if isinstance(research, dict) else {}
+    walk_cfg = walk_cfg if isinstance(walk_cfg, dict) else {}
+    requested_purge, purge_days = effective_label_gap(walk_cfg.get("purge_days"), timing)
+    requested_embargo, embargo_days = effective_label_gap(walk_cfg.get("embargo_days"), timing)
+    legacy_buffer = research.get("walk_forward_label_buffer_days") if isinstance(research, dict) else None
+    requested_buffer, label_buffer_days = effective_label_gap(
+        walk_cfg.get("label_buffer_days", legacy_buffer), timing
     )
-    if label_buffer_days < 0:
-        raise ValueError("research.walk_forward_label_buffer_days must be non-negative")
     folds = build_walk_forward_plan(
         calendar,
         start_date,
         end_date,
-        min_holdout_observations=thresholds.min_observations + label_buffer_days,
+        train_days=int(walk_cfg.get("train_days", 1500)),
+        valid_days=int(walk_cfg.get("valid_days", 126)),
+        test_days=int(walk_cfg.get("test_days", 63)),
+        label_buffer_days=label_buffer_days,
+        purge_days=purge_days,
+        embargo_days=embargo_days,
+        min_rolling_oos_observations=int(
+            walk_cfg.get("min_rolling_oos_observations", thresholds.min_observations)
+        ),
+        min_holdout_observations=thresholds.min_observations,
     )
+    timing_contract = {
+        **timing.to_manifest(),
+        "requestedPurgeDays": requested_purge,
+        "effectivePurgeDays": purge_days,
+        "requestedEmbargoDays": requested_embargo,
+        "effectiveEmbargoDays": embargo_days,
+        "requestedLabelBufferDays": requested_buffer,
+        "effectiveLabelBufferDays": label_buffer_days,
+    }
+    prepared_feature_data: pd.DataFrame | None = None
+    feature_store_metadata: dict[str, object] | None = None
+    feature_store_seconds = 0.0
+    if feature_store_enabled(settings):
+        feature_store_started = time.perf_counter()
+        prepared_feature_data, feature_store_metadata = prepare_feature_data(
+            settings, folds[0].train[0], folds[-1].test[1]
+        )
+        feature_store_seconds = time.perf_counter() - feature_store_started
     run_root = settings.paths.output / "research" / "walk_forward"
     run_root.mkdir(parents=True, exist_ok=True)
     manifests: list[dict[str, Any]] = []
@@ -301,10 +406,9 @@ def run_walk_forward(
             topn=topn,
         )
         checkpoint = run_root / f"{fold.key}_{checkpoint_fingerprint}.json"
-        reused = checkpoint.exists()
-        if checkpoint.exists():
-            fold_manifest_path = Path(json.loads(checkpoint.read_text(encoding="utf-8"))["manifest"])
-        else:
+        fold_manifest_path = _validated_checkpoint_manifest(settings, checkpoint, checkpoint_fingerprint)
+        reused = fold_manifest_path is not None
+        if fold_manifest_path is None:
             result_path = train_backtest_select(
                 settings,
                 train=fold.train,
@@ -316,13 +420,16 @@ def run_walk_forward(
                 run_kind="final_holdout" if fold.final_holdout else "walk_forward_fold",
                 runtime=runtime,
                 promotion_mode="release" if fold.final_holdout else "component",
+                prepared_feature_data=prepared_feature_data,
+                feature_store_metadata=feature_store_metadata,
             )
             if fold.final_holdout and result_path.name != "manifest.json":
                 model_id = str(pd.read_csv(result_path)["model_id"].iloc[0])
                 fold_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
             else:
                 fold_manifest_path = result_path
-            checkpoint.write_text(
+            checkpoint_tmp = checkpoint.with_suffix(".json.tmp")
+            checkpoint_tmp.write_text(
                 json.dumps(
                     {
                         "manifest": str(fold_manifest_path),
@@ -333,6 +440,7 @@ def run_walk_forward(
                 ),
                 encoding="utf-8",
             )
+            os.replace(checkpoint_tmp, checkpoint)
         manifest = json.loads(fold_manifest_path.read_text(encoding="utf-8"))
         promotion = manifest.get("promotion", {})
         if not isinstance(promotion, dict):
@@ -458,6 +566,7 @@ def run_walk_forward(
         and final_manifest.get("promotion", {}).get("status") == "PROMOTED"
     )
     aggregate_phases = _aggregate_component_timings(manifests)
+    aggregate_phases["shared_feature_store_seconds"] = round(feature_store_seconds, 6)
     timings = {
         "clock": "time.perf_counter",
         "phasesSeconds": aggregate_phases,
@@ -494,7 +603,9 @@ def run_walk_forward(
             "componentValidationReports": [manifest.get("promotion", {}) for manifest in manifests[:-1]],
         },
         "timings": timings,
+        "featureStore": feature_store_metadata,
         "folds": [asdict(fold) for fold in folds],
+        "labelTiming": timing_contract,
         "execution": manifests[-1]["execution"],
         "metrics": metrics,
         "componentRuns": component_runs,

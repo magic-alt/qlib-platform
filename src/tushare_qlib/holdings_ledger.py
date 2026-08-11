@@ -116,7 +116,9 @@ def _calendar(calendar_path: str | Path) -> pd.DatetimeIndex:
     if not required.issubset(frame.columns):
         raise ValueError("trading calendar must contain cal_date and is_open")
     return pd.DatetimeIndex(
-        pd.to_datetime(frame.loc[pd.to_numeric(frame["is_open"], errors="coerce") == 1, "cal_date"], errors="raise")
+        pd.to_datetime(
+            frame.loc[pd.to_numeric(frame["is_open"], errors="coerce") == 1, "cal_date"], errors="raise"
+        )
         .dt.normalize()
         .sort_values()
         .unique()
@@ -168,8 +170,16 @@ def reconcile_holdings(
         raise ValueError("ledger is newer than the requested reconciliation date")
 
     previous_as_of = ledger["as_of_date"].max() if not ledger.empty else None
-    prior = ledger.set_index("instrument") if not ledger.empty else pd.DataFrame(index=pd.Index([], name="instrument"))
-    seed_dates = seeds.set_index("instrument")["opened_trade_date"] if not seeds.empty else pd.Series(dtype="datetime64[ns]")
+    prior = (
+        ledger.set_index("instrument")
+        if not ledger.empty
+        else pd.DataFrame(index=pd.Index([], name="instrument"))
+    )
+    seed_dates = (
+        seeds.set_index("instrument")["opened_trade_date"]
+        if not seeds.empty
+        else pd.Series(dtype="datetime64[ns]")
+    )
     ledger_rows: list[dict[str, object]] = []
     snapshot_rows: list[dict[str, object]] = []
     broker_instruments = set(broker["instrument"])

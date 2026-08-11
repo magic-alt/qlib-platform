@@ -4,8 +4,10 @@ import pytest
 from tushare_qlib.research_gate import (
     ResearchThresholds,
     derive_research_metrics,
+    derive_signal_metrics,
     evaluate_component_metrics,
     evaluate_research_metrics,
+    evaluate_signal_metrics,
 )
 
 
@@ -29,6 +31,48 @@ def test_long_short_annualization_respects_label_horizon():
     )
 
     assert metrics["long_short_annualized"] == pytest.approx(0.10 * 252 / 5)
+
+
+def test_signal_screen_uses_signal_metrics_and_never_authorizes_promotion():
+    dates = pd.date_range("2026-01-01", periods=3)
+    index = pd.MultiIndex.from_product([dates, ["A", "B", "C", "D", "E"]], names=["datetime", "instrument"])
+    predictions = pd.Series([5, 4, 3, 2, 1] * 3, index=index)
+    labels = pd.Series(
+        [
+            0.05,
+            0.03,
+            0.0,
+            -0.01,
+            -0.05,
+            0.05,
+            0.02,
+            0.01,
+            -0.02,
+            -0.04,
+            0.04,
+            0.03,
+            -0.01,
+            0.0,
+            -0.05,
+        ],
+        index=index,
+    )
+    metrics = derive_signal_metrics(
+        predictions,
+        labels,
+        unique_artifact=True,
+        lineage_complete=True,
+        label_horizon_days=5,
+    )
+
+    report = evaluate_signal_metrics(
+        metrics,
+        ResearchThresholds(min_observations=3, min_icir=0.0),
+    )
+
+    assert report["passed"] is True
+    assert report["decision"] == "SIGNAL_SCREEN_PASS"
+    assert report["promotionAuthorized"] is False
 
 
 def test_short_fold_is_component_validated_without_weakening_release_thresholds():

@@ -14,7 +14,7 @@ from .artifacts import ArtifactType, PromotionStatus, stamp_artifact
 from .canonical_config import CanonicalConfig
 from .lineage import build_lineage, dirty_research_override_enabled, sha256_json
 from .settings import Settings
-from .store import PartitionStore, sha256_file
+from .store import sha256_file
 from .topk_dropout import TopkDropoutPolicy
 from .model_runtime import (
     ModelProfile,
@@ -30,10 +30,14 @@ from .research_gate import (
     ResearchPromotionError,
     ResearchThresholds,
     derive_research_metrics,
+    derive_signal_metrics,
     evaluate_component_metrics,
     evaluate_research_metrics,
+    evaluate_signal_metrics,
     write_gate_report,
 )
+from .research_timing import label_timing_from_settings, shared_research_calendar
+from .feature_store import feature_store_enabled, prepare_feature_data
 
 _DEFAULT_BENCHMARK = "SH000300"
 
@@ -51,31 +55,11 @@ def _configure_mlflow_tracking(settings: Settings) -> None:
 
 
 def _research_label_horizon_days(settings: Settings) -> int:
-    research = settings.data.get("research", {})
-    strategy = settings.data.get("strategy", {})
-    topk = strategy.get("topk_dropout", {}) if isinstance(strategy, dict) else {}
-    default_horizon = int(topk.get("hold_thresh", 1)) if isinstance(topk, dict) else 1
-    horizon = (
-        int(research.get("label_horizon_days", default_horizon))
-        if isinstance(research, dict)
-        else default_horizon
-    )
-    if horizon < 1:
-        raise ValueError("research.label_horizon_days must be at least 1")
-    return horizon
+    return label_timing_from_settings(settings).horizon_days
 
 
 def _default_splits_from_data(settings: Settings) -> tuple[tuple[str, str], tuple[str, str], tuple[str, str]]:
-    raw_dates = pd.to_datetime(
-        PartitionStore(settings.paths.raw).list_dates("daily"), format="%Y%m%d", errors="coerce"
-    )
-    raw_dates = pd.DatetimeIndex(sorted(d for d in raw_dates if pd.notna(d))).normalize()
-    qlib_calendar_path = settings.qlib_data_uri / "calendars" / "day.txt"
-    if not qlib_calendar_path.is_file():
-        raise FileNotFoundError(f"Qlib day calendar is required: {qlib_calendar_path}")
-    qlib_dates = pd.to_datetime(qlib_calendar_path.read_text(encoding="utf-8").splitlines(), errors="coerce")
-    qlib_dates = pd.DatetimeIndex(sorted(d for d in qlib_dates if pd.notna(d))).normalize()
-    dates = raw_dates.intersection(qlib_dates).sort_values()
+    dates = shared_research_calendar(settings)
     research = settings.data.get("research", {})
     min_history = int(research.get("min_history_days", 756)) if isinstance(research, dict) else 756
     if len(dates) < min_history:
@@ -87,7 +71,7 @@ def _default_splits_from_data(settings: Settings) -> tuple[tuple[str, str], tupl
     thresholds = ResearchThresholds.from_mapping(
         research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
     )
-    label_buffer_days = _research_label_horizon_days(settings) + 1
+    label_buffer_days = label_timing_from_settings(settings).lookahead_days
     n = len(dates)
     test_days = thresholds.min_observations + label_buffer_days
     # Test ends one day before the last calendar entry so the backtest
@@ -189,8 +173,12 @@ def build_dataset(
     test: tuple[str, str],
     universe: dict[str, object] | None = None,
     label_horizon_days: int = 1,
+    prepared_feature_data: pd.DataFrame | None = None,
 ) -> Any:
+    from qlib.contrib.data.handler import check_transform_proc
     from qlib.data.dataset import DatasetH
+    from qlib.data.dataset.handler import DataHandlerLP
+    from qlib.data.dataset.loader import StaticDataLoader
 
     from .custom_handler import TushareAlpha158Fundamental
 
@@ -201,40 +189,58 @@ def build_dataset(
         [f"Ref($close, -{label_horizon_days + 1})/Ref($close, -1) - 1"],
         ["LABEL0"],
     )
-    handler = TushareAlpha158Fundamental(
-        instruments=universe.get("instruments", "all"),
-        start_time=train[0],
-        end_time=test[1],
-        fit_start_time=train[0],
-        fit_end_time=train[1],
-        label=label,
-        shared_processors=[
-            {
-                "class": "AshareUniverseFilter",
-                "module_path": "tushare_qlib.processors",
-                "kwargs": {
-                    "min_listed_days": int(str(universe.get("min_listed_days", 120))),
-                    "min_circ_mv_yuan": float(str(universe.get("min_circ_mv_yuan", 2_000_000_000))),
-                    "min_money_20d_yuan": float(str(universe.get("min_money_20d_yuan", 20_000_000))),
-                    "exclude_st": bool(universe.get("exclude_st", True)),
-                    "allow_unknown_st": bool(universe.get("allow_unknown_st", False)),
-                },
-            }
-        ],
-        infer_processors=[
-            {
-                "class": "ProcessInfSingleThread",
-                "module_path": "tushare_qlib.processors",
-                "kwargs": {"n_jobs": 1},
+    shared_processors = [
+        {
+            "class": "AshareUniverseFilter",
+            "module_path": "tushare_qlib.processors",
+            "kwargs": {
+                "min_listed_days": int(str(universe.get("min_listed_days", 120))),
+                "min_circ_mv_yuan": float(str(universe.get("min_circ_mv_yuan", 2_000_000_000))),
+                "min_money_20d_yuan": float(str(universe.get("min_money_20d_yuan", 20_000_000))),
+                "exclude_st": bool(universe.get("exclude_st", True)),
+                "allow_unknown_st": bool(universe.get("allow_unknown_st", False)),
             },
-            {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
-            {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
-        ],
-        learn_processors=[
-            {"class": "DropnaLabel"},
-            {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
-        ],
-    )
+        }
+    ]
+    infer_processors = [
+        {
+            "class": "ProcessInfSingleThread",
+            "module_path": "tushare_qlib.processors",
+            "kwargs": {},
+        },
+        {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
+        {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
+    ]
+    learn_processors = [
+        {"class": "DropnaLabel"},
+        {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
+    ]
+    if prepared_feature_data is None:
+        handler = TushareAlpha158Fundamental(
+            instruments=universe.get("instruments", "all"),
+            start_time=train[0],
+            end_time=test[1],
+            fit_start_time=train[0],
+            fit_end_time=train[1],
+            label=label,
+            shared_processors=shared_processors,
+            infer_processors=infer_processors,
+            learn_processors=learn_processors,
+        )
+    else:
+        # StaticDataLoader contains raw expressions only. Every fold receives
+        # fresh processors whose learnable state is fitted on that fold's train span.
+        infer_processors = check_transform_proc(infer_processors, train[0], train[1])
+        learn_processors = check_transform_proc(learn_processors, train[0], train[1])
+        handler = DataHandlerLP(
+            instruments=None,
+            start_time=train[0],
+            end_time=test[1],
+            data_loader=StaticDataLoader(prepared_feature_data),
+            shared_processors=shared_processors,
+            infer_processors=infer_processors,
+            learn_processors=learn_processors,
+        )
     return DatasetH(handler=handler, segments={"train": train, "valid": valid, "test": test})
 
 
@@ -518,9 +524,11 @@ def train_backtest_select(
     model_profile: str | Path | None = None,
     runtime: ResolvedRuntime | None = None,
     promotion_mode: str = "release",
+    prepared_feature_data: pd.DataFrame | None = None,
+    feature_store_metadata: dict[str, object] | None = None,
 ) -> Path:
-    if promotion_mode not in {"release", "component"}:
-        raise ValueError("promotion_mode must be 'release' or 'component'")
+    if promotion_mode not in {"release", "component", "signal"}:
+        raise ValueError("promotion_mode must be 'release', 'component', or 'signal'")
     if runtime is not None and model_profile is not None:
         raise ValueError("pass either model_profile or a pre-resolved runtime, not both")
     profile: ModelProfile = (
@@ -546,28 +554,32 @@ def train_backtest_select(
     seed = int(research.get("random_seed", 42))
     np.random.seed(seed)
     _configure_mlflow_tracking(settings)
-    with timings.measure("data_seconds"):
-        # Alpha158 materializes a wide cross-sectional frame. Keeping feature
-        # preparation single-process avoids duplicate worker copies.
+    with timings.measure("qlib_init_seconds"):
         qlib.init(
             provider_uri=str(settings.qlib_data_uri),
             region=REG_CN,
             expression_cache=None,
             dataset_cache=None,
-            kernels=1,
+            kernels=max(1, int(research.get("qlib_kernels", 4))),
         )
+    with timings.measure("dataset_prepare_seconds"):
         if train is None or valid is None or test is None:
             train, valid, test = _default_splits_from_data(settings)
         if not (
             pd.Timestamp(train[1]) < pd.Timestamp(valid[0]) <= pd.Timestamp(valid[1]) < pd.Timestamp(test[0])
         ):
             raise ValueError("train/valid/test windows must be strictly chronological and non-overlapping")
+    if prepared_feature_data is None and feature_store_enabled(settings):
+        with timings.measure("feature_store_seconds"):
+            prepared_feature_data, feature_store_metadata = prepare_feature_data(settings, train[0], test[1])
+    with timings.measure("handler_process_seconds"):
         dataset = build_dataset(
             train=train,
             valid=valid,
             test=test,
             universe=universe,
             label_horizon_days=label_horizon_days,
+            prepared_feature_data=prepared_feature_data,
         )
     feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
     feature_count = len(feature_columns)
@@ -606,7 +618,8 @@ def train_backtest_select(
         )
         with timings.measure("train_seconds"):
             model.fit(dataset)
-        R.save_objects(**{"params.pkl": model, "dataset": dataset})
+        with timings.measure("model_save_seconds"):
+            R.save_objects(**{"params.pkl": model})
         signal_record = SignalRecord(model=model, dataset=dataset, recorder=recorder)
         with timings.measure("predict_seconds"):
             pred = model.predict(dataset)
@@ -620,6 +633,94 @@ def train_backtest_select(
         pred_dates = pred.index.get_level_values("datetime")
         oos_start = pd.Timestamp(pred_dates.min()).strftime("%Y-%m-%d")
         oos_end = pd.Timestamp(pred_dates.max()).strftime("%Y-%m-%d")
+        best_iteration = getattr(getattr(model, "model", None), "best_iteration", None)
+        if best_iteration is not None:
+            recorder.log_params(best_iteration=int(best_iteration))
+        if promotion_mode == "signal":
+            model_id = str(getattr(recorder, "id", "unversioned"))
+            artifact_dir = settings.paths.output / "research" / model_id
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            pred_path = artifact_dir / "oos_predictions.parquet"
+            label_path = artifact_dir / "oos_labels.parquet"
+            timings_path = artifact_dir / "timings.json"
+            gate_path = artifact_dir / "signal_gate.json"
+            manifest_path = artifact_dir / "manifest.json"
+            with timings.measure("artifact_export_seconds"):
+                pred.to_parquet(pred_path)
+                label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
+                label_frame.to_parquet(label_path)
+                lineage = build_lineage(
+                    settings,
+                    canonical,
+                    dataset_fingerprint=_dataset_id(settings),
+                    feature_columns=feature_columns,
+                )
+                predictions_sha256 = sha256_file(pred_path)
+                lineage["predictionsSha256"] = predictions_sha256
+                lineage["lineageId"] = sha256_json(
+                    {key: value for key, value in lineage.items() if key != "lineageId"}
+                )[:32]
+                dirty_override = dirty_research_override_enabled(settings, lineage)
+                signal_metrics = derive_signal_metrics(
+                    pred,
+                    raw_label,
+                    unique_artifact=_prediction_is_unique(settings, predictions_sha256, model_id),
+                    lineage_complete=bool(lineage["complete"]),
+                    label_horizon_days=label_horizon_days,
+                )
+                signal_metrics["dirty_research_override"] = dirty_override
+                gate_report = evaluate_signal_metrics(
+                    signal_metrics,
+                    canonical.promotion,
+                    allow_dirty_research=dirty_override,
+                )
+                write_gate_report(gate_report, gate_path)
+            timing_payload = timings.to_dict()
+            write_timings(timings_path, runtime, timing_payload)
+            recorder.log_metrics(
+                **{f"timing.{key}": float(value) for key, value in timing_payload["phasesSeconds"].items()}
+            )
+            manifest = {
+                "schemaVersion": "2.0",
+                "externalRunId": model_id,
+                "runKind": "signal_screen",
+                "name": f"Qlib signal screen {oos_start}..{oos_end}",
+                "dataset": {
+                    "fingerprint": _dataset_id(settings),
+                    "datasetId": canonical.dataset.dataset_id,
+                    "source": canonical.dataset.source,
+                    "universe": canonical.dataset.universe_name,
+                    "startDate": train[0],
+                    "endDate": oos_end,
+                },
+                "featureStore": feature_store_metadata,
+                "model": {
+                    "name": "Alpha158-LGBM" if runtime.profile.family == "lightgbm" else "Alpha158-DNN",
+                    "fingerprint": model_id,
+                    "parameters": model_parameters,
+                    "bestIteration": int(best_iteration) if best_iteration is not None else None,
+                    "labelHorizonDays": label_horizon_days,
+                },
+                "canonicalConfig": canonical.to_manifest(),
+                "lineage": lineage,
+                "promotion": {
+                    "status": "SCREENED" if gate_report["passed"] else "REJECTED",
+                    "decision": gate_report["decision"],
+                    "gateMode": "signal_screen",
+                    "promotionAuthorized": False,
+                },
+                "runtime": runtime.to_manifest(),
+                "timings": timing_payload,
+                "metrics": signal_metrics,
+                "artifacts": [
+                    {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
+                    {"name": label_path.name, "localPath": str(label_path), "rows": len(label_frame)},
+                    {"name": timings_path.name, "localPath": str(timings_path)},
+                    {"name": gate_path.name, "localPath": str(gate_path)},
+                ],
+            }
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            return manifest_path
         benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
         with timings.measure("backtest_seconds"):
             PortAnaRecord(
@@ -782,6 +883,9 @@ def train_backtest_select(
             },
             "startDate": train[0],
             "endDate": oos_end,
+            "handlerRows": len(dataset.handler._learn),
+            "instrumentCount": int(dataset.handler._learn.index.get_level_values("instrument").nunique()),
+            "featureCount": feature_count,
         }
         manifest = {
             "schemaVersion": "2.0",
@@ -789,11 +893,13 @@ def train_backtest_select(
             "runKind": run_kind,
             "name": f"Qlib {run_kind} {oos_start}..{oos_end}",
             "dataset": dataset_manifest,
+            "featureStore": feature_store_metadata,
             "model": {
                 "name": "Alpha158-LGBM" if runtime.profile.family == "lightgbm" else "Alpha158-DNN",
                 "fingerprint": model_id,
                 "parameters": model_parameters,
                 "labelHorizonDays": label_horizon_days,
+                "bestIteration": int(best_iteration) if best_iteration is not None else None,
             },
             "canonicalConfig": canonical.to_manifest(),
             "portfolioPolicySha256": sha256_json(canonical.to_manifest()["portfolio"]),
@@ -857,7 +963,19 @@ def train_backtest_select(
                 "scorePath": str(signal_paths[latest]),
             }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-        write_backtest_report(settings, artifact_dir)
+        with timings.measure("report_seconds"):
+            write_backtest_report(settings, artifact_dir)
+        timing_payload = timings.to_dict()
+        manifest["timings"] = timing_payload
+        write_timings(timings_path, runtime, timing_payload)
+        recorder.log_metrics(
+            **{
+                "timing.report_seconds": float(timing_payload["phasesSeconds"].get("report_seconds", 0.0)),
+                "timing.wall_seconds": float(timing_payload["wallSeconds"]),
+                "timing.peak_rss_mb": float(timing_payload.get("peakRssMb") or 0.0),
+            }
+        )
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         if not gate_passed:
             raise ResearchPromotionError(manifest_path)
         if promotion_mode == "component" or not promoted:

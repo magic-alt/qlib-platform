@@ -9,6 +9,7 @@ import pytest
 from tushare_qlib import lineage as lineage_module
 from tushare_qlib.lineage import build_lineage, dirty_research_override_enabled, resolve_qlib_repo
 from tushare_qlib.settings import Paths, Settings
+from tushare_qlib.store import sha256_file
 
 
 def _settings(tmp_path: Path, *, allow_dirty_research: bool = False) -> Settings:
@@ -17,16 +18,29 @@ def _settings(tmp_path: Path, *, allow_dirty_research: bool = False) -> Settings
     config_path.write_text("project_root: ./data\n", encoding="utf-8")
     qlib_data = tmp_path / "qlib_data"
     qlib_data.mkdir()
+    paths = Paths.from_root(tmp_path / "data")
+    membership = paths.metadata / "universe_membership" / "csi300.parquet"
+    membership.parent.mkdir(parents=True)
+    membership.write_text("fixture", encoding="utf-8")
     (qlib_data / "dataset_manifest.json").write_text(
-        json.dumps({"qlib_git_commit": "qlib-commit", "source_snapshot_id": "snapshot-1"}),
+        json.dumps(
+            {
+                "qlib_git_commit": "qlib-commit",
+                "source_snapshot_id": "snapshot-1",
+                "universe_membership_sha256": sha256_file(membership),
+            }
+        ),
         encoding="utf-8",
     )
     qlib_repo = tmp_path / "qlib_repo"
     qlib_repo.mkdir()
     return Settings(
         config_path=config_path,
-        data={"research": {"allow_dirty_research": allow_dirty_research}},
-        paths=Paths.from_root(tmp_path / "data"),
+        data={
+            "research": {"allow_dirty_research": allow_dirty_research},
+            "universe": {"instruments": "csi300", "index_code": "399300.SZ"},
+        },
+        paths=paths,
         tushare_token=None,
         qlib_repo=qlib_repo,
         qlib_data_uri=qlib_data,
@@ -84,6 +98,19 @@ def test_dirty_research_override_is_research_only_and_rejects_unknown_dirty(tmp_
     assert lineage["complete"] is False
 
     lineage["qlibPlatformDirty"] = None
+    assert dirty_research_override_enabled(settings, lineage) is False
+
+
+def test_dirty_override_rejects_mismatched_universe_membership(tmp_path: Path):
+    settings = _settings(tmp_path, allow_dirty_research=True)
+    lineage = {
+        "requiredFieldsComplete": True,
+        "qlibCommitMatchesDataset": True,
+        "universeMembershipMatchesDataset": False,
+        "qlibPlatformDirty": True,
+        "qlibDirty": False,
+    }
+
     assert dirty_research_override_enabled(settings, lineage) is False
 
 

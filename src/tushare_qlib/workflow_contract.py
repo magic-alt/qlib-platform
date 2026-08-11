@@ -34,9 +34,7 @@ def _participation(value: object) -> float | None:
     return float(match.group(1)) if match else None
 
 
-def _add_mismatch(
-    mismatches: dict[str, object], key: str, expected: object, actual: object
-) -> None:
+def _add_mismatch(mismatches: dict[str, object], key: str, expected: object, actual: object) -> None:
     if actual != expected:
         mismatches[key] = {"pipeline": expected, "qrun": actual}
 

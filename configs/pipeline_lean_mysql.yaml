@@ -1,6 +1,6 @@
 project_root: ./data/lean_mysql
 start_date: "20160808"
-end_date: "20260730"
+end_date: "20260810"
 calendar_end_date: "20261231"
 
 data_source:
@@ -47,6 +47,7 @@ qlib:
   dataset_version: cn_tushare_v1
   export:
     copy_on_write_update: true
+    max_workers: 4
   include_fields:
     - open
     - high
@@ -90,6 +91,10 @@ qlib:
     - ocf_to_or_pit
 
 universe:
+  instruments: csi300
+  label: PIT CSI300
+  index_code: 399300.SZ
+  membership_effective_lag_days: 1
   min_listed_days: 120
   min_circ_mv_yuan: 2000000000
   min_money_20d_yuan: 20000000
@@ -97,11 +102,25 @@ universe:
   allow_unknown_st: false
 
 research:
-  min_history_days: 700
+  min_history_days: 2200
   # Align the forward-return label with TopkDropout hold_thresh.
   label_horizon_days: 5
   random_seed: 42
   num_threads: 8
+  qlib_kernels: 4
+  feature_store:
+    enabled: true
+    format: parquet
+    partition: year
+  walk_forward:
+    train_days: 1500
+    valid_days: 126
+    test_days: 63
+    min_rolling_oos_observations: 252
+    min_holdout_observations: 252
+    purge_days: 6
+    embargo_days: 6
+    label_buffer_days: 6
   backtest_account: 500000
   allow_zero_benchmark: false
   deal_price: open
@@ -152,3 +171,11 @@ risk:
   max_sector_exposure: 0.30
   max_daily_loss: 0.03
   kill_switch: false
+  exposure_overlay:
+    enabled: false
+    target_annual_volatility: 0.15
+    soft_drawdown: 0.10
+    hard_drawdown: 0.20
+    minimum_signal_dispersion: 0.05
+    minimum_exposure_scale: 0.0
+    maximum_exposure_scale: 1.0

@@ -84,7 +84,9 @@ def build_strategy_audit(
     if missing_quote:
         raise ValueError(f"quote_status missing columns: {sorted(missing_quote)}")
 
-    score_dates = pd.DatetimeIndex(scores.index.get_level_values("datetime").unique()).normalize().sort_values()
+    score_dates = (
+        pd.DatetimeIndex(scores.index.get_level_values("datetime").unique()).normalize().sort_values()
+    )
     position_dates = pd.DatetimeIndex(sorted(pd.Timestamp(date).normalize() for date in positions))
     rows: list[pd.DataFrame] = []
     validation_errors: list[str] = []
@@ -133,10 +135,7 @@ def build_strategy_audit(
         # Qlib records every generated Order in ``trade_dir``.  ``amount`` can
         # still be zero after board-lot rounding, so treating only non-zero
         # amounts as requests would falsely report a strategy divergence.
-        requested = {
-            instrument: ("BUY" if value > 0 else "SELL")
-            for instrument, value in direction.items()
-        }
+        requested = {instrument: ("BUY" if value > 0 else "SELL") for instrument, value in direction.items()}
         planned = {
             str(row.instrument): str(row.target_action)
             for row in decision.itertuples(index=False)
@@ -147,7 +146,9 @@ def build_strategy_audit(
                 f"{trade_date:%Y-%m-%d}: planned={sorted(planned.items())} requested={sorted(requested.items())}"
             )
 
-        before_qty = before.set_index("instrument")["quantity"] if not before.empty else pd.Series(dtype=float)
+        before_qty = (
+            before.set_index("instrument")["quantity"] if not before.empty else pd.Series(dtype=float)
+        )
         after_qty = after.set_index("instrument")["quantity"] if not after.empty else pd.Series(dtype=float)
         audit = decision.copy()
         audit["quantity_before"] = audit["instrument"].map(before_qty).fillna(0.0)

@@ -11,8 +11,13 @@ from tushare_qlib.risk_engine import HardRiskPolicy, RiskLimitError, pretrade_ri
 def test_stale_snapshot_fails_closed():
     frame = pd.DataFrame({"as_of_trade_date": ["2026-08-10"], "snapshot_at_utc": ["2026-08-10T00:00:00Z"]})
     with pytest.raises(SnapshotFreshnessError, match="stale"):
-        validate_execution_snapshot(frame, name="quotes", trade_date="2026-08-10", max_age_seconds=60,
-                                    now_utc=pd.Timestamp("2026-08-10T00:02:00Z").to_pydatetime())
+        validate_execution_snapshot(
+            frame,
+            name="quotes",
+            trade_date="2026-08-10",
+            max_age_seconds=60,
+            now_utc=pd.Timestamp("2026-08-10T00:02:00Z").to_pydatetime(),
+        )
 
 
 def test_hard_risk_rejects_concentrated_target():

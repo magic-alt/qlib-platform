@@ -139,6 +139,7 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
     runtime = ResolvedRuntime(profile, "cpu", None, {"lightgbm": "test"})
     monkeypatch.setattr("tushare_qlib.walk_forward.load_model_profile", lambda *args, **kwargs: profile)
     monkeypatch.setattr("tushare_qlib.walk_forward.resolve_runtime", lambda value: runtime)
+    monkeypatch.setattr("tushare_qlib.walk_forward.shared_research_calendar", lambda value: calendar)
     monkeypatch.setattr(backtest_report, "write_backtest_report", lambda *args, **kwargs: None)
 
     calls: list[tuple[str, str, int]] = []
