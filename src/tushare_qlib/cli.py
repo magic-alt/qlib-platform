@@ -28,6 +28,19 @@ def parser() -> argparse.ArgumentParser:
     su_members = sub.add_parser("sync-universe")
     su_members.add_argument("--start")
     su_members.add_argument("--end")
+    daily_sync = sub.add_parser("daily-sync")
+    daily_sync.add_argument("--as-of")
+    daily_sync.add_argument("--check-only", action="store_true")
+    daily_sync.add_argument("--force-full", action="store_true")
+    dividends = sub.add_parser("sync-dividends")
+    dividends.add_argument("--bootstrap", action="store_true")
+    dividends.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
+    kline = sub.add_parser("export-kline")
+    kline.add_argument("--symbol", required=True)
+    kline.add_argument("--adjust", choices=["raw", "qfq", "hfq"], default="raw")
+    kline.add_argument("--start")
+    kline.add_argument("--end")
+    kline.add_argument("--output", required=True)
     c = sub.add_parser("curate")
     c.add_argument("--start")
     c.add_argument("--end")
@@ -346,6 +359,49 @@ def main() -> None:
     # package, so a stale optional QLIB_REPO does not mask a valid editable
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
+
+    if args.command == "daily-sync":
+        from .daily_sync import run_daily_sync
+
+        manifest = run_daily_sync(
+            settings,
+            as_of=args.as_of,
+            check_only=args.check_only,
+            force_full=args.force_full,
+        )
+        print(json.dumps(json.loads(manifest.read_text(encoding="utf-8")), ensure_ascii=False))
+        return
+
+    if args.command == "sync-dividends":
+        if not args.bootstrap:
+            raise ValueError("sync-dividends currently requires --bootstrap; daily deltas use daily-sync")
+        from .corporate_actions import CorporateActionStore
+        from .extract import Extractor
+
+        extractor = Extractor(settings)
+        master_path = settings.paths.metadata / "stock_master.parquet"
+        master = pd.read_parquet(master_path) if master_path.is_file() else extractor.fetch_stock_master()
+        result = CorporateActionStore(settings).bootstrap(
+            extractor.client,
+            master,
+            resume=args.resume,
+        )
+        print(json.dumps(result, ensure_ascii=False))
+        return
+
+    if args.command == "export-kline":
+        from .kline_export import export_kline
+
+        path = export_kline(
+            settings,
+            args.symbol,
+            args.output,
+            start_date=args.start,
+            end_date=args.end,
+            adjustment=args.adjust,
+        )
+        print(path)
+        return
 
     if args.command == "research-report":
         from .backtest_report import write_backtest_report

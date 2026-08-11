@@ -59,6 +59,13 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml feature-store --start 20160104 --end 20260810
 ```
 
+完成首次构建后，可将 TuShare 下载和 Qlib 数据发布作为独立后台任务。先运行
+sync-dividends --bootstrap --resume 补齐公司行为，再用 daily-sync --check-only
+验证每日检查。Windows 任务注册、恢复和数据口径见 docs/daily_sync.md。
+
+主 Qlib 使用稳定总回报价格；如需查看以指定结束日为锚点的最新前复权 K 线，
+使用本地 export-kline --adjust qfq。
+
 若上述步骤通过，再执行全量构建（与日常首次一致）：
 
 ## 3. 首次全量构建

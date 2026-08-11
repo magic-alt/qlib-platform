@@ -48,6 +48,7 @@ qlib:
   export:
     copy_on_write_update: true
     max_workers: 4
+    backup_keep: 3
   include_fields:
     - open
     - high

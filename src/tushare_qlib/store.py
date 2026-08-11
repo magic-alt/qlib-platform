@@ -43,6 +43,27 @@ def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
+def frame_content_sha256(frame: pd.DataFrame, *, key_columns: Iterable[str] = ()) -> str:
+    """Hash logical frame content independently from source row ordering."""
+
+    columns = sorted(str(column) for column in frame.columns)
+    canonical = frame.loc[:, columns].copy()
+    keys = [column for column in key_columns if column in canonical]
+    sort_columns = keys or columns
+    if sort_columns and not canonical.empty:
+        canonical = canonical.sort_values(sort_columns, kind="stable", na_position="first")
+    canonical = canonical.reset_index(drop=True)
+    schema = json.dumps(
+        [(column, str(canonical[column].dtype)) for column in columns],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    row_hashes = pd.util.hash_pandas_object(canonical, index=False, categorize=False).to_numpy()
+    digest = hashlib.sha256(schema)
+    digest.update(row_hashes.tobytes())
+    return digest.hexdigest()
+
+
 class PartitionStore:
     def __init__(self, root: Path):
         self.root = Path(root)
@@ -125,6 +146,46 @@ class PartitionStore:
             meta.update(metadata)
         self._write_manifest(dataset, trade_date, meta)
         return target
+
+    def write_if_changed(
+        self,
+        dataset: str,
+        trade_date: str,
+        df: pd.DataFrame,
+        metadata: dict[str, Any] | None = None,
+        *,
+        key_columns: Iterable[str] = ("ts_code", "trade_date"),
+        revision_root: Path | None = None,
+        status: str | None = None,
+    ) -> tuple[Path, bool, str]:
+        """Promote a logical partition and content-address the prior revision."""
+
+        logical_hash = frame_content_sha256(df, key_columns=key_columns)
+        current_manifest = self.read_manifest(dataset, trade_date)
+        current_hash = str(current_manifest.get("content_sha256", ""))
+        if not current_hash and self.exists(dataset, trade_date):
+            current_hash = frame_content_sha256(self.read(dataset, trade_date), key_columns=key_columns)
+        if current_hash == logical_hash:
+            return self.data_path(dataset, trade_date), False, logical_hash
+
+        if revision_root is not None and self.exists(dataset, trade_date):
+            archive = Path(revision_root) / dataset / f"trade_date={trade_date}" / current_hash
+            archive.mkdir(parents=True, exist_ok=True)
+            archived_data = archive / "data.parquet"
+            archived_manifest = archive / "manifest.json"
+            if not archived_data.exists():
+                shutil.copy2(self.data_path(dataset, trade_date), archived_data)
+            manifest_path = self.manifest_path(dataset, trade_date)
+            if manifest_path.exists() and not archived_manifest.exists():
+                shutil.copy2(manifest_path, archived_manifest)
+
+        promoted_metadata = dict(metadata or {})
+        promoted_metadata["content_sha256"] = logical_hash
+        return (
+            self.write(dataset, trade_date, df, promoted_metadata, status=status),
+            True,
+            logical_hash,
+        )
 
     def write_status(
         self,

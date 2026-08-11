@@ -159,7 +159,36 @@ def _replace_directory_atomic(candidate: Path, target: Path) -> Path | None:
     return backup
 
 
-def dump_full(settings: Settings, *, single_thread: bool = False) -> Path:
+def _backup_keep(settings: Settings) -> int:
+    export_cfg = settings.data.get("qlib", {}).get("export", {})
+    keep = int(export_cfg.get("backup_keep", 3)) if isinstance(export_cfg, dict) else 3
+    if keep < 0:
+        raise ValueError("qlib.export.backup_keep must be non-negative")
+    return keep
+
+
+def _prune_backups(settings: Settings) -> None:
+    keep = _backup_keep(settings)
+    pattern = f"{settings.qlib_data_uri.name}.backup.*"
+    backups = sorted(
+        settings.qlib_data_uri.parent.glob(pattern),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for obsolete in backups[keep:]:
+        try:
+            shutil.rmtree(obsolete)
+        except OSError as exc:
+            logger.warning("Unable to prune Qlib backup {}: {}", obsolete, type(exc).__name__)
+
+
+def dump_full(
+    settings: Settings,
+    *,
+    single_thread: bool = False,
+    sync_context: dict[str, object] | None = None,
+) -> Path:
+    _backup_keep(settings)
     target = settings.qlib_data_uri
     target.parent.mkdir(parents=True, exist_ok=True)
     candidate = Path(tempfile.mkdtemp(prefix=f".{target.name}.building.", dir=target.parent))
@@ -167,8 +196,11 @@ def dump_full(settings: Settings, *, single_thread: bool = False) -> Path:
         _run(settings, "dump_all", settings.paths.staging_full, candidate, single_thread=single_thread)
         install_qlib_universe(settings, candidate)
         smoke = _smoke_test_dataset_subprocess(candidate)
+        write_fingerprint(
+            settings, mode="full", smoke=smoke, dataset_dir=candidate, sync_context=sync_context
+        )
         backup = _replace_directory_atomic(candidate, target)
-        write_fingerprint(settings, mode="full", smoke=smoke)
+        _prune_backups(settings)
         logger.info("Promoted Qlib dataset: {}, backup={}", target, backup)
         return target
     except Exception:
@@ -176,7 +208,13 @@ def dump_full(settings: Settings, *, single_thread: bool = False) -> Path:
         raise
 
 
-def dump_update(settings: Settings, *, single_thread: bool = False) -> Path:
+def dump_update(
+    settings: Settings,
+    *,
+    single_thread: bool = False,
+    sync_context: dict[str, object] | None = None,
+) -> Path:
+    _backup_keep(settings)
     target = settings.qlib_data_uri
     if not target.exists():
         raise FileNotFoundError(f"base Qlib dataset not found: {target}")
@@ -197,9 +235,52 @@ def dump_update(settings: Settings, *, single_thread: bool = False) -> Path:
         _run(settings, "dump_update", settings.paths.staging_update, candidate, single_thread=single_thread)
         install_qlib_universe(settings, candidate)
         smoke = _smoke_test_dataset_subprocess(candidate)
+        write_fingerprint(
+            settings, mode="update", smoke=smoke, dataset_dir=candidate, sync_context=sync_context
+        )
         backup = _replace_directory_atomic(candidate, target)
-        write_fingerprint(settings, mode="update", smoke=smoke)
+        _prune_backups(settings)
         logger.info("Promoted Qlib update: {}, backup={}", target, backup)
+        return target
+    except Exception:
+        shutil.rmtree(candidate, ignore_errors=True)
+        raise
+
+
+def dump_update_and_fix(
+    settings: Settings,
+    *,
+    append: bool,
+    repair: bool,
+    single_thread: bool = False,
+    sync_context: dict[str, object] | None = None,
+) -> Path:
+    """Publish appended dates and historical symbol repairs in one candidate."""
+
+    if not append and not repair:
+        raise ValueError("dump_update_and_fix requires append or repair")
+    _backup_keep(settings)
+    target = settings.qlib_data_uri
+    if not target.is_dir():
+        raise FileNotFoundError(f"base Qlib dataset not found: {target}")
+    candidate = target.with_name(f".{target.name}.daily-sync.{os.getpid()}")
+    if candidate.exists():
+        shutil.rmtree(candidate)
+    shutil.copytree(target, candidate)
+    try:
+        if append:
+            _run(settings, "dump_update", settings.paths.staging_update, candidate, single_thread=single_thread)
+        if repair:
+            _run(settings, "dump_fix", settings.paths.staging_repair, candidate, single_thread=single_thread)
+        install_qlib_universe(settings, candidate)
+        smoke = _smoke_test_dataset_subprocess(candidate)
+        mode = "update_fix" if append and repair else ("update" if append else "repair")
+        write_fingerprint(
+            settings, mode=mode, smoke=smoke, dataset_dir=candidate, sync_context=sync_context
+        )
+        backup = _replace_directory_atomic(candidate, target)
+        _prune_backups(settings)
+        logger.info("Promoted Qlib daily sync: mode={}, backup={}", mode, backup)
         return target
     except Exception:
         shutil.rmtree(candidate, ignore_errors=True)
@@ -216,9 +297,27 @@ def _package_versions() -> dict[str, str]:
     return versions
 
 
-def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]) -> Path:
-    stage = settings.paths.staging_full if mode == "full" else settings.paths.staging_update
-    stage_manifest = stage / "staging_manifest.json"
+def write_fingerprint(
+    settings: Settings,
+    *,
+    mode: str,
+    smoke: dict[str, object],
+    dataset_dir: Path | None = None,
+    sync_context: dict[str, object] | None = None,
+) -> Path:
+    if mode == "full":
+        stage_manifests = [settings.paths.staging_full / "staging_manifest.json"]
+    elif mode == "repair":
+        stage_manifests = [settings.paths.staging_repair / "staging_manifest.json"]
+    elif mode == "update_fix":
+        stage_manifests = [
+            settings.paths.staging_update / "staging_manifest.json",
+            settings.paths.staging_repair / "staging_manifest.json",
+        ]
+    else:
+        stage_manifests = [settings.paths.staging_update / "staging_manifest.json"]
+    stage_hashes = {path.parent.name: sha256_file(path) for path in stage_manifests}
+    combined_stage_hash = sha256_json(stage_hashes)
     platform_git = git_revision(Path(__file__).resolve().parents[2])
     qlib_git = git_revision(resolve_qlib_repo(settings.qlib_repo))
     universe_hash = membership_fingerprint(settings)
@@ -226,13 +325,15 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
         "mode": mode,
         "fields": settings.data["qlib"]["include_fields"],
-        "staging_manifest_sha256": sha256_file(stage_manifest),
+        "staging_manifest_sha256": combined_stage_hash,
+        "staging_manifests": stage_hashes,
         "pipeline_config_sha256": sha256_file(settings.config_path),
         "universe_membership_sha256": universe_hash,
         "qlib_platform_git_commit": platform_git.get("commit"),
         "qlib_git_commit": qlib_git.get("commit"),
         "package_versions": _package_versions(),
         "smoke_test": smoke,
+        "sync_context": sync_context,
     }
     content_hash = sha256_json(content)
     generated_at = datetime.now(timezone.utc)
@@ -244,8 +345,9 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
         "mode": mode,
         "generated_at_utc": generated_at.isoformat(),
         "fields": settings.data["qlib"]["include_fields"],
-        "staging_manifest_sha256": sha256_file(stage_manifest),
-        "source_snapshot_id": sha256_file(stage_manifest),
+        "staging_manifest_sha256": combined_stage_hash,
+        "staging_manifests": stage_hashes,
+        "source_snapshot_id": combined_stage_hash,
         "universe_membership_sha256": universe_hash,
         "pipeline_config_sha256": sha256_file(settings.config_path),
         "qlib_platform_git_commit": platform_git.get("commit"),
@@ -254,10 +356,11 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
         "qlib_git_dirty": qlib_git.get("dirty"),
         "package_versions": _package_versions(),
         "smoke_test": smoke,
+        "sync_context": sync_context,
         "content": content,
         "sha256": content_hash,
     }
-    path = settings.qlib_data_uri / "dataset_manifest.json"
+    path = (dataset_dir or settings.qlib_data_uri) / "dataset_manifest.json"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, path)

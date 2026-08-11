@@ -36,9 +36,11 @@ def _require_mapping(value: Any, name: str) -> dict[str, Any]:
 class Paths:
     root: Path
     raw: Path
+    raw_revisions: Path
     curated: Path
     staging_full: Path
     staging_update: Path
+    staging_repair: Path
     metadata: Path
     output: Path
     quality: Path
@@ -50,9 +52,11 @@ class Paths:
         return cls(
             root=root,
             raw=root / "raw",
+            raw_revisions=root / "raw_revisions",
             curated=root / "curated" / "daily",
             staging_full=root / "staging" / "full",
             staging_update=root / "staging" / "update",
+            staging_repair=root / "staging" / "repair",
             metadata=root / "metadata",
             output=root / "output",
             quality=root / "quality",

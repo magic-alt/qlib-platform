@@ -534,3 +534,52 @@ def export_incremental_staging(settings: Settings, trade_dates: list[str], force
         payload["skipped_new_symbols_without_trade"] = skipped
         manifest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return stage
+
+
+def export_symbol_repair_staging(settings: Settings, symbols: list[str], force: bool = True) -> Path:
+    """Build complete normalized histories for symbols with revised source rows."""
+
+    import duckdb
+
+    normalized_symbols = sorted({str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()})
+    if not normalized_symbols:
+        raise ValueError("repair staging requires at least one symbol")
+    stage = settings.paths.staging_repair
+    if stage.exists() and force:
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True, exist_ok=True)
+    calendar = _load_open_calendar(settings)
+    base_path = settings.paths.metadata / "normalization_base.parquet"
+    bases = (
+        pd.read_parquet(base_path).set_index("symbol")["base_adj_close"].to_dict()
+        if base_path.exists()
+        else {}
+    )
+    placeholders = ",".join("?" for _ in normalized_symbols)
+    con = duckdb.connect()
+    try:
+        frame = con.execute(
+            f"SELECT * FROM read_parquet(?) WHERE symbol IN ({placeholders}) ORDER BY symbol,date",
+            [_curated_glob(settings), *normalized_symbols],
+        ).df()
+    finally:
+        con.close()
+    found = set(frame["symbol"].astype(str)) if not frame.empty else set()
+    missing = sorted(set(normalized_symbols) - found)
+    if missing:
+        raise FileNotFoundError(f"curated histories missing repair symbols: {missing[:10]}")
+    for symbol, group in frame.groupby("symbol", sort=True):
+        norm, base = normalize_symbol(group, calendar, bases.get(str(symbol)))
+        report = validate_normalized(norm, str(symbol))
+        assert_quality(report)
+        _write_stage_parquet(norm, stage / f"{symbol}.parquet")
+        if symbol not in bases:
+            bases[str(symbol)] = base
+    pd.DataFrame(
+        [{"symbol": key, "base_adj_close": value} for key, value in sorted(bases.items())]
+    ).to_parquet(base_path, index=False)
+    manifest = _write_staging_manifest(stage, "repair")
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["symbols"] = normalized_symbols
+    manifest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return stage

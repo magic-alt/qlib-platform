@@ -319,7 +319,17 @@ class Extractor:
         frame = frame.sort_values("trade_date").reset_index(drop=True)
         target = self.settings.paths.metadata / "benchmarks" / f"{normalized_symbol}.parquet"
         target.parent.mkdir(parents=True, exist_ok=True)
-        frame.to_parquet(target, index=False)
+        if target.is_file():
+            existing = pd.read_parquet(target)
+            frame = (
+                pd.concat([existing, frame], ignore_index=True)
+                .sort_values("trade_date")
+                .drop_duplicates("trade_date", keep="last")
+                .reset_index(drop=True)
+            )
+        temporary = target.with_suffix(".parquet.tmp")
+        frame.to_parquet(temporary, index=False)
+        os.replace(temporary, target)
         logger.info("Saved benchmark {}: {} rows -> {}", normalized_symbol, len(frame), target)
         return frame
 
@@ -364,6 +374,19 @@ class Extractor:
                 if not frame.empty:
                     frames.append(frame)
         snapshots = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        snapshot_path = self.settings.paths.metadata / "universe_snapshots" / f"{configured[0]}.parquet"
+        if snapshot_path.is_file():
+            snapshots = pd.concat([pd.read_parquet(snapshot_path), snapshots], ignore_index=True)
+        if not snapshots.empty:
+            snapshots = (
+                snapshots.sort_values(["trade_date", "con_code"])
+                .drop_duplicates(["trade_date", "con_code"], keep="last")
+                .reset_index(drop=True)
+            )
+            snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = snapshot_path.with_suffix(".parquet.tmp")
+            snapshots.to_parquet(temporary, index=False)
+            os.replace(temporary, snapshot_path)
         calendar_path = self.settings.paths.metadata / "trade_calendar.parquet"
         if not calendar_path.is_file():
             self.fetch_calendar(start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
