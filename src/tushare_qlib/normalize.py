@@ -16,6 +16,7 @@ from .quality import assert_quality, validate_curated, validate_normalized, writ
 from .settings import Settings
 from .store import PartitionStore, _atomic_replace, sha256_file
 from .symbols import ts_to_qlib
+from .universe import configured_universe
 
 BASIC_PERCENT_FIELDS = ["turnover_rate", "turnover_rate_f", "dv_ratio", "dv_ttm"]
 SHARE_10K_FIELDS = ["total_share", "float_share", "free_share"]
@@ -44,6 +45,45 @@ def _active_master(master: pd.DataFrame, trade_date: pd.Timestamp) -> pd.DataFra
     listed = master["list_date"].notna() & (master["list_date"] <= trade_date)
     not_delisted = master["delist_date"].isna() | (master["delist_date"] >= trade_date)
     return master.loc[listed & not_delisted].copy()
+
+
+def _restrict_lean_active_universe(
+    active: pd.DataFrame,
+    settings: Settings,
+    trade_date: pd.Timestamp,
+    membership: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    source_cfg = settings.data.get("data_source", {})
+    mysql_cfg = source_cfg.get("mysql", {}) if isinstance(source_cfg, dict) else {}
+    if settings.uses_tushare_source() or str(mysql_cfg.get("schema", "")).lower() != "lean_canonical_v1":
+        return active
+    configured = configured_universe(settings)
+    if configured is None:
+        return active
+    membership_path = configured[2]
+    if membership is None:
+        if not membership_path.is_file():
+            raise FileNotFoundError(
+                f"PIT universe membership is required before MySQL curation: {membership_path}; "
+                "run sync-universe first"
+            )
+        membership = pd.read_parquet(membership_path)
+    required = {"instrument", "effective_from", "effective_to"}
+    missing = required - set(membership.columns)
+    if missing:
+        raise ValueError(f"universe membership missing columns: {sorted(missing)}")
+    effective_from = pd.to_datetime(membership["effective_from"], errors="raise").dt.normalize()
+    effective_to = pd.to_datetime(membership["effective_to"], errors="raise").dt.normalize()
+    members = set(
+        membership.loc[
+            (effective_from <= trade_date.normalize()) & (effective_to >= trade_date.normalize()),
+            "instrument",
+        ].astype(str)
+    )
+    if not members:
+        raise ValueError(f"PIT universe has no active members on {trade_date:%Y-%m-%d}")
+    instruments = active["ts_code"].astype(str).map(ts_to_qlib)
+    return active.loc[instruments.isin(members)].copy()
 
 
 def _merge_pit_fundamentals(
@@ -80,6 +120,7 @@ def build_curated_day(
     *,
     master: pd.DataFrame | None = None,
     pit_fundamentals: pd.DataFrame | None = None,
+    universe_membership: pd.DataFrame | None = None,
 ) -> Path:
     trade_date = _normalize_trade_date(trade_date)
     out_dir = settings.paths.curated / f"trade_date={trade_date}"
@@ -95,7 +136,9 @@ def build_curated_day(
     master["list_date"] = pd.to_datetime(master["list_date"])
     master["delist_date"] = pd.to_datetime(master["delist_date"])
     dt = pd.Timestamp(trade_date)
-    active = _active_master(master, dt)[["ts_code", "name", "list_date", "delist_date", "market", "exchange"]]
+    active = _active_master(master, dt)
+    active = _restrict_lean_active_universe(active, settings, dt, universe_membership)
+    active = active[["ts_code", "name", "list_date", "delist_date", "market", "exchange"]]
     frame = active.copy()
     frame["trade_date"] = trade_date
 
@@ -183,6 +226,12 @@ def build_all_curated(settings: Settings, start_date: str | None = None, end_dat
     master = pd.read_parquet(master_path)
     fundamentals_path = settings.paths.curated / "fundamentals_pit.parquet"
     pit_fundamentals = pd.read_parquet(fundamentals_path) if fundamentals_path.is_file() else None
+    configured = configured_universe(settings)
+    universe_membership = (
+        pd.read_parquet(configured[2])
+        if configured is not None and not settings.uses_tushare_source() and configured[2].is_file()
+        else None
+    )
     start = _normalize_trade_date(start_date) if start_date else None
     end = _normalize_trade_date(end_date) if end_date else None
     for trade_date in raw.list_dates("daily"):
@@ -195,6 +244,7 @@ def build_all_curated(settings: Settings, start_date: str | None = None, end_dat
             trade_date,
             master=master,
             pit_fundamentals=pit_fundamentals,
+            universe_membership=universe_membership,
         )
 
 

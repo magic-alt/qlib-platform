@@ -38,7 +38,12 @@ def _trade_date_quotes(quote_status: pd.DataFrame, trade_date: pd.Timestamp) -> 
 
 
 def _orders_match_or_tie_equivalent(
-    planned: dict[str, str], requested: dict[str, str], scores: pd.Series
+    planned: dict[str, str],
+    requested: dict[str, str],
+    scores: pd.Series,
+    *,
+    positions: pd.DataFrame | None = None,
+    policy: TopkDropoutPolicy | None = None,
 ) -> bool:
     """Treat substitutions at an exactly tied Topk cutoff as equivalent."""
     if (set(planned.values()) | set(requested.values())) - {"BUY", "SELL"}:
@@ -49,7 +54,36 @@ def _orders_match_or_tie_equivalent(
         planned_codes = sorted(code for code, value in planned.items() if value == action)
         requested_codes = sorted(code for code, value in requested.items() if value == action)
         if len(planned_codes) != len(requested_codes):
-            return False
+            if action != "SELL" or positions is None or policy is None:
+                return False
+            if len(requested_codes) > len(planned_codes):
+                return False
+            planned_scores = pd.to_numeric(scores.reindex(planned_codes), errors="coerce")
+            requested_scores = pd.to_numeric(scores.reindex(requested_codes), errors="coerce")
+            if planned_scores.isna().any() or requested_scores.isna().any():
+                return False
+            remaining = list(planned_scores.to_numpy())
+            for value in requested_scores.to_numpy():
+                matches = [index for index, candidate in enumerate(remaining) if candidate == value]
+                if not matches:
+                    return False
+                remaining.pop(matches[0])
+            held = positions.copy()
+            held["score"] = pd.to_numeric(held["instrument"].map(scores), errors="coerce")
+            held["holding_days"] = pd.to_numeric(held["holding_days"], errors="coerce").fillna(0)
+            excluded = set(planned_codes) | set(requested_codes)
+            blocked_ties = held.loc[
+                ~held["instrument"].isin(excluded) & held["holding_days"].lt(policy.hold_thresh),
+                "score",
+            ].tolist()
+            for value in remaining:
+                matches = [index for index, candidate in enumerate(blocked_ties) if candidate == value]
+                if not matches:
+                    return False
+                blocked_ties.pop(matches[0])
+            continue
+        if not planned_codes and not requested_codes:
+            continue
         planned_scores = pd.to_numeric(scores.reindex(planned_codes), errors="coerce").sort_values()
         requested_scores = pd.to_numeric(scores.reindex(requested_codes), errors="coerce").sort_values()
         if planned_scores.isna().any() or requested_scores.isna().any():
@@ -141,7 +175,13 @@ def build_strategy_audit(
             for row in decision.itertuples(index=False)
             if row.target_action in {"BUY", "SELL"}
         }
-        if not _orders_match_or_tie_equivalent(planned, requested, daily_scores):
+        if not _orders_match_or_tie_equivalent(
+            planned,
+            requested,
+            daily_scores,
+            positions=before,
+            policy=policy,
+        ):
             validation_errors.append(
                 f"{trade_date:%Y-%m-%d}: planned={sorted(planned.items())} requested={sorted(requested.items())}"
             )

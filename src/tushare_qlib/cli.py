@@ -183,12 +183,17 @@ def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -
     }
     payload: dict[str, object] = {
         "runId": str(manifest.get("externalRunId", manifest_path.parent.name)),
-        "reportMarkdown": artifacts.get(
-            "backtest_report.md", str(manifest_path.parent / "backtest_report.md")
-        ),
-        "reportPdf": artifacts.get("backtest_report.pdf", str(manifest_path.parent / "backtest_report.pdf")),
         "timingsJson": artifacts.get("timings.json", str(manifest_path.parent / "timings.json")),
     }
+    for artifact_name, payload_key in (
+        ("backtest_report.md", "reportMarkdown"),
+        ("backtest_report.pdf", "reportPdf"),
+    ):
+        fallback = manifest_path.parent / artifact_name
+        if artifact_name in artifacts:
+            payload[payload_key] = artifacts[artifact_name]
+        elif fallback.is_file():
+            payload[payload_key] = str(fallback)
     if latest_selection is not None:
         payload["latestSelection"] = str(latest_selection)
     runtime = manifest.get("runtime", {})
@@ -540,15 +545,18 @@ def main() -> None:
                 args.start or settings.data["start_date"], args.end or settings.data["end_date"], args.force
             )
         elif args.command == "source-preflight":
+            result = ext.source_preflight(
+                args.start or settings.data["start_date"], args.end or settings.data["end_date"]
+            )
             print(
                 json.dumps(
-                    ext.source_preflight(
-                        args.start or settings.data["start_date"], args.end or settings.data["end_date"]
-                    ),
+                    result,
                     ensure_ascii=False,
                     default=str,
                 )
             )
+            if not result.get("passed"):
+                raise SystemExit(2)
         elif args.command == "sync-benchmark":
             frame = ext.sync_benchmark(
                 args.symbol, args.start or settings.data["start_date"], args.end or settings.data["end_date"]

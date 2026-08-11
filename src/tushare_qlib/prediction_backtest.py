@@ -54,9 +54,7 @@ def _market_data_view(settings: Settings, score: pd.Series, timings: StageTiming
         [calendar[calendar > date][0] for date in dates if len(calendar[calendar > date])]
     )
     if trade_dates.empty:
-        empty = pd.DataFrame(
-            columns=["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"]
-        )
+        empty = pd.DataFrame(columns=["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"])
         return MarketDataView(empty)
     instruments = sorted(score.index.get_level_values("instrument").astype(str).unique())
     with timings.measure("audit_quote_query_seconds"):
@@ -153,6 +151,18 @@ def backtest_predictions(
     from .strategy_audit import build_strategy_audit
     from .train_select import _configure_mlflow_tracking, _dataset_id, _resolve_benchmark
 
+    class PredictionsPortAnaRecord(PortAnaRecord):
+        # Qlib's PortAnaRecord declares SignalRecord as its dependency, whose
+        # check requires both pred.pkl and label.pkl.  A predictions-only
+        # portfolio legitimately has no labels, and PortAnaRecord itself only
+        # consumes pred.pkl, so disable that overly broad dependency check.
+        depend_cls = None
+
+        def load(self, name: str, parents: bool = True):
+            if name == "pred.pkl":
+                return self.recorder.load_object(name)
+            return super().load(name, parents=parents)
+
     parallel = resolve_qlib_parallel_runtime(settings)
     with timings.measure("qlib_init_seconds"):
         qlib.init(
@@ -199,7 +209,7 @@ def backtest_predictions(
         )
         recorder.save_objects(**{"pred.pkl": pred})
         with timings.measure("portfolio_engine_seconds"):
-            PortAnaRecord(
+            PredictionsPortAnaRecord(
                 recorder=recorder,
                 config=_portfolio_config(
                     settings,

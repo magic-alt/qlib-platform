@@ -40,10 +40,23 @@ git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 
 ```bash
 # 配置 LEAN_MYSQL_*（或 LEAN_MYSQL_DSN）
-# 将 configs/pipeline.yaml 中的 data_source.kind 改为 lean_mysql
+cp .env.example .env
+# 编辑 .env 后先做只读覆盖检查；不完整区间会列出具体缺口并阻止 backfill。
+tq --config configs/pipeline_lean_mysql.yaml source-preflight --start 20250701 --end 20260724
+tq --config configs/pipeline_lean_mysql.yaml init-metadata
+tq --config configs/pipeline_lean_mysql.yaml sync-universe --start 20250701 --end 20260724
+tq --config configs/pipeline_lean_mysql.yaml backfill --start 20250701 --end 20260724
+tq --config configs/pipeline_lean_mysql.yaml sync-benchmark --symbol SH000300 \
+  --start 20250701 --end 20260724
+tq --config configs/pipeline_lean_mysql.yaml curate --start 20250701 --end 20260724
+tq --config configs/pipeline_lean_mysql.yaml stage-full --force
+tq --config configs/pipeline_lean_mysql.yaml dump-full --single-thread
 ```
 
 数据库模式下，`backfill/curate/stage/dump` 流程仍复用同一套本地标准化与 Qlib 打包流程，不需要重新从 Tushare 下载。
+`lean_canonical_v1` 会直接使用 lean-platform 的 PIT 成分有效期、派生交易状态来源以及 CNY/股数单位，
+并按区间批量读取，避免逐交易日重复扫描 MySQL 大表。正式训练仍必须满足 `research.min_history_days`
+和研究准入门槛；短窗口只能通过显式 `--train/--valid/--test` 用作 smoke 回测。
 
 ## 2. 先做一次增量验证（推荐）
 

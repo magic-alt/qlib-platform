@@ -4,6 +4,7 @@ import pandas as pd
 
 from tushare_qlib.settings import Paths, Settings
 from tushare_qlib.universe import build_membership_intervals, install_qlib_universe, write_membership
+from tushare_qlib.universe import build_membership_from_source_intervals
 
 
 def _settings(tmp_path):
@@ -56,3 +57,31 @@ def test_membership_is_installed_as_dynamic_qlib_market(tmp_path):
 
     assert target is not None
     assert target.read_text(encoding="utf-8") == "SH600000\t2024-01-03\t2024-01-31\n"
+
+
+def test_lean_source_intervals_preserve_continuing_members_and_apply_disclosure_lag():
+    calendar = pd.DatetimeIndex(pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"]))
+    source = pd.DataFrame(
+        {
+            "symbol": ["600000", "000001"],
+            "start_date": ["2024-01-02", "2024-01-02"],
+            "end_date": [None, "2024-01-04"],
+            "announce_date": ["2024-01-02", "2024-01-03"],
+            "effective_date": ["2024-01-02", "2024-01-02"],
+            "weight": [1.0, 2.0],
+        }
+    )
+
+    result = build_membership_from_source_intervals(
+        source,
+        calendar,
+        universe_code="399300.SZ",
+        effective_lag_days=1,
+    )
+
+    sh = result.loc[result["instrument"] == "SH600000"].iloc[0]
+    sz = result.loc[result["instrument"] == "SZ000001"].iloc[0]
+    assert sh["effective_from"] == pd.Timestamp("2024-01-03")
+    assert sh["effective_to"] == pd.Timestamp("2024-01-05")
+    assert sz["effective_from"] == pd.Timestamp("2024-01-04")
+    assert sz["effective_to"] == pd.Timestamp("2024-01-04")

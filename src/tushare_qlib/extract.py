@@ -12,14 +12,21 @@ from .client import RetryPolicy, TushareClient
 from .mysql_source import (
     MysqlClient,
     build_connection_kwargs,
+    build_lean_canonical_range_endpoints,
     build_mysql_endpoints,
     fetch_lean_benchmark,
+    fetch_lean_universe_intervals,
     lean_mysql_preflight,
 )
 from .quality import assert_quality, validate_raw_day, write_report
 from .settings import Settings
 from .store import PartitionStore
-from .universe import build_membership_intervals, configured_universe, write_membership
+from .universe import (
+    build_membership_from_source_intervals,
+    build_membership_intervals,
+    configured_universe,
+    write_membership,
+)
 
 DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
 ADJ_FIELDS = "ts_code,trade_date,adj_factor"
@@ -265,9 +272,93 @@ class Extractor:
         if not (self.settings.paths.metadata / "stock_master.parquet").exists():
             self.fetch_stock_master()
         dates = self.open_dates(start_date, end_date)
+        source_cfg = self.settings.data.get("data_source", {})
+        mysql_cfg = source_cfg.get("mysql", {}) if isinstance(source_cfg, Mapping) else {}
+        if self.source_is_mysql and str(mysql_cfg.get("schema", "")).strip().lower() == "lean_canonical_v1":
+            preflight = lean_mysql_preflight(mysql_cfg, dates[0], dates[-1]) if dates else {"passed": True}
+            if not preflight.get("passed"):
+                failures = preflight.get("coverage_failures") or [
+                    f"missing_tables:{','.join(preflight.get('missing_tables', []))}"
+                ]
+                raise RuntimeError(
+                    "Lean MySQL source coverage is incomplete for the requested backfill: "
+                    f"{failures}. Run source-preflight for details."
+                )
+            self._backfill_lean_canonical(dates, mysql_cfg, force=force)
+            return
         for i, trade_date in enumerate(dates, 1):
             logger.info("Backfill {}/{}: {}", i, len(dates), trade_date)
             self.fetch_day(trade_date, force=force)
+
+    def _backfill_lean_canonical(
+        self, dates: list[str], mysql_cfg: Mapping[str, Any], *, force: bool
+    ) -> None:
+        if not dates:
+            return
+        optional = self.settings.data["tushare"].get("optional_endpoints", {})
+        definitions = build_lean_canonical_range_endpoints(mysql_cfg, optional)
+        for endpoint in self.endpoints:
+            if not endpoint.enabled:
+                for trade_date in dates:
+                    self.store.write_status(
+                        endpoint.name,
+                        trade_date,
+                        status="disabled",
+                        metadata={"api": endpoint.name, "reason": "disabled_by_config"},
+                    )
+                continue
+            logger.info("Lean MySQL range fetch {}: {}..{}", endpoint.name, dates[0], dates[-1])
+            result = self.client.fetch(
+                endpoint.name,
+                fields=endpoint.fields,
+                required=endpoint.required,
+                query=str(definitions[endpoint.name]["query"]),
+                start_date=dates[0],
+                end_date=dates[-1],
+            )
+            for trade_date in dates:
+                if not force and self.store.is_terminal(endpoint.name, trade_date):
+                    continue
+                if not result.succeeded:
+                    self.store.write_status(
+                        endpoint.name,
+                        trade_date,
+                        status=result.status,
+                        metadata={"api": endpoint.name, "error": result.error, "range_fetch": True},
+                    )
+                    continue
+                frame = result.data
+                if "trade_date" in frame:
+                    frame = frame.loc[frame["trade_date"].astype(str) == trade_date].copy()
+                else:
+                    frame = pd.DataFrame(columns=endpoint.fields.split(","))
+                if endpoint.required and frame.empty:
+                    raise RuntimeError(f"Required endpoint {endpoint.name} returned empty for {trade_date}")
+                status = "empty" if frame.empty else "success"
+                self.store.write(
+                    endpoint.name,
+                    trade_date,
+                    frame,
+                    {
+                        "api": endpoint.name,
+                        "trade_date": trade_date,
+                        "attempts": result.attempts,
+                        "params": {"start_date": dates[0], "end_date": dates[-1]},
+                        "range_fetch": True,
+                    },
+                    status=status,
+                )
+            del result
+
+        for position, trade_date in enumerate(dates, 1):
+            logger.info("Lean MySQL validate partition {}/{}: {}", position, len(dates), trade_date)
+            fetched = {
+                required_name: self.store.read(required_name, trade_date)
+                for required_name in ("daily", "adj_factor", "daily_basic")
+            }
+            report = validate_raw_day(fetched, trade_date)
+            write_report(report, self.settings.paths.quality / "raw" / f"{trade_date}.json")
+            assert_quality(report)
 
     def source_preflight(self, start_date: str, end_date: str) -> dict[str, Any]:
         if not self.source_is_mysql:
@@ -345,18 +436,27 @@ class Extractor:
         if start > end:
             raise ValueError("universe start_date must not be after end_date")
         frames: list[pd.DataFrame] = []
+        source_intervals: pd.DataFrame | None = None
         if self.source_is_mysql:
             source_cfg = self.settings.data.get("data_source", {})
             mysql_cfg = source_cfg.get("mysql", {}) if isinstance(source_cfg, Mapping) else {}
             universe_code = str(mysql_cfg.get("universe", index_code))
-            frame = self.client.call(
-                "index_weight",
-                required=True,
-                index_code=universe_code,
-                start_date=start.strftime("%Y%m%d"),
-                end_date=end.strftime("%Y%m%d"),
-            )
-            frames.append(frame)
+            if str(mysql_cfg.get("schema", "")).strip().lower() == "lean_canonical_v1":
+                source_intervals = fetch_lean_universe_intervals(
+                    mysql_cfg,
+                    universe_code,
+                    start.strftime("%Y%m%d"),
+                    end.strftime("%Y%m%d"),
+                )
+            else:
+                frame = self.client.call(
+                    "index_weight",
+                    required=True,
+                    index_code=universe_code,
+                    start_date=start.strftime("%Y%m%d"),
+                    end_date=end.strftime("%Y%m%d"),
+                )
+                frames.append(frame)
         else:
             # Query month-by-month: index_weight is snapshot-oriented and large ranges
             # may be truncated by the upstream service.
@@ -373,20 +473,6 @@ class Extractor:
                 )
                 if not frame.empty:
                     frames.append(frame)
-        snapshots = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-        snapshot_path = self.settings.paths.metadata / "universe_snapshots" / f"{configured[0]}.parquet"
-        if snapshot_path.is_file():
-            snapshots = pd.concat([pd.read_parquet(snapshot_path), snapshots], ignore_index=True)
-        if not snapshots.empty:
-            snapshots = (
-                snapshots.sort_values(["trade_date", "con_code"])
-                .drop_duplicates(["trade_date", "con_code"], keep="last")
-                .reset_index(drop=True)
-            )
-            snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = snapshot_path.with_suffix(".parquet.tmp")
-            snapshots.to_parquet(temporary, index=False)
-            os.replace(temporary, snapshot_path)
         calendar_path = self.settings.paths.metadata / "trade_calendar.parquet"
         if not calendar_path.is_file():
             self.fetch_calendar(start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
@@ -397,12 +483,41 @@ class Extractor:
                 errors="coerce",
             ).dropna()
         )
-        intervals = build_membership_intervals(
-            snapshots,
-            calendar,
-            universe_code=index_code,
-            effective_lag_days=lag,
-        )
+        if source_intervals is not None:
+            source_path = (
+                self.settings.paths.metadata / "universe_source_intervals" / f"{configured[0]}.parquet"
+            )
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = source_path.with_suffix(".parquet.tmp")
+            source_intervals.to_parquet(temporary, index=False)
+            os.replace(temporary, source_path)
+            intervals = build_membership_from_source_intervals(
+                source_intervals,
+                calendar,
+                universe_code=index_code,
+                effective_lag_days=lag,
+            )
+        else:
+            snapshots = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+            snapshot_path = self.settings.paths.metadata / "universe_snapshots" / f"{configured[0]}.parquet"
+            if snapshot_path.is_file():
+                snapshots = pd.concat([pd.read_parquet(snapshot_path), snapshots], ignore_index=True)
+            if not snapshots.empty:
+                snapshots = (
+                    snapshots.sort_values(["trade_date", "con_code"])
+                    .drop_duplicates(["trade_date", "con_code"], keep="last")
+                    .reset_index(drop=True)
+                )
+                snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = snapshot_path.with_suffix(".parquet.tmp")
+                snapshots.to_parquet(temporary, index=False)
+                os.replace(temporary, snapshot_path)
+            intervals = build_membership_intervals(
+                snapshots,
+                calendar,
+                universe_code=index_code,
+                effective_lag_days=lag,
+            )
         path = write_membership(self.settings, intervals)
         logger.info("Saved PIT universe {}: {} intervals -> {}", index_code, len(intervals), path)
         return intervals

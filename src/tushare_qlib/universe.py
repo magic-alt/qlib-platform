@@ -122,6 +122,75 @@ def build_membership_intervals(
     return result.sort_values(["instrument", "effective_from"]).reset_index(drop=True)
 
 
+def build_membership_from_source_intervals(
+    source_intervals: pd.DataFrame,
+    calendar: pd.DatetimeIndex,
+    *,
+    universe_code: str,
+    effective_lag_days: int = 1,
+) -> pd.DataFrame:
+    """Normalize Lean's governed PIT intervals without reinterpreting them as snapshots."""
+
+    required = {"symbol", "start_date", "end_date", "announce_date", "effective_date"}
+    missing = required - set(source_intervals.columns)
+    if missing:
+        raise ValueError(f"source universe intervals missing columns: {sorted(missing)}")
+    if effective_lag_days < 1:
+        raise ValueError("universe membership effective_lag_days must be at least 1")
+    dates = (
+        pd.DatetimeIndex(pd.to_datetime(calendar, errors="coerce"))
+        .dropna()
+        .normalize()
+        .unique()
+        .sort_values()
+    )
+    if dates.empty:
+        raise ValueError("cannot build universe membership without an open trading calendar")
+
+    records: list[dict[str, object]] = []
+    for row in source_intervals.itertuples(index=False):
+        disclosed = [
+            pd.Timestamp(value).normalize()
+            for value in (row.start_date, row.announce_date, row.effective_date)
+            if pd.notna(value) and str(value).strip()
+        ]
+        if not disclosed:
+            continue
+        snapshot_date = max(disclosed)
+        insertion = int(dates.searchsorted(snapshot_date, side="right"))
+        start_index = insertion + effective_lag_days - 1
+        if start_index >= len(dates):
+            continue
+        effective_from = pd.Timestamp(dates[start_index])
+        raw_end = pd.Timestamp(row.end_date).normalize() if pd.notna(row.end_date) else dates[-1]
+        end_index = int(dates.searchsorted(raw_end, side="right")) - 1
+        if end_index < 0:
+            continue
+        effective_to = pd.Timestamp(dates[min(end_index, len(dates) - 1)])
+        if effective_to < effective_from:
+            continue
+        symbol = str(row.symbol).strip().upper()
+        suffix = "SH" if symbol[:1] in {"5", "6", "9"} else "BJ" if symbol[:1] in {"4", "8"} else "SZ"
+        records.append(
+            {
+                "universe_code": universe_code,
+                "instrument": ts_to_qlib(f"{symbol}.{suffix}"),
+                "snapshot_date": snapshot_date,
+                "effective_from": effective_from,
+                "effective_to": effective_to,
+                "weight": pd.to_numeric(getattr(row, "weight", None), errors="coerce"),
+            }
+        )
+    result = pd.DataFrame.from_records(records, columns=MEMBERSHIP_COLUMNS)
+    if result.empty:
+        raise ValueError("source universe membership has no effective intervals")
+    return (
+        result.sort_values(["instrument", "effective_from"])
+        .drop_duplicates(["instrument", "effective_from"], keep="last")
+        .reset_index(drop=True)
+    )
+
+
 def write_membership(settings: Settings, intervals: pd.DataFrame) -> Path:
     configured = configured_universe(settings)
     if configured is None:

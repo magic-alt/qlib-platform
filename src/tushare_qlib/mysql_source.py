@@ -91,6 +91,13 @@ def _pit_filter(alias: str = "b") -> str:
     )
 
 
+def _source_filter(alias: str, *, include_derived: bool = False) -> str:
+    exact = f"{alias}.source=%(source)s"
+    if include_derived:
+        exact += f" OR {alias}.source LIKE CONCAT(%(source)s,':%%')"
+    return f"(%(source)s='' OR {exact})"
+
+
 def build_lean_canonical_endpoints(
     mysql_cfg: Mapping[str, Any],
     optional_endpoints: Mapping[str, Any] | None = None,
@@ -103,8 +110,8 @@ def build_lean_canonical_endpoints(
     """
     symbol = _symbol_sql()
     pit = _pit_filter()
-    date_eq = "REPLACE(b.trade_date,'-','')=%(trade_date)s"
-    source = "(%(source)s='' OR b.source=%(source)s)"
+    date_eq = "b.trade_date=%(trade_date_iso)s"
+    source = _source_filter("b")
     queries = {
         "daily": (
             f"SELECT {symbol} ts_code,REPLACE(b.trade_date,'-','') trade_date,b.open,b.high,b.low,b.close,"
@@ -114,13 +121,13 @@ def build_lean_canonical_endpoints(
         ),
         "adj_factor": (
             f"SELECT {_symbol_sql('a')} ts_code,REPLACE(a.trade_date,'-','') trade_date,a.adj_factor "
-            "FROM adjustment_factors a WHERE REPLACE(a.trade_date,'-','')=%(trade_date)s "
-            "AND (%(source)s='' OR a.source=%(source)s) "
+            "FROM adjustment_factors a WHERE a.trade_date=%(trade_date_iso)s "
+            f"AND {_source_filter('a')} "
             f"AND {_pit_filter('a')} ORDER BY a.trade_date,a.symbol"
         ),
         "daily_basic": (
-            f"SELECT {_symbol_sql('f')} ts_code,REPLACE(f.trade_date,'-','') trade_date,NULL close,"
-            "MAX(CASE WHEN f.factor_name='turnover_rate' THEN f.value END) turnover_rate,"
+            f"SELECT {_symbol_sql('b')} ts_code,REPLACE(b.trade_date,'-','') trade_date,NULL close,"
+            "COALESCE(MAX(CASE WHEN f.factor_name='turnover_rate' THEN f.value END),b.turnover_rate) turnover_rate,"
             "MAX(CASE WHEN f.factor_name='turnover_rate_float' THEN f.value END) turnover_rate_f,"
             "MAX(CASE WHEN f.factor_name='volume_ratio' THEN f.value END) volume_ratio,"
             "MAX(CASE WHEN f.factor_name='pe' THEN f.value END) pe,"
@@ -130,14 +137,17 @@ def build_lean_canonical_endpoints(
             "MAX(CASE WHEN f.factor_name='ps_ttm' THEN f.value END) ps_ttm,"
             "MAX(CASE WHEN f.factor_name='dividend_yield' THEN f.value END) dv_ratio,"
             "MAX(CASE WHEN f.factor_name='dividend_yield_ttm' THEN f.value END) dv_ttm,"
-            "MAX(CASE WHEN f.factor_name='total_shares' THEN f.value/10000.0 END) total_share,"
-            "MAX(CASE WHEN f.factor_name='float_shares' THEN f.value/10000.0 END) float_share,"
-            "MAX(CASE WHEN f.factor_name='free_float_shares' THEN f.value/10000.0 END) free_share,"
+            "MAX(CASE WHEN f.factor_name='total_share_shares' THEN f.value/10000.0 END) total_share,"
+            "MAX(CASE WHEN f.factor_name='float_share_shares' THEN f.value/10000.0 END) float_share,"
+            "MAX(CASE WHEN f.factor_name='free_share_shares' THEN f.value/10000.0 END) free_share,"
             "MAX(CASE WHEN f.factor_name='total_mv_cny' THEN f.value/10000.0 END) total_mv,"
             "MAX(CASE WHEN f.factor_name='circ_mv_cny' THEN f.value/10000.0 END) circ_mv,NULL limit_status "
-            "FROM factor_values f WHERE REPLACE(f.trade_date,'-','')=%(trade_date)s "
+            "FROM ashare_daily_bars b LEFT JOIN factor_values f ON f.symbol=b.symbol "
+            "AND f.trade_date=b.trade_date "
             "AND (%(source)s='' OR f.source=CONCAT(%(source)s,':daily_basic') OR f.source=%(source)s) "
-            f"AND {_pit_filter('f')} GROUP BY f.symbol,f.trade_date ORDER BY f.trade_date,f.symbol"
+            "WHERE b.adjust='raw' AND b.trade_date=%(trade_date_iso)s "
+            f"AND {_source_filter('b')} AND {_pit_filter('b')} "
+            "GROUP BY b.symbol,b.trade_date,b.turnover_rate ORDER BY b.trade_date,b.symbol"
         ),
         "moneyflow": (
             "SELECT NULL ts_code,NULL trade_date,NULL buy_lg_vol,NULL buy_lg_amount,NULL sell_lg_vol,"
@@ -147,20 +157,22 @@ def build_lean_canonical_endpoints(
         "stk_limit": (
             f"SELECT {_symbol_sql('t')} ts_code,REPLACE(t.trade_date,'-','') trade_date,NULL pre_close,"
             "t.limit_up up_limit,t.limit_down down_limit FROM ashare_trade_status t "
-            "WHERE REPLACE(t.trade_date,'-','')=%(trade_date)s "
-            "AND (%(source)s='' OR t.source=%(source)s) "
+            "WHERE t.trade_date=%(trade_date_iso)s "
+            f"AND {_source_filter('t', include_derived=True)} "
             f"AND {_pit_filter('t')} ORDER BY t.trade_date,t.symbol"
         ),
         "suspend_d": (
             f"SELECT {_symbol_sql('t')} ts_code,REPLACE(t.trade_date,'-','') trade_date,NULL suspend_timing,'S' suspend_type "
             "FROM ashare_trade_status t WHERE t.is_suspended=1 "
-            "AND REPLACE(t.trade_date,'-','')=%(trade_date)s AND (%(source)s='' OR t.source=%(source)s) "
+            "AND t.trade_date=%(trade_date_iso)s "
+            f"AND {_source_filter('t', include_derived=True)} "
             f"AND {_pit_filter('t')} ORDER BY t.trade_date,t.symbol"
         ),
         "stock_st": (
             f"SELECT {_symbol_sql('t')} ts_code,s.name,REPLACE(t.trade_date,'-','') trade_date,'ST' type,'ST' type_name "
             "FROM ashare_trade_status t LEFT JOIN securities s ON s.symbol=t.symbol WHERE t.is_st=1 "
-            "AND REPLACE(t.trade_date,'-','')=%(trade_date)s AND (%(source)s='' OR t.source=%(source)s) "
+            "AND t.trade_date=%(trade_date_iso)s "
+            f"AND {_source_filter('t', include_derived=True)} "
             f"AND {_pit_filter('t')} ORDER BY t.trade_date,t.symbol"
         ),
         "stock_basic": (
@@ -174,15 +186,15 @@ def build_lean_canonical_endpoints(
         "trade_cal": (
             "SELECT 'SSE' exchange,REPLACE(c.trade_date,'-','') cal_date,c.is_open,"
             "REPLACE(c.prev_trade_date,'-','') pretrade_date FROM trade_calendar c "
-            "WHERE c.market='china' AND REPLACE(c.trade_date,'-','') BETWEEN %(start_date)s AND %(end_date)s "
+            "WHERE c.market='china' AND c.trade_date BETWEEN %(start_date_iso)s AND %(end_date_iso)s "
             "ORDER BY c.trade_date"
         ),
         "index_weight": (
             f"SELECT u.universe_code index_code,{_symbol_sql('u')} con_code,"
             "REPLACE(COALESCE(u.effective_date,u.start_date),'-','') trade_date,NULL weight "
             "FROM universe_membership u WHERE u.universe_code=%(index_code)s "
-            "AND REPLACE(COALESCE(u.effective_date,u.start_date),'-','') "
-            "BETWEEN %(start_date)s AND %(end_date)s ORDER BY trade_date,u.symbol"
+            "AND COALESCE(u.effective_date,u.start_date) "
+            "BETWEEN %(start_date_iso)s AND %(end_date_iso)s ORDER BY trade_date,u.symbol"
         ),
     }
     optional = optional_endpoints or {}
@@ -214,7 +226,18 @@ def _coerce_param(value: Any) -> Any:
 
 
 def _coerce_params(params: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: _coerce_param(value) for key, value in params.items()}
+    result = {key: _coerce_param(value) for key, value in params.items()}
+    for key in ("trade_date", "start_date", "end_date"):
+        value = result.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            result[f"{key}_iso"] = pd.Timestamp(str(value)).strftime("%Y-%m-%d")
+        except (TypeError, ValueError):
+            # Legacy/custom endpoint queries still receive their original value;
+            # only canonical Lean queries consume the companion ISO parameter.
+            continue
+    return result
 
 
 def _read_mapping(config: Mapping[str, Any], key: str, default: Any = None) -> Any:
@@ -384,6 +407,27 @@ def build_mysql_endpoints(
     return endpoints
 
 
+def build_lean_canonical_range_endpoints(
+    mysql_cfg: Mapping[str, Any],
+    optional_endpoints: Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Build range variants so a backfill scans each Lean table only once."""
+
+    endpoints = build_lean_canonical_endpoints(mysql_cfg, optional_endpoints)
+    replacements = {
+        "b.trade_date=%(trade_date_iso)s": ("b.trade_date BETWEEN %(start_date_iso)s AND %(end_date_iso)s"),
+        "a.trade_date=%(trade_date_iso)s": ("a.trade_date BETWEEN %(start_date_iso)s AND %(end_date_iso)s"),
+        "f.trade_date=%(trade_date_iso)s": ("f.trade_date BETWEEN %(start_date_iso)s AND %(end_date_iso)s"),
+        "t.trade_date=%(trade_date_iso)s": ("t.trade_date BETWEEN %(start_date_iso)s AND %(end_date_iso)s"),
+    }
+    for name in ("daily", "adj_factor", "daily_basic", "stk_limit", "suspend_d", "stock_st"):
+        query = str(endpoints[name]["query"])
+        for original, replacement in replacements.items():
+            query = query.replace(original, replacement)
+        endpoints[name] = {**endpoints[name], "query": query}
+    return endpoints
+
+
 class MysqlClient:
     def __init__(
         self,
@@ -429,7 +473,7 @@ class MysqlClient:
         prepared_query = query or self.endpoint_queries.get(api_name)
         if not prepared_query:
             raise ValueError(f"No SQL query configured for endpoint {api_name}")
-        if not re.match(r"^\\s*(SELECT|WITH|SHOW|EXPLAIN)\\b", prepared_query, flags=re.IGNORECASE):
+        if not re.match(r"^\s*(SELECT|WITH|SHOW|EXPLAIN)\b", prepared_query, flags=re.IGNORECASE):
             raise ValueError(f"endpoint {api_name} is not a read-only SQL statement")
         attempts = 0
         prepared_params = _coerce_params({**self.default_params, **params})
@@ -488,7 +532,10 @@ def lean_mysql_preflight(
                 return {"passed": False, "missing_tables": missing, "checks": {}}
             queries = {
                 "bars": "SELECT COUNT(*) rows_count,COUNT(DISTINCT b.symbol) symbols,COUNT(DISTINCT b.trade_date) dates,MIN(b.trade_date) first_date,MAX(b.trade_date) last_date FROM ashare_daily_bars b WHERE b.adjust='raw' AND b.source=%(source)s AND b.trade_date BETWEEN %(start)s AND %(end)s AND EXISTS (SELECT 1 FROM universe_membership u WHERE u.universe_code=%(universe)s AND u.symbol=b.symbol AND u.start_date<=b.trade_date AND (u.end_date IS NULL OR u.end_date>=b.trade_date) AND (u.announce_date IS NULL OR u.announce_date<=b.trade_date) AND (u.effective_date IS NULL OR u.effective_date<=b.trade_date))",
-                "benchmark": "SELECT COUNT(*) rows_count,MIN(trade_date) first_date,MAX(trade_date) last_date FROM market_daily_bars WHERE symbol='000300' AND asset_class='index' AND trade_date BETWEEN %(start)s AND %(end)s",
+                "adjustment_factors": "SELECT COUNT(*) rows_count,COUNT(DISTINCT a.symbol) symbols,COUNT(DISTINCT a.trade_date) dates,MIN(a.trade_date) first_date,MAX(a.trade_date) last_date FROM adjustment_factors a WHERE a.source=%(source)s AND a.trade_date BETWEEN %(start)s AND %(end)s AND EXISTS (SELECT 1 FROM universe_membership u WHERE u.universe_code=%(universe)s AND u.symbol=a.symbol AND u.start_date<=a.trade_date AND (u.end_date IS NULL OR u.end_date>=a.trade_date) AND (u.announce_date IS NULL OR u.announce_date<=a.trade_date) AND (u.effective_date IS NULL OR u.effective_date<=a.trade_date))",
+                "daily_basic": "SELECT COUNT(DISTINCT f.symbol,f.trade_date) rows_count,COUNT(DISTINCT f.symbol) symbols,COUNT(DISTINCT f.trade_date) dates,MIN(f.trade_date) first_date,MAX(f.trade_date) last_date FROM factor_values f WHERE f.source=CONCAT(%(source)s,':daily_basic') AND f.trade_date BETWEEN %(start)s AND %(end)s AND EXISTS (SELECT 1 FROM universe_membership u WHERE u.universe_code=%(universe)s AND u.symbol=f.symbol AND u.start_date<=f.trade_date AND (u.end_date IS NULL OR u.end_date>=f.trade_date) AND (u.announce_date IS NULL OR u.announce_date<=f.trade_date) AND (u.effective_date IS NULL OR u.effective_date<=f.trade_date))",
+                "trade_status": "SELECT COUNT(*) rows_count,COUNT(DISTINCT t.symbol) symbols,COUNT(DISTINCT t.trade_date) dates,MIN(t.trade_date) first_date,MAX(t.trade_date) last_date FROM ashare_trade_status t WHERE (t.source=%(source)s OR t.source LIKE CONCAT(%(source)s,':%%')) AND t.trade_date BETWEEN %(start)s AND %(end)s AND EXISTS (SELECT 1 FROM universe_membership u WHERE u.universe_code=%(universe)s AND u.symbol=t.symbol AND u.start_date<=t.trade_date AND (u.end_date IS NULL OR u.end_date>=t.trade_date) AND (u.announce_date IS NULL OR u.announce_date<=t.trade_date) AND (u.effective_date IS NULL OR u.effective_date<=t.trade_date))",
+                "benchmark": "SELECT COUNT(*) rows_count,MIN(trade_date) first_date,MAX(trade_date) last_date FROM market_daily_bars WHERE symbol='000300' AND asset_class='index' AND adjust='raw' AND source=%(source)s AND trade_date BETWEEN %(start)s AND %(end)s",
                 "membership": "SELECT COUNT(*) rows_count,COUNT(DISTINCT symbol) symbols,MIN(start_date) first_date,MAX(COALESCE(end_date,start_date)) last_date FROM universe_membership WHERE universe_code=%(universe)s",
                 "calendar": "SELECT SUM(is_open) rows_count,MIN(trade_date) first_date,MAX(trade_date) last_date FROM trade_calendar WHERE market='china' AND trade_date BETWEEN %(start)s AND %(end)s",
             }
@@ -501,13 +548,27 @@ def lean_mysql_preflight(
             for name, query in queries.items():
                 cursor.execute(query, params)
                 checks[name] = dict(cursor.fetchone() or {})
-    passed = all(int((checks[name] or {}).get("rows_count") or 0) > 0 for name in checks)
+    coverage_failures: list[str] = []
+    for name, check in checks.items():
+        if int((check or {}).get("rows_count") or 0) <= 0:
+            coverage_failures.append(f"{name}:empty")
+    calendar_check = checks.get("calendar") or {}
+    calendar_first = calendar_check.get("first_date")
+    calendar_last = calendar_check.get("last_date")
+    for name in ("bars", "adjustment_factors", "daily_basic", "trade_status", "benchmark"):
+        check = checks.get(name) or {}
+        if calendar_first and check.get("first_date") and str(check["first_date"]) > str(calendar_first):
+            coverage_failures.append(f"{name}:starts_after_calendar")
+        if calendar_last and check.get("last_date") and str(check["last_date"]) < str(calendar_last):
+            coverage_failures.append(f"{name}:ends_before_calendar")
+    passed = not coverage_failures
     return {
         "passed": passed,
         "source": source,
         "universe": selected_universe,
         "start_date": start_date,
         "end_date": end_date,
+        "coverage_failures": coverage_failures,
         "checks": checks,
     }
 
@@ -515,11 +576,21 @@ def lean_mysql_preflight(
 def fetch_lean_benchmark(
     mysql_cfg: Mapping[str, Any], symbol: str, start_date: str, end_date: str
 ) -> pd.DataFrame:
-    ticker = str(symbol).upper().replace("SH", "").replace("SZ", "").replace("BJ", "")
+    normalized = str(symbol).strip().upper()
+    if re.fullmatch(r"(SH|SZ|BJ)\d{6}", normalized):
+        ticker = normalized[2:]
+    elif re.fullmatch(r"\d{6}\.(SH|SZ|BJ)", normalized):
+        ticker = normalized[:6]
+    elif re.fullmatch(r"\d{6}", normalized):
+        ticker = normalized
+    else:
+        raise ValueError(f"unsupported Lean benchmark symbol: {symbol}")
     client = MysqlClient(connection=build_connection_kwargs(mysql_cfg), endpoint_queries={})
     query = (
-        "SELECT trade_date,open,high,low,close,volume,amount,source FROM market_daily_bars "
+        "SELECT trade_date,open,high,low,close,prev_close pre_close,pct_change pct_chg,"
+        "volume/100.0 vol,amount/1000.0 amount,source FROM market_daily_bars "
         "WHERE symbol=%(symbol)s AND asset_class='index' AND adjust='raw' "
+        "AND (%(source)s='' OR source=%(source)s) "
         "AND trade_date BETWEEN %(start)s AND %(end)s ORDER BY trade_date"
     )
     with client._connect() as conn:
@@ -528,6 +599,32 @@ def fetch_lean_benchmark(
                 query,
                 {
                     "symbol": ticker,
+                    "source": str(mysql_cfg.get("source", "tushare")).strip(),
+                    "start": pd.Timestamp(start_date).strftime("%Y-%m-%d"),
+                    "end": pd.Timestamp(end_date).strftime("%Y-%m-%d"),
+                },
+            )
+            return pd.DataFrame(cursor.fetchall())
+
+
+def fetch_lean_universe_intervals(
+    mysql_cfg: Mapping[str, Any], universe: str, start_date: str, end_date: str
+) -> pd.DataFrame:
+    """Read the governed PIT membership intervals without treating deltas as snapshots."""
+
+    client = MysqlClient(connection=build_connection_kwargs(mysql_cfg), endpoint_queries={})
+    query = (
+        "SELECT universe_code,symbol,start_date,end_date,announce_date,effective_date,weight,source "
+        "FROM universe_membership WHERE universe_code=%(universe)s "
+        "AND start_date<=%(end)s AND (end_date IS NULL OR end_date>=%(start)s) "
+        "ORDER BY start_date,symbol"
+    )
+    with client._connect() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                query,
+                {
+                    "universe": universe,
                     "start": pd.Timestamp(start_date).strftime("%Y-%m-%d"),
                     "end": pd.Timestamp(end_date).strftime("%Y-%m-%d"),
                 },
