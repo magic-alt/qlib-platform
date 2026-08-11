@@ -1,9 +1,89 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pandas as pd
+import pytest
 
 from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.train_select import _export_daily_selections, _export_daily_signal_scores
+from tushare_qlib.train_select import (
+    _default_splits_from_data,
+    _export_daily_selections,
+    _export_daily_signal_scores,
+    _research_label_horizon_days,
+)
+
+
+def test_default_splits_reserve_release_observations_and_future_trade_day(tmp_path, monkeypatch):
+    dates = pd.bdate_range("2023-01-02", periods=732)
+    paths = Paths.from_root(tmp_path / "data")
+    qlib_data = tmp_path / "qlib"
+    (qlib_data / "calendars").mkdir(parents=True)
+    (qlib_data / "calendars" / "day.txt").write_text("\n".join(dates.strftime("%Y-%m-%d")), encoding="utf-8")
+    settings = Settings(
+        config_path=tmp_path / "configs" / "pipeline.yaml",
+        data={
+            "research": {
+                "min_history_days": 700,
+                "label_horizon_days": 5,
+                "promotion_thresholds": {"min_observations": 252},
+            }
+        },
+        paths=paths,
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=qlib_data,
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.train_select.PartitionStore",
+        lambda root: SimpleNamespace(list_dates=lambda dataset: dates.strftime("%Y%m%d").tolist()),
+    )
+
+    train, valid, test = _default_splits_from_data(settings)
+
+    assert train == (dates[0].strftime("%Y-%m-%d"), dates[353].strftime("%Y-%m-%d"))
+    assert valid == (dates[354].strftime("%Y-%m-%d"), dates[472].strftime("%Y-%m-%d"))
+    assert test == (dates[473].strftime("%Y-%m-%d"), dates[-2].strftime("%Y-%m-%d"))
+    assert len(dates[(dates >= test[0]) & (dates <= test[1])]) == 258
+
+
+def test_research_label_horizon_defaults_to_strategy_hold_threshold(tmp_path):
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={"strategy": {"topk_dropout": {"hold_thresh": 7}}},
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+
+    assert _research_label_horizon_days(settings) == 7
+
+
+def test_default_splits_fail_fast_when_qlib_calendar_is_stale(tmp_path, monkeypatch):
+    raw_dates = pd.bdate_range("2023-01-02", periods=732)
+    qlib_dates = raw_dates[:384]
+    paths = Paths.from_root(tmp_path / "data")
+    qlib_data = tmp_path / "qlib"
+    (qlib_data / "calendars").mkdir(parents=True)
+    (qlib_data / "calendars" / "day.txt").write_text(
+        "\n".join(qlib_dates.strftime("%Y-%m-%d")), encoding="utf-8"
+    )
+    settings = Settings(
+        config_path=tmp_path / "configs" / "pipeline.yaml",
+        data={"research": {"min_history_days": 700}},
+        paths=paths,
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=qlib_data,
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.train_select.PartitionStore",
+        lambda root: SimpleNamespace(list_dates=lambda dataset: raw_dates.strftime("%Y%m%d").tolist()),
+    )
+
+    with pytest.raises(ValueError, match="shared raw/Qlib trading days; detected 384"):
+        _default_splits_from_data(settings)
 
 
 def test_export_daily_selections_writes_one_topn_file_per_signal_date(tmp_path, monkeypatch):

@@ -1,8 +1,34 @@
+import pandas as pd
+import pytest
+
 from tushare_qlib.research_gate import (
     ResearchThresholds,
+    derive_research_metrics,
     evaluate_component_metrics,
     evaluate_research_metrics,
 )
+
+
+def test_long_short_annualization_respects_label_horizon():
+    dates = pd.date_range("2026-01-01", periods=2)
+    index = pd.MultiIndex.from_product(
+        [dates, ["SH600000", "SH600001", "SH600002", "SH600003", "SH600004"]],
+        names=["datetime", "instrument"],
+    )
+    predictions = pd.Series([5, 4, 3, 2, 1] * 2, index=index)
+    labels = pd.Series([0.05, 0.03, 0.0, -0.01, -0.05] * 2, index=index)
+    report = pd.DataFrame({"return": [0.0, 0.0], "bench": [0.0, 0.0], "cost": [0.0, 0.0]})
+
+    metrics = derive_research_metrics(
+        predictions,
+        labels,
+        report,
+        unique_artifact=True,
+        lineage_complete=True,
+        label_horizon_days=5,
+    )
+
+    assert metrics["long_short_annualized"] == pytest.approx(0.10 * 252 / 5)
 
 
 def test_short_fold_is_component_validated_without_weakening_release_thresholds():

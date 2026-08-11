@@ -118,6 +118,11 @@ GPU 上运行。报告渲染自身不计入阶段合计。
 `data/output/signals/signal_scores_YYYYMMDD.parquet`；未通过的运行保留 manifest、回测产物和
 `research_gate.json` 后失败退出，不会生成执行候选。
 
+研究标签会与策略持有期对齐：默认 `hold_thresh=5` 时使用从 T+1 到 T+6 的 5 日前瞻收益
+`Ref($close, -6) / Ref($close, -1) - 1`。固定切分会从原始数据与 Qlib 日历的交集取样，预留
+Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测下一交易日；日历过旧时会在训练前直接报错，
+避免训练完成后才因日历越界失败。
+
 所有可进入执行链路的文件使用 schema `2.0`，并携带 `artifact_type / promotion_status / run_id / model_id` 与
 `dataset_id / lineage_id / manifest_path`。`selection_*.csv` 的类型是 `MODEL_TOPK`，仍只表示模型 TopN；完整分数
 文件的类型是 `MODEL_SCORE`，才是 TopkDropout 精确决策的合法输入。旧文件、`REJECTED` 模型、lineage 缺失或

@@ -76,9 +76,12 @@ def derive_research_metrics(
     *,
     unique_artifact: bool,
     lineage_complete: bool,
+    label_horizon_days: int = 1,
 ) -> dict[str, object]:
     """Derive the complete promotion metric contract from OOS artifacts."""
 
+    if label_horizon_days < 1:
+        raise ValueError("label_horizon_days must be at least 1")
     score = pd.to_numeric(_as_series(predictions, "predictions"), errors="coerce").rename("score")
     label = pd.to_numeric(_as_series(labels, "labels"), errors="coerce").rename("label")
     paired = pd.concat([score, label], axis=1, join="inner").dropna()
@@ -121,7 +124,7 @@ def derive_research_metrics(
         "ic_mean": float(ic.mean()) if len(ic) else float("-inf"),
         "rank_ic_mean": float(rank_ic.mean()) if len(rank_ic) else float("-inf"),
         "icir": ratio(ic),
-        "long_short_annualized": float(long_short_daily.mean() * 252.0)
+        "long_short_annualized": float(long_short_daily.mean() * 252.0 / label_horizon_days)
         if len(long_short_daily)
         else float("-inf"),
         "excess_ir": ratio(excess, annualize=True),

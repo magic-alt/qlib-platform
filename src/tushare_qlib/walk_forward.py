@@ -19,7 +19,7 @@ from .research_gate import (
     write_gate_report,
 )
 from .store import sha256_file
-from .train_select import train_backtest_select
+from .train_select import _research_label_horizon_days, train_backtest_select
 
 
 @dataclass(frozen=True)
@@ -231,6 +231,7 @@ def _evaluate_aggregate_oos_gate(
         combined_report,
         unique_artifact=unique_artifact,
         lineage_complete=lineage_complete,
+        label_horizon_days=_research_label_horizon_days(settings),
     )
     research = settings.data.get("research", {})
     thresholds = ResearchThresholds.from_mapping(

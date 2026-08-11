@@ -100,6 +100,8 @@ research:
   # Resolved relative to this pipeline config. Override with --model-profile.
   model_profile: model_profiles/lightgbm_auto.yaml
   min_history_days: 700
+  # Align the forward-return label with TopkDropout hold_thresh.
+  label_horizon_days: 5
   random_seed: 42
   num_threads: 8
   backtest_account: 500000

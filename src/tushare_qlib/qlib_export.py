@@ -14,13 +14,17 @@ from typing import Any
 from loguru import logger
 
 from .fundamentals import PIT_FIELDS
-from .lineage import git_revision, sha256_json
+from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .settings import Settings
 from .store import sha256_file
 
 
 def _dump_script(settings: Settings) -> Path:
-    repo = settings.require_qlib_repo()
+    repo = resolve_qlib_repo(settings.qlib_repo)
+    if repo is None:
+        raise RuntimeError(
+            "QLIB_REPO does not exist and the imported qlib package is not backed by a Git checkout"
+        )
     path = repo / "scripts" / "dump_bin.py"
     if not path.exists():
         raise FileNotFoundError(f"Qlib dump script not found: {path}")
@@ -56,6 +60,8 @@ def _run(
     single_thread: bool = False,
 ) -> None:
     _read_staging_manifest(data_path)
+    dump_script = _dump_script(settings)
+    qlib_repo = dump_script.parent.parent
     fields = ",".join(settings.data["qlib"]["include_fields"])
     workers_raw = "1" if single_thread else os.getenv("TUSHARE_QLIB_MAX_WORKERS", "1")
     try:
@@ -65,7 +71,7 @@ def _run(
         max_workers = 1
     cmd = [
         sys.executable,
-        str(_dump_script(settings)),
+        str(dump_script),
         mode,
         f"--data_path={data_path}",
         f"--qlib_dir={qlib_dir}",
@@ -77,7 +83,7 @@ def _run(
         f"--max_workers={max_workers}",
     ]
     logger.info("Run Qlib dump: {}", " ".join(cmd))
-    subprocess.run(cmd, check=True, cwd=settings.require_qlib_repo())
+    subprocess.run(cmd, check=True, cwd=qlib_repo)
 
 
 def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
@@ -120,14 +126,16 @@ def _smoke_test_dataset_subprocess(dataset_dir: Path) -> dict[str, object]:
         "from tushare_qlib.qlib_export import smoke_test_dataset; "
         f"print('{marker}' + json.dumps(smoke_test_dataset(Path(sys.argv[1]))))"
     )
-    completed = subprocess.run([sys.executable, "-c", script, str(dataset_dir)], check=False, capture_output=True, text=True)
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(dataset_dir)], check=False, capture_output=True, text=True
+    )
     if completed.returncode:
         raise RuntimeError(
             f"Qlib smoke test failed for {dataset_dir}: {completed.stderr.strip() or completed.stdout.strip()}"
         )
     for line in reversed(completed.stdout.splitlines()):
         if line.startswith(marker):
-            return json.loads(line[len(marker):])
+            return json.loads(line[len(marker) :])
     raise RuntimeError(f"Qlib smoke test returned no result for {dataset_dir}")
 
 
@@ -212,7 +220,7 @@ def write_fingerprint(settings: Settings, *, mode: str, smoke: dict[str, object]
     stage = settings.paths.staging_full if mode == "full" else settings.paths.staging_update
     stage_manifest = stage / "staging_manifest.json"
     platform_git = git_revision(Path(__file__).resolve().parents[2])
-    qlib_git = git_revision(settings.qlib_repo)
+    qlib_git = git_revision(resolve_qlib_repo(settings.qlib_repo))
     content: dict[str, object] = {
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
         "mode": mode,

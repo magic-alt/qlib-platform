@@ -18,8 +18,13 @@ data_handler_config: &data_handler_config
   start_time: "2023-08-01"
   end_time: "2026-08-06"
   fit_start_time: "2023-08-01"
-  fit_end_time: "2025-05-30"
+  fit_end_time: "2025-01-14"
   instruments: *market
+  # Match the 5-day TopkDropout holding horizon: buy at T+1 and
+  # measure the return through T+6.
+  label:
+    - ["Ref($close, -6)/Ref($close, -1) - 1"]
+    - ["LABEL0"]
   shared_processors:
     - class: AshareUniverseFilter
       module_path: tushare_qlib.processors
@@ -71,9 +76,9 @@ task:
         module_path: tushare_qlib.custom_handler
         kwargs: *data_handler_config
       segments:
-        train: ["2023-08-01", "2025-05-30"]
-        valid: ["2025-06-01", "2026-01-30"]
-        test: ["2026-02-01", "2026-08-06"]
+        train: ["2023-08-01", "2025-01-14"]
+        valid: ["2025-01-15", "2025-07-15"]
+        test: ["2025-07-16", "2026-08-06"]
   record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
@@ -107,7 +112,7 @@ task:
               time_per_step: day
               generate_portfolio_metrics: true
           backtest:
-            start_time: "2026-02-01"
+            start_time: "2025-07-16"
             end_time: "2026-08-06"
             account: 500000
             benchmark: *benchmark

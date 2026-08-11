@@ -331,9 +331,10 @@ def main() -> None:
         print(ingest_pit_fundamentals(args.reports, calendar, output))
         return
 
-    settings = Settings.load(
-        args.config, require_tushare=False, require_qlib_repo=args.command in {"dump-full", "dump-update"}
-    )
+    # Qlib export resolves the checkout that actually supplies the imported
+    # package, so a stale optional QLIB_REPO does not mask a valid editable
+    # installation before export can validate it.
+    settings = Settings.load(args.config, require_tushare=False)
 
     if args.command == "research-report":
         from .backtest_report import write_backtest_report

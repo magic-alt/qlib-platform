@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from tushare_qlib import lineage as lineage_module
-from tushare_qlib.lineage import build_lineage, dirty_research_override_enabled
+from tushare_qlib.lineage import build_lineage, dirty_research_override_enabled, resolve_qlib_repo
 from tushare_qlib.settings import Paths, Settings
 
 
@@ -85,3 +85,21 @@ def test_dirty_research_override_is_research_only_and_rejects_unknown_dirty(tmp_
 
     lineage["qlibPlatformDirty"] = None
     assert dirty_research_override_enabled(settings, lineage) is False
+
+
+def test_resolve_qlib_repo_falls_back_to_imported_editable_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    checkout = tmp_path / "qlib-checkout"
+    package = checkout / "qlib"
+    package.mkdir(parents=True)
+    (checkout / ".git").mkdir()
+    origin = package / "__init__.py"
+    origin.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        lineage_module.importlib.util,
+        "find_spec",
+        lambda name: SimpleNamespace(origin=str(origin)) if name == "qlib" else None,
+    )
+
+    assert resolve_qlib_repo(tmp_path / "missing-configured-repo") == checkout

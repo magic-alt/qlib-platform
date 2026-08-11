@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -35,6 +36,29 @@ def git_revision(path: Path | None) -> dict[str, object]:
     return {"commit": commit, "dirty": dirty}
 
 
+def resolve_qlib_repo(configured: Path | None) -> Path | None:
+    """Resolve the checkout that supplies the imported qlib package.
+
+    Local development commonly installs Qlib in editable mode. A stale
+    QLIB_REPO must not make lineage unknown when Python is demonstrably
+    importing Qlib from a different Git checkout.
+    """
+
+    if configured is not None and configured.exists():
+        return configured.resolve()
+    try:
+        spec = importlib.util.find_spec("qlib")
+    except (ImportError, AttributeError, ValueError):
+        return None
+    if spec is None or spec.origin is None:
+        return None
+    package_path = Path(spec.origin).resolve().parent
+    for candidate in (package_path, *package_path.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
 def build_lineage(
     settings: Settings,
     config: CanonicalConfig,
@@ -49,7 +73,7 @@ def build_lineage(
         dataset_manifest = loaded if isinstance(loaded, Mapping) else {}
     project_root = Path(__file__).resolve().parents[2]
     platform_git = git_revision(project_root)
-    qlib_git = git_revision(settings.qlib_repo)
+    qlib_git = git_revision(resolve_qlib_repo(settings.qlib_repo))
     config_hash = sha256_file(settings.config_path) if settings.config_path.is_file() else None
     dataset_manifest_hash = sha256_file(dataset_manifest_path) if dataset_manifest_path.is_file() else None
     feature_hash = sha256_json(feature_columns)

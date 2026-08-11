@@ -28,9 +28,10 @@ from .model_runtime import (
 )
 from .research_gate import (
     ResearchPromotionError,
+    ResearchThresholds,
     derive_research_metrics,
-    evaluate_research_metrics,
     evaluate_component_metrics,
+    evaluate_research_metrics,
     write_gate_report,
 )
 
@@ -49,28 +50,62 @@ def _configure_mlflow_tracking(settings: Settings) -> None:
         os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"] = str((settings.paths.models / "mlruns").resolve())
 
 
+def _research_label_horizon_days(settings: Settings) -> int:
+    research = settings.data.get("research", {})
+    strategy = settings.data.get("strategy", {})
+    topk = strategy.get("topk_dropout", {}) if isinstance(strategy, dict) else {}
+    default_horizon = int(topk.get("hold_thresh", 1)) if isinstance(topk, dict) else 1
+    horizon = (
+        int(research.get("label_horizon_days", default_horizon))
+        if isinstance(research, dict)
+        else default_horizon
+    )
+    if horizon < 1:
+        raise ValueError("research.label_horizon_days must be at least 1")
+    return horizon
+
+
 def _default_splits_from_data(settings: Settings) -> tuple[tuple[str, str], tuple[str, str], tuple[str, str]]:
-    dates = pd.to_datetime(
+    raw_dates = pd.to_datetime(
         PartitionStore(settings.paths.raw).list_dates("daily"), format="%Y%m%d", errors="coerce"
     )
-    dates = pd.Index(sorted(d for d in dates if pd.notna(d)))
+    raw_dates = pd.DatetimeIndex(sorted(d for d in raw_dates if pd.notna(d))).normalize()
+    qlib_calendar_path = settings.qlib_data_uri / "calendars" / "day.txt"
+    if not qlib_calendar_path.is_file():
+        raise FileNotFoundError(f"Qlib day calendar is required: {qlib_calendar_path}")
+    qlib_dates = pd.to_datetime(qlib_calendar_path.read_text(encoding="utf-8").splitlines(), errors="coerce")
+    qlib_dates = pd.DatetimeIndex(sorted(d for d in qlib_dates if pd.notna(d))).normalize()
+    dates = raw_dates.intersection(qlib_dates).sort_values()
     research = settings.data.get("research", {})
     min_history = int(research.get("min_history_days", 756)) if isinstance(research, dict) else 756
     if len(dates) < min_history:
         raise ValueError(
-            f"Commercial research gate requires at least {min_history} trading days; detected {len(dates)}. "
+            f"Commercial research gate requires at least {min_history} shared raw/Qlib trading days; "
+            f"detected {len(dates)}. "
             "Pass explicit windows only for a labelled smoke test, never for model promotion."
         )
+    thresholds = ResearchThresholds.from_mapping(
+        research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
+    )
+    label_buffer_days = _research_label_horizon_days(settings) + 1
     n = len(dates)
-    train_end_idx = (n * 6) // 10 - 1
-    valid_end_idx = (n * 8) // 10 - 1
+    test_days = thresholds.min_observations + label_buffer_days
     # Test ends one day before the last calendar entry so the backtest
     # strategy can peek at the next trading day for its final step.
     test_end_idx = n - 2
+    test_start_idx = test_end_idx - test_days + 1
+    if test_start_idx < 2:
+        raise ValueError(
+            f"Not enough pre-holdout history after reserving {test_days} test days and one future trading day"
+        )
+    # Preserve the former 3:1 train/validation ratio while making the release
+    # holdout large enough to satisfy the configured observation threshold.
+    train_end_idx = (test_start_idx * 3) // 4 - 1
+    valid_end_idx = test_start_idx - 1
     return (
         (dates[0].strftime("%Y-%m-%d"), dates[train_end_idx].strftime("%Y-%m-%d")),
         (dates[train_end_idx + 1].strftime("%Y-%m-%d"), dates[valid_end_idx].strftime("%Y-%m-%d")),
-        (dates[valid_end_idx + 1].strftime("%Y-%m-%d"), dates[test_end_idx].strftime("%Y-%m-%d")),
+        (dates[test_start_idx].strftime("%Y-%m-%d"), dates[test_end_idx].strftime("%Y-%m-%d")),
     )
 
 
@@ -153,18 +188,26 @@ def build_dataset(
     valid: tuple[str, str],
     test: tuple[str, str],
     universe: dict[str, object] | None = None,
+    label_horizon_days: int = 1,
 ) -> Any:
     from qlib.data.dataset import DatasetH
 
     from .custom_handler import TushareAlpha158Fundamental
 
+    if label_horizon_days < 1:
+        raise ValueError("label_horizon_days must be at least 1")
     universe = universe or {}
+    label = (
+        [f"Ref($close, -{label_horizon_days + 1})/Ref($close, -1) - 1"],
+        ["LABEL0"],
+    )
     handler = TushareAlpha158Fundamental(
         instruments=universe.get("instruments", "all"),
         start_time=train[0],
         end_time=test[1],
         fit_start_time=train[0],
         fit_end_time=train[1],
+        label=label,
         shared_processors=[
             {
                 "class": "AshareUniverseFilter",
@@ -491,11 +534,14 @@ def train_backtest_select(
         from qlib.workflow import R
         from qlib.workflow.record_temp import PortAnaRecord, SigAnaRecord, SignalRecord
     except ImportError as exc:  # pragma: no cover - optional dependency
-        raise RuntimeError("Install the fixed Qlib checkout into the active environment before running this command.") from exc
+        raise RuntimeError(
+            "Install the fixed Qlib checkout into the active environment before running this command."
+        ) from exc
 
     research = (
         settings.data.get("research", {}) if isinstance(settings.data.get("research", {}), dict) else {}
     )
+    label_horizon_days = _research_label_horizon_days(settings)
     universe = dict(settings.data.get("universe", {}))
     seed = int(research.get("random_seed", 42))
     np.random.seed(seed)
@@ -516,7 +562,13 @@ def train_backtest_select(
             pd.Timestamp(train[1]) < pd.Timestamp(valid[0]) <= pd.Timestamp(valid[1]) < pd.Timestamp(test[0])
         ):
             raise ValueError("train/valid/test windows must be strictly chronological and non-overlapping")
-        dataset = build_dataset(train=train, valid=valid, test=test, universe=universe)
+        dataset = build_dataset(
+            train=train,
+            valid=valid,
+            test=test,
+            universe=universe,
+            label_horizon_days=label_horizon_days,
+        )
     feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
     feature_count = len(feature_columns)
     model_parameters = resolved_model_parameters(
@@ -667,6 +719,7 @@ def train_backtest_select(
                 report,
                 unique_artifact=_prediction_is_unique(settings, predictions_sha256, model_id),
                 lineage_complete=bool(lineage["complete"]),
+                label_horizon_days=label_horizon_days,
             )
             dirty_research_override = dirty_research_override_enabled(settings, lineage)
             gate_metrics["dirty_research_override"] = dirty_research_override
@@ -740,6 +793,7 @@ def train_backtest_select(
                 "name": "Alpha158-LGBM" if runtime.profile.family == "lightgbm" else "Alpha158-DNN",
                 "fingerprint": model_id,
                 "parameters": model_parameters,
+                "labelHorizonDays": label_horizon_days,
             },
             "canonicalConfig": canonical.to_manifest(),
             "portfolioPolicySha256": sha256_json(canonical.to_manifest()["portfolio"]),
