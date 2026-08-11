@@ -37,6 +37,28 @@ def _trade_date_quotes(quote_status: pd.DataFrame, trade_date: pd.Timestamp) -> 
     return frame[["instrument", "paused", "is_limit_up", "is_limit_down"]].copy()
 
 
+def _orders_match_or_tie_equivalent(
+    planned: dict[str, str], requested: dict[str, str], scores: pd.Series
+) -> bool:
+    """Treat substitutions at an exactly tied Topk cutoff as equivalent."""
+    if (set(planned.values()) | set(requested.values())) - {"BUY", "SELL"}:
+        return False
+    if planned == requested:
+        return True
+    for action in ("BUY", "SELL"):
+        planned_codes = sorted(code for code, value in planned.items() if value == action)
+        requested_codes = sorted(code for code, value in requested.items() if value == action)
+        if len(planned_codes) != len(requested_codes):
+            return False
+        planned_scores = pd.to_numeric(scores.reindex(planned_codes), errors="coerce").sort_values()
+        requested_scores = pd.to_numeric(scores.reindex(requested_codes), errors="coerce").sort_values()
+        if planned_scores.isna().any() or requested_scores.isna().any():
+            return False
+        if not np.array_equal(planned_scores.to_numpy(), requested_scores.to_numpy()):
+            return False
+    return True
+
+
 def build_strategy_audit(
     scores: pd.Series,
     positions: dict[pd.Timestamp, Any],
@@ -120,7 +142,7 @@ def build_strategy_audit(
             for row in decision.itertuples(index=False)
             if row.target_action in {"BUY", "SELL"}
         }
-        if planned != requested:
+        if not _orders_match_or_tie_equivalent(planned, requested, daily_scores):
             validation_errors.append(
                 f"{trade_date:%Y-%m-%d}: planned={sorted(planned.items())} requested={sorted(requested.items())}"
             )

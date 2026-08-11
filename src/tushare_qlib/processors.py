@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from qlib.data.dataset.processor import Processor
-from qlib.utils.paral import datetime_groupby_apply
 
 
 class AshareUniverseFilter(Processor):
@@ -51,26 +50,31 @@ class AshareUniverseFilter(Processor):
 
 
 class ProcessInfSingleThread(Processor):
-    """Process infinity values with single-threaded datetime-group application."""
+    """Replace infinities with each date's finite column mean without worker copies."""
+
+    _BATCH_COLUMNS = 16
 
     def __init__(self, fields_group=None, n_jobs: int = 1):
         self.fields_group = fields_group
         self.n_jobs = n_jobs
 
     def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
-        def replace_inf(data: pd.DataFrame) -> pd.DataFrame:
-            def process_inf(group_df: pd.DataFrame) -> pd.DataFrame:
-                for col in group_df.columns:
-                    group_df[col] = group_df[col].replace(
-                        [np.inf, -np.inf], group_df[col][~np.isinf(group_df[col])].mean()
-                    )
-                return group_df
-
-            data = datetime_groupby_apply(data, process_inf, n_jobs=self.n_jobs)
-            data.sort_index(inplace=True)
-            return data
-
-        return replace_inf(df)
+        # Alpha158 contains millions of rows. The previous datetime-group
+        # callback performed Python work once per date and per column. Process
+        # a bounded number of columns at a time instead: pandas performs the
+        # grouped reduction in native code and the bounded batch avoids full-
+        # frame worker or temporary copies on Windows and macOS.
+        for start in range(0, len(df.columns), self._BATCH_COLUMNS):
+            columns = df.columns[start : start + self._BATCH_COLUMNS]
+            values = df.loc[:, columns]
+            infinity = np.isinf(values)
+            if not infinity.to_numpy().any():
+                continue
+            finite_values = values.mask(infinity)
+            replacements = finite_values.groupby(level="datetime", sort=False).transform("mean")
+            df.loc[:, columns] = values.where(~infinity, replacements)
+        df.sort_index(inplace=True)
+        return df
 
     def readonly(self) -> bool:
         return False
