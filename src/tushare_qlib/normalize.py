@@ -6,6 +6,7 @@ import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -260,7 +261,7 @@ def _load_open_calendar(settings: Settings) -> pd.DatetimeIndex:
 def _trading_age(date_values: pd.Series, list_date: pd.Timestamp, calendar: pd.DatetimeIndex) -> np.ndarray:
     list_idx = int(calendar.searchsorted(list_date, side="left"))
     date_idx = calendar.searchsorted(pd.DatetimeIndex(date_values), side="left")
-    return np.asarray(np.maximum(date_idx - list_idx, 0), dtype=float)
+    return cast(np.ndarray, np.asarray(np.maximum(date_idx - list_idx, 0), dtype=float))
 
 
 def normalize_symbol(

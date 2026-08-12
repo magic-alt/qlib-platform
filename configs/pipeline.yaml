@@ -98,6 +98,19 @@ data_sync:
   market_lookback_trading_days: 5
   corporate_action_lookback_calendar_days: 5
 
+production:
+  # A refit job may create STAGED bundles weekly, but activation is always manual.
+  refit_cadence: weekly_first_trading_day
+  max_model_age_days: 45
+  min_cross_section_coverage: 0.80
+  notification:
+    channel: feishu
+    webhook_env: FEISHU_WEBHOOK_URL
+    secret_env: FEISHU_WEBHOOK_SECRET
+    retry_delays_seconds: [2, 10, 30]
+  inbox:
+    layout: pretrade/<trade_date>
+
 universe:
   instruments: csi300
   label: PIT CSI300

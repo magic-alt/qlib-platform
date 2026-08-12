@@ -4,7 +4,7 @@ import json
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping, cast
 
 import pandas as pd
 
@@ -282,13 +282,13 @@ def backtest_predictions(
             "portfolioFingerprint": portfolio_fingerprint,
             "execution": {
                 "benchmark": benchmark or "SH000300",
-                "dealPrice": _portfolio_config(
+                "dealPrice": cast(Any, _portfolio_config(
                     settings,
                     policy=policy,
                     benchmark="<LOCAL_SERIES>",
                     start_time=start_time,
                     end_time=end_time,
-                )["backtest"]["exchange_kwargs"]["deal_price"],
+                ))["backtest"]["exchange_kwargs"]["deal_price"],
                 "topkDropout": asdict(strategy),
             },
             "promotion": {

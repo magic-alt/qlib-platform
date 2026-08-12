@@ -6,13 +6,37 @@ on:
   pull_request:
 
 jobs:
-  test:
+  test-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.11', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Configure isolated Qlib paths
+        shell: pwsh
+        run: |
+          "QLIB_REPO=$env:RUNNER_TEMP/qlib-repo" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "QLIB_DATA_URI=$env:RUNNER_TEMP/qlib-data" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-repo" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-data" | Out-Null
+      - run: pip install -e ".[dev]"
+      - run: pytest
+
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: pip
       - name: Configure isolated Qlib paths
         run: |
           echo "QLIB_REPO=$RUNNER_TEMP/qlib-repo" >> "$GITHUB_ENV"
@@ -20,5 +44,18 @@ jobs:
           mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data"
       - run: pip install -e '.[dev]'
       - run: ruff check src tests
+      - run: mypy src
       - run: tq --config configs/pipeline.yaml validate-qrun-contract
-      - run: pytest
+      - run: pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
+      - run: tq project-audit --root . --output "$RUNNER_TEMP/project_audit.json"
+
+  dnn-bundle-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -e '.[dev,pytorch]'
+      - run: pytest tests/test_model_bundle.py -q

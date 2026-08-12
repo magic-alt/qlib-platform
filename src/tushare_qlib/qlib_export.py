@@ -9,7 +9,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -133,7 +133,10 @@ def _smoke_test_dataset_subprocess(dataset_dir: Path) -> dict[str, object]:
         )
     for line in reversed(completed.stdout.splitlines()):
         if line.startswith(marker):
-            return json.loads(line[len(marker) :])
+            value = json.loads(line[len(marker) :])
+            if not isinstance(value, dict):
+                raise RuntimeError("Qlib smoke test result must be an object")
+            return cast(dict[str, object], value)
     raise RuntimeError(f"Qlib smoke test returned no result for {dataset_dir}")
 
 

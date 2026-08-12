@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -15,6 +16,8 @@ from .artifacts import (
     stamp_artifact,
     validate_artifact,
 )
+from .artifact_resolver import ArtifactResolver
+from .live_artifacts import LIVE_ARTIFACT_SCHEMA_VERSION, stamp_live_artifact, validate_live_artifact
 from .topk_dropout import TopkDropoutPolicy, topk_dropout_decision
 from .freshness import validate_execution_snapshot
 from .risk_engine import HardRiskPolicy, pretrade_risk_check
@@ -107,6 +110,16 @@ def release_order_intent(
     policy = _manifest_risk_policy(manifest)
     pnl = float("nan") if daily_pnl_pct is None else float(daily_pnl_pct)
     pretrade_risk_check(projected_targets, policy, daily_pnl_pct=pnl)
+    if metadata.get("schema_version") == LIVE_ARTIFACT_SCHEMA_VERSION:
+        return stamp_live_artifact(
+            orders,
+            ArtifactType.ORDER_INTENT,
+            deployment_id=metadata["deployment_id"],
+            dataset_sha256=metadata["dataset_sha256"],
+            signal_id=metadata["signal_id"],
+            manifest_uri=metadata["manifest_uri"],
+            manifest_sha256=metadata["manifest_sha256"],
+        )
     return stamp_artifact(
         orders,
         ArtifactType.ORDER_INTENT,
@@ -427,6 +440,7 @@ def build_topk_orders(
     strategy_policy: TopkDropoutPolicy | None = None,
     execution_policy: ExecutionPolicy | None = None,
     daily_pnl_pct: float | None = None,
+    artifact_resolver: ArtifactResolver | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Generate Qlib-style TopkDropout intents and broker-neutral orders.
 
@@ -438,7 +452,29 @@ def build_topk_orders(
 
     if not isinstance(scores, pd.DataFrame):
         raise ArtifactContractError("build_topk_orders requires a versioned MODEL_SCORE DataFrame")
-    metadata = validate_artifact(scores, ArtifactType.MODEL_SCORE)
+    schema_values = scores.get("schema_version", pd.Series(dtype=str)).dropna().astype(str).unique()
+    is_live = len(schema_values) == 1 and schema_values[0] == LIVE_ARTIFACT_SCHEMA_VERSION
+    if is_live:
+        if artifact_resolver is None:
+            raise ArtifactContractError("schema 3.0 MODEL_SCORE requires an ArtifactResolver")
+        metadata = validate_live_artifact(
+            scores, ArtifactType.MODEL_SCORE, resolver=artifact_resolver
+        )
+        attestation_path = artifact_resolver.resolve(
+            metadata["manifest_uri"], expected_sha256=metadata["manifest_sha256"]
+        )
+        manifest = json.loads(attestation_path.read_text(encoding="utf-8"))
+        metadata = {
+            **metadata,
+            "run_id": metadata["signal_id"],
+            "model_id": metadata["deployment_id"],
+            "dataset_id": metadata["dataset_sha256"],
+            "lineage_id": metadata["signal_id"],
+            "manifest_path": str(attestation_path),
+        }
+    else:
+        metadata = validate_artifact(scores, ArtifactType.MODEL_SCORE)
+        manifest = load_artifact_manifest(metadata)
     required_score = {"instrument", "score", "signal_date", "trade_date"}
     if not required_score.issubset(scores.columns):
         raise ArtifactContractError(
@@ -459,7 +495,6 @@ def build_topk_orders(
         )
     score_values = scores.set_index("instrument")["score"]
     model_id = metadata["model_id"]
-    manifest = load_artifact_manifest(metadata)
     canonical = manifest.get("canonicalConfig", {})
     configured_strategy = canonical.get("strategy", {}) if isinstance(canonical, Mapping) else {}
     configured_execution = canonical.get("execution", {}) if isinstance(canonical, Mapping) else {}
@@ -629,7 +664,17 @@ def build_topk_orders(
             manifest=manifest,
             daily_pnl_pct=daily_pnl_pct,
         )
-    if not decision.empty:
+    if not decision.empty and is_live:
+        decision = stamp_live_artifact(
+            decision,
+            ArtifactType.STRATEGY_DECISION,
+            deployment_id=metadata["deployment_id"],
+            dataset_sha256=metadata["dataset_sha256"],
+            signal_id=metadata["signal_id"],
+            manifest_uri=metadata["manifest_uri"],
+            manifest_sha256=metadata["manifest_sha256"],
+        )
+    elif not decision.empty:
         decision = stamp_artifact(
             decision,
             ArtifactType.STRATEGY_DECISION,
