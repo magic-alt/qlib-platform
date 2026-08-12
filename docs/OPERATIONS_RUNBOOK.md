@@ -59,7 +59,12 @@ interpreted as “no trade”; inspect `data/state/ops.sqlite3` and the Task Sch
 
 ### T+1 pretrade phase
 
-Before running, atomically provide:
+The default `production.broker.kind` and `production.market.kind` are `inbox` for drills. For unattended
+account-aware operation, set both to `http_readonly` and point them at user-operated GET-only gateways.
+The broker gateway must expose `account`, `positions`, `orders`, and `fills`; the market gateway must
+expose fresh quotes with suspension/limit flags and ADV20. The code has no submit/cancel API.
+
+For inbox drills, atomically provide:
 
 ```text
 data/inbox/pretrade/<trade_date>/
@@ -71,7 +76,10 @@ data/inbox/pretrade/<trade_date>/
 ```
 
 `positions.csv` and `quotes.csv` must contain one current `as_of_trade_date` and `snapshot_at_utc`.
-`account.json` must contain `as_of_trade_date`, `snapshot_at_utc`, `cash`, and `daily_pnl_pct`.
+`account.json` must contain `as_of_trade_date`, `snapshot_at_utc`, `portfolio_value`, `cash`, and
+`daily_pnl_pct`.
+The runner stores a read-only copy of every provider response under the signal's
+`pretrade/input_snapshot/` directory for incident reconstruction.
 
 Run:
 
@@ -81,6 +89,29 @@ tq --config configs/pipeline.yaml production-run --phase pretrade --business-dat
 
 The output is an advisory `STRATEGY_DECISION` and `ORDER_INTENT`. Review BUY/SELL/HOLD/BLOCKED manually;
 no broker submit API is called.
+
+## Ops visibility and recovery
+
+Query runs and deliveries without opening SQLite manually:
+
+```powershell
+tq --config configs/pipeline.yaml ops-query --entity runs --business-date <YYYY-MM-DD>
+tq --config configs/pipeline.yaml ops-query --entity deliveries --business-date <YYYY-MM-DD>
+tq --config configs/pipeline.yaml ops-summary --business-date <YYYY-MM-DD> --output <DAILY_JSON>
+```
+
+An expired `PENDING` or `FAILED` delivery can be released for a runner retry. This command does not send a
+message by itself and cannot reopen a `SENT` delivery:
+
+```powershell
+tq --config configs/pipeline.yaml ops-retry-delivery <IDEMPOTENCY_KEY>
+```
+
+After investigating a failed run or delivery, record an operator and reason:
+
+```powershell
+tq --config configs/pipeline.yaml ops-ack --entity run --id <RUN_ID> --operator <NAME> --reason <TEXT>
+```
 
 ## Replay and shadow acceptance
 
@@ -110,6 +141,18 @@ tq --config configs/pipeline.yaml live-inference `
 
 The command exits with code 3 if score or TopK parity fails.
 
+Run one account-aware shadow day:
+
+```powershell
+tq --config configs/pipeline.yaml shadow-run `
+  --trade-date <YYYY-MM-DD> --shadow-config configs/shadow.yaml
+```
+
+The command creates deterministic `INTENT_CREATED -> SIM_ACCEPTED -> SIM_FILLED` events and cumulative
+statistics under `data/output/shadow/`. Confirm every daily `metrics.json` contains
+`brokerSubmitEnabled: false`. A shadow run never changes broker cash/positions and never calls a broker
+write endpoint.
+
 ## Incident response
 
 - `MODEL_NOT_DEPLOYED` or `MODEL_STALE`: inspect `model-status`; validate a STAGED bundle and explicitly
@@ -134,3 +177,21 @@ tq --config configs/pipeline.yaml model-rollback --to <RETIRED_DEPLOYMENT_ID> --
 
 Rollback validates bundle checksums and the parity fixture before the registry transaction. A signal already
 generated for T remains pinned to its original deployment for the T+1 pretrade phase.
+
+## Drill checklist
+
+Run these drills in a non-production workspace before enabling unattended shadow scheduling:
+
+- Deploy and restart: activate a verified bundle, restart the process, and confirm `model-status` resolves
+  the same deployment and bundle checksum.
+- Rollback: deploy a second candidate, rollback to the retired deployment, and confirm one DEPLOYED row.
+- Delivery recovery: inject a notifier timeout, verify `FAILED`, run `ops-retry-delivery`, rerun the same
+  phase, and confirm exactly one `SENT` row.
+- Data recovery: create a non-clear `pending_publish.json`, confirm close fails without publishing a signal,
+  repair/re-run `daily-sync`, then confirm the same date can pass.
+- Provider failure: inject stale/partial broker and quote responses plus a transient disconnect; confirm
+  stale/partial snapshots fail closed and the disconnect retry does not duplicate a run or message.
+- Incident acknowledgement: export `ops-summary`, acknowledge the failed entity with operator/reason, and
+  retain both JSON summary and input snapshot with the incident record.
+- Shadow acceptance: run at least 20 consecutive open days; require zero duplicate signals, stale
+  snapshots, silent failures, and broker write calls before any P2 evaluation.

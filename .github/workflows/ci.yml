@@ -26,7 +26,7 @@ jobs:
           "QLIB_DATA_URI=$env:RUNNER_TEMP/qlib-data" | Out-File -FilePath $env:GITHUB_ENV -Append
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-repo" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-data" | Out-Null
-      - run: pip install -e ".[dev]"
+      - run: pip install -c constraints/ci.txt -e ".[dev]"
       - run: pytest
 
   quality:
@@ -42,7 +42,7 @@ jobs:
           echo "QLIB_REPO=$RUNNER_TEMP/qlib-repo" >> "$GITHUB_ENV"
           echo "QLIB_DATA_URI=$RUNNER_TEMP/qlib-data" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data"
-      - run: pip install -e '.[dev]'
+      - run: pip install -c constraints/ci.txt -e '.[dev]'
       - run: ruff check src tests
       - run: mypy src
       - run: tq --config configs/pipeline.yaml validate-qrun-contract
@@ -57,5 +57,5 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-      - run: pip install -e '.[dev,pytorch]'
+      - run: pip install -c constraints/ci.txt -e '.[dev,pytorch]'
       - run: pytest tests/test_model_bundle.py -q

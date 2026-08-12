@@ -8,6 +8,7 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
+from .monitoring import evaluate_signal_drift
 from .settings import Settings
 
 
@@ -74,6 +75,7 @@ def evaluate_signal_health(
     deployment: Mapping[str, Any],
     bundle_manifest: Mapping[str, Any],
     features: pd.DataFrame | None = None,
+    reference_score: pd.Series | None = None,
     require_daily_sync: bool = True,
     now_utc: datetime | None = None,
 ) -> SignalHealthReport:
@@ -171,6 +173,23 @@ def evaluate_signal_health(
             reasons.append("SCORE_PSI_HIGH")
     elif manifest_deployment_id:
         reasons.append("MODEL_SCORE_REFERENCE_MISSING")
+    drift = production.get("drift", {})
+    drift = drift if isinstance(drift, Mapping) else {}
+    if bool(drift.get("enabled", True)):
+        if reference_score is None:
+            metrics["driftReferenceStatus"] = "UNAVAILABLE_FIRST_SIGNAL"
+        else:
+            drift_metrics, drift_reasons = evaluate_signal_drift(
+                reference_score,
+                score,
+                topk=int(topk.get("topk", 30)),
+                max_score_psi=float(drift.get("max_score_psi", 0.5)),
+                min_topk_overlap=float(drift.get("min_topk_overlap", 0.3)),
+                max_rank_turnover=float(drift.get("max_rank_turnover", 0.25)),
+            )
+            metrics["driftReferenceStatus"] = "AVAILABLE"
+            metrics["drift"] = drift_metrics
+            reasons.extend(drift_reasons)
     if require_daily_sync:
         latest = settings.paths.state / "daily_sync" / "latest.json"
         if not latest.is_file():
@@ -186,6 +205,7 @@ def evaluate_signal_health(
             pending_state = json.loads(pending.read_text(encoding="utf-8"))
             if pending_state.get("status") != "clear":
                 reasons.append("PENDING_PUBLISH")
+    reasons = list(dict.fromkeys(reasons))
     passed = not reasons
     return SignalHealthReport(
         passed=passed,

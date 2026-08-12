@@ -108,6 +108,27 @@ production:
   max_score_dispersion_ratio: 10.0
   max_score_mean_shift_std: 5.0
   max_score_psi: 0.50
+  drift:
+    enabled: true
+    max_score_psi: 0.50
+    min_topk_overlap: 0.30
+    max_rank_turnover: 0.25
+  # Use inbox for drills. Switch to http_readonly only for a user-operated,
+  # GET-only gateway; the adapter exposes no submit/cancel methods.
+  broker:
+    kind: inbox
+    # base_url: https://broker-gateway.internal/v1
+    # token_env: BROKER_READONLY_TOKEN
+    timeout_seconds: 10
+    max_attempts: 3
+    retry_delay_seconds: 0.25
+  market:
+    kind: inbox
+    # base_url: https://market-gateway.internal/v1
+    # endpoint: quotes
+    timeout_seconds: 10
+    max_attempts: 3
+    retry_delay_seconds: 0.25
   notification:
     channel: feishu
     webhook_env: FEISHU_WEBHOOK_URL

@@ -137,3 +137,33 @@ def test_signal_health_enforces_next_open_day_and_fresh_training_data(tmp_path: 
         "TRADE_DATE_NOT_NEXT_OPEN_DAY",
         "FEATURE_COVERAGE_INVALID",
     }.issubset(report.reasons)
+
+
+def test_signal_health_rejects_cross_day_rank_and_topk_drift(tmp_path: Path):
+    settings = _settings(tmp_path)
+    settings.data["production"]["drift"] = {
+        "enabled": True,
+        "max_score_psi": 100.0,
+        "min_topk_overlap": 0.75,
+        "max_rank_turnover": 0.2,
+    }
+    reference = pd.Series([4.0, 3.0, 2.0], index=["A", "B", "C"])
+    current = pd.Series([4.0, 3.0, 2.0], index=["C", "B", "A"])
+
+    report = evaluate_signal_health(
+        settings,
+        current,
+        reference_score=reference,
+        signal_date="2026-08-10",
+        trade_date="2026-08-11",
+        deployment={"status": "DEPLOYED"},
+        bundle_manifest={
+            "createdAtUtc": "2026-08-10T10:00:00Z",
+            "referenceCrossSectionCount": 3,
+        },
+        now_utc=datetime(2026, 8, 10, 12, tzinfo=timezone.utc),
+    )
+
+    assert not report.passed
+    assert {"TOPK_OVERLAP_LOW", "RANK_TURNOVER_HIGH"} <= set(report.reasons)
+    assert report.metrics["driftReferenceStatus"] == "AVAILABLE"

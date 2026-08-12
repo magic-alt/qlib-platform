@@ -202,6 +202,23 @@ def parser() -> argparse.ArgumentParser:
     replay.add_argument("--snapshot-root", required=True)
     replay.add_argument("--deployment-id")
     replay.add_argument("--with-pretrade", action="store_true")
+    shadow = sub.add_parser("shadow-run")
+    shadow.add_argument("--trade-date", required=True)
+    shadow.add_argument("--shadow-config", default="configs/shadow.yaml")
+    ops_query = sub.add_parser("ops-query", help="query production state")
+    ops_query.add_argument("--entity", choices=["runs", "deliveries"], required=True)
+    ops_query.add_argument("--business-date")
+    ops_query.add_argument("--status")
+    ops_retry = sub.add_parser("ops-retry-delivery")
+    ops_retry.add_argument("idempotency_key")
+    ops_ack = sub.add_parser("ops-ack")
+    ops_ack.add_argument("--entity", choices=["run", "delivery"], required=True)
+    ops_ack.add_argument("--id", required=True, dest="entity_id")
+    ops_ack.add_argument("--operator", required=True)
+    ops_ack.add_argument("--reason", required=True)
+    ops_summary = sub.add_parser("ops-summary")
+    ops_summary.add_argument("--business-date", required=True)
+    ops_summary.add_argument("--output")
     return p
 
 
@@ -411,6 +428,51 @@ def main() -> None:
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
 
+    if args.command == "ops-query":
+        from .ops_cli import query_ops
+
+        print(
+            json.dumps(
+                query_ops(
+                    settings,
+                    entity=args.entity,
+                    business_date=args.business_date,
+                    status=args.status,
+                ),
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+        return
+    if args.command == "ops-retry-delivery":
+        from .ops_cli import state_from_settings
+
+        state_from_settings(settings).recover_delivery(args.idempotency_key)
+        print(json.dumps({"idempotencyKey": args.idempotency_key, "status": "RETRY_READY"}))
+        return
+    if args.command == "ops-ack":
+        from .ops_cli import state_from_settings
+
+        state_from_settings(settings).acknowledge(
+            args.entity, args.entity_id, operator=args.operator, reason=args.reason
+        )
+        print(json.dumps({"entity": args.entity, "id": args.entity_id, "acknowledged": True}))
+        return
+    if args.command == "ops-summary":
+        from .ops_cli import export_daily_ops, state_from_settings
+
+        if args.output:
+            path = export_daily_ops(settings, args.business_date, args.output)
+            print(json.dumps({"summary": str(path)}, ensure_ascii=False))
+        else:
+            print(
+                json.dumps(
+                    state_from_settings(settings).daily_summary(args.business_date),
+                    ensure_ascii=False,
+                    default=str,
+                )
+            )
+        return
     if args.command == "model-refit":
         from .production_refit import refit_production_model
 
@@ -525,6 +587,14 @@ def main() -> None:
         print(json.dumps({"report": str(replay_path), "passed": replay_payload["passed"]}, ensure_ascii=False))
         if not replay_payload["passed"]:
             raise SystemExit(2)
+        return
+    if args.command == "shadow-run":
+        from .shadow_runner import run_shadow
+
+        shadow_result = run_shadow(
+            settings, trade_date=args.trade_date, config_path=args.shadow_config
+        )
+        print(json.dumps(shadow_result.__dict__, ensure_ascii=False, default=str))
         return
 
     if args.command == "daily-sync":

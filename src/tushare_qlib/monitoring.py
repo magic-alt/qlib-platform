@@ -29,6 +29,59 @@ def population_stability_index(
     )
 
 
+def signal_drift_snapshot(
+    reference: pd.Series,
+    current: pd.Series,
+    *,
+    topk: int,
+) -> dict[str, float | int]:
+    if topk <= 0:
+        raise ValueError("topk must be positive")
+    reference = pd.to_numeric(reference, errors="coerce").dropna()
+    current = pd.to_numeric(current, errors="coerce").dropna()
+    if reference.index.has_duplicates or current.index.has_duplicates:
+        raise ValueError("drift inputs require unique instrument indexes")
+    shared = reference.index.intersection(current.index)
+    ref_top = set(reference.sort_values(ascending=False).head(topk).index.astype(str))
+    cur_top = set(current.sort_values(ascending=False).head(topk).index.astype(str))
+    denominator = max(1, min(topk, len(ref_top), len(cur_top)))
+    topk_overlap = len(ref_top & cur_top) / denominator
+    if len(shared) >= 2:
+        reference_rank = reference.loc[shared].rank(method="average", pct=True, ascending=False)
+        current_rank = current.loc[shared].rank(method="average", pct=True, ascending=False)
+        rank_turnover = float((reference_rank - current_rank).abs().mean())
+    else:
+        rank_turnover = float("nan")
+    return {
+        "scorePsi": population_stability_index(reference.values, current.values),
+        "topkOverlap": float(topk_overlap),
+        "rankTurnover": rank_turnover,
+        "sharedInstrumentCount": int(len(shared)),
+    }
+
+
+def evaluate_signal_drift(
+    reference: pd.Series,
+    current: pd.Series,
+    *,
+    topk: int,
+    max_score_psi: float,
+    min_topk_overlap: float,
+    max_rank_turnover: float,
+) -> tuple[dict[str, float | int], list[str]]:
+    metrics = signal_drift_snapshot(reference, current, topk=topk)
+    reasons: list[str] = []
+    score_psi = float(metrics["scorePsi"])
+    rank_turnover = float(metrics["rankTurnover"])
+    if not np.isfinite(score_psi) or score_psi > max_score_psi:
+        reasons.append("SCORE_PSI_HIGH")
+    if float(metrics["topkOverlap"]) < min_topk_overlap:
+        reasons.append("TOPK_OVERLAP_LOW")
+    if not np.isfinite(rank_turnover) or rank_turnover > max_rank_turnover:
+        reasons.append("RANK_TURNOVER_HIGH")
+    return metrics, reasons
+
+
 def portfolio_risk_snapshot(
     targets: pd.DataFrame,
     *,
