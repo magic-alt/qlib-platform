@@ -95,6 +95,25 @@ def _dataset_sha(settings: Settings) -> str:
     return sha256_path(manifest)
 
 
+def _previous_live_score(
+    settings: Settings, state: OpsState, *, signal_date: str, deployment_id: str
+) -> pd.Series | None:
+    previous = state.previous_pass_signal(
+        signal_date=signal_date, deployment_id=deployment_id
+    )
+    if previous is None:
+        return None
+    manifest_path = _production_resolver(settings).resolve(str(previous["manifest_uri"]))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    score_path = manifest_path.parent / str(manifest["artifacts"]["score"]["path"])
+    frame = pd.read_parquet(score_path)
+    if not {"instrument", "score"}.issubset(frame.columns):
+        raise ValueError("previous live score artifact is malformed")
+    if frame["instrument"].duplicated().any():
+        raise ValueError("previous live score contains duplicate instruments")
+    return frame.set_index("instrument")["score"]
+
+
 def run_live_inference(
     settings: Settings,
     *,
@@ -148,13 +167,21 @@ def run_live_inference(
     topk_sha256 = payload_sha256(topk_core)
     identity = f"{deployment_id}|{dataset_sha256}|{as_of}|{signal_sha256}".encode()
     signal_id = hashlib.sha256(identity).hexdigest()[:32]
+    reference_score = _previous_live_score(
+        settings,
+        registry.state,
+        signal_date=expected.strftime("%Y-%m-%d"),
+        deployment_id=deployment_id,
+    )
+    health_score = core.set_index("instrument")["score"]
     health = evaluate_signal_health(
         settings,
-        score,
+        health_score,
         signal_date=expected.strftime("%Y-%m-%d"),
         trade_date=trade_date,
         deployment=deployment,
         bundle_manifest=bundle.manifest,
+        reference_score=reference_score,
         features=features,
         require_daily_sync=require_daily_sync,
         now_utc=health_now_utc,
@@ -221,7 +248,7 @@ def run_live_inference(
     manifest_path = signal_root / "manifest.json"
     _atomic_json(manifest_path, manifest)
     status = SignalStatus.PASS if health.passed else SignalStatus.REJECTED
-    created = OpsState(settings.paths.state / "ops.sqlite3").register_signal(
+    created = registry.state.register_signal(
         {
             "signal_id": signal_id,
             "signal_date": expected.strftime("%Y-%m-%d"),

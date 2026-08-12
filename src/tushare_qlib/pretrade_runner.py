@@ -11,6 +11,7 @@ import pandas as pd
 
 from .artifact_resolver import ArtifactResolver
 from .artifacts import ArtifactType
+from .broker import ReadOnlyBrokerAdapter, broker_adapter_from_settings
 from .daily_signal_runner import (
     _deliver_failure_best_effort,
     _delivery_service,
@@ -21,9 +22,11 @@ from .failure_codes import classify_failure
 from .freshness import validate_execution_snapshot
 from .holdings_ledger import reconcile_holdings
 from .live_artifacts import validate_live_artifact
+from .market_snapshot import MarketSnapshotProvider, market_snapshot_provider_from_settings
 from .notifier import NotificationEnvelope
 from .ops_state import OpsState, RunStatus
 from .settings import Settings
+from .snapshot_audit import write_snapshot_audit
 
 
 @dataclass(frozen=True)
@@ -43,15 +46,6 @@ def artifact_resolver(settings: Settings) -> ArtifactResolver:
             "signal": settings.paths.output / "live",
         }
     )
-
-
-def _required_inbox(settings: Settings, trade_date: str) -> Path:
-    root = settings.paths.root / "inbox" / "pretrade" / trade_date
-    required = [root / "positions.csv", root / "quotes.csv", root / "account.json"]
-    missing = [path.name for path in required if not path.is_file()]
-    if missing:
-        raise FileNotFoundError(f"pretrade inbox is incomplete for {trade_date}: {missing}")
-    return root
 
 
 def _load_signal(settings: Settings, state: OpsState, trade_date: str) -> tuple[dict[str, Any], pd.DataFrame]:
@@ -136,41 +130,41 @@ def run_pretrade_actions(
     *,
     trade_date: str,
     notify: bool = True,
+    broker_adapter: ReadOnlyBrokerAdapter | None = None,
+    market_provider: MarketSnapshotProvider | None = None,
+    ops_state: OpsState | None = None,
+    signal_state: OpsState | None = None,
+    holdings_ledger_path: Path | None = None,
+    output_dir: Path | None = None,
 ) -> PretradeResult:
-    state = OpsState(settings.paths.state / "ops.sqlite3")
+    state = ops_state or OpsState(settings.paths.state / "ops.sqlite3")
+    signal_state = signal_state or state
     run_id = f"pretrade-{trade_date}-{uuid.uuid4().hex[:12]}"
     state.start_run(run_id, "PRETRADE", trade_date)
     notifier = None
     service = _delivery_service(settings, state)
     try:
         notifier = feishu_notifier_from_environment() if notify else None
-        record, scores = _load_signal(settings, state, trade_date)
-        inbox = _required_inbox(settings, trade_date)
-        positions_raw = pd.read_csv(inbox / "positions.csv")
-        quotes = pd.read_csv(inbox / "quotes.csv")
-        account = json.loads((inbox / "account.json").read_text(encoding="utf-8"))
-        required_account = {
-            "as_of_trade_date",
-            "snapshot_at_utc",
-            "portfolio_value",
-            "cash",
-            "daily_pnl_pct",
-        }
-        missing_account = required_account - set(account)
-        if missing_account:
-            raise ValueError(f"account snapshot missing fields: {sorted(missing_account)}")
+        record, scores = _load_signal(settings, signal_state, trade_date)
+        broker_adapter = broker_adapter or broker_adapter_from_settings(settings)
+        broker = broker_adapter.snapshot(trade_date)
+        positions_raw = broker.positions
+        account = broker.account
         execution = settings.data.get("execution", {})
         execution = execution if isinstance(execution, Mapping) else {}
         _account_snapshot(account, trade_date, int(execution.get("max_position_age_seconds", 300)))
-        fills_path = inbox / "fills.csv"
-        initial_path = inbox / "initial_holdings.csv"
+        instruments = sorted(
+            set(scores["instrument"].astype(str)) | set(positions_raw["instrument"].astype(str))
+        )
+        market_provider = market_provider or market_snapshot_provider_from_settings(settings)
+        quotes = market_provider.snapshot(trade_date, instruments)
         positions = reconcile_holdings(
             positions_raw,
-            pd.read_csv(fills_path) if fills_path.is_file() else None,
+            broker.fills if not broker.fills.empty else None,
             as_of_date=trade_date,
             calendar_path=settings.paths.metadata / "trade_calendar.parquet",
-            ledger_path=settings.paths.state / "holdings_ledger.parquet",
-            initial_holdings=pd.read_csv(initial_path) if initial_path.is_file() else None,
+            ledger_path=holdings_ledger_path or settings.paths.state / "holdings_ledger.parquet",
+            initial_holdings=broker.initial_holdings,
         )
         decision, orders, blocked = build_topk_orders(
             scores,
@@ -182,11 +176,23 @@ def run_pretrade_actions(
             daily_pnl_pct=float(account["daily_pnl_pct"]),
             artifact_resolver=artifact_resolver(settings),
         )
-        output = settings.paths.output / "live" / str(record["signal_id"]) / "pretrade"
+        output = output_dir or (
+            settings.paths.output / "live" / str(record["signal_id"]) / "pretrade"
+        )
         output.mkdir(parents=True, exist_ok=True)
         decision_path = output / "strategy_decision.parquet"
         orders_path = output / "order_intent.parquet"
         blocked_path = output / "blocked.csv"
+        write_snapshot_audit(
+            output,
+            account=account,
+            positions=positions_raw,
+            orders=broker.orders,
+            fills=broker.fills,
+            quotes=quotes,
+            broker_source=broker_adapter.source_name,
+            market_source=market_provider.source_name,
+        )
         decision.to_parquet(decision_path, index=False)
         orders.to_parquet(orders_path, index=False)
         blocked.to_csv(blocked_path, index=False)

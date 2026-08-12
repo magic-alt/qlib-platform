@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 
-OPS_SCHEMA_VERSION = 2
+OPS_SCHEMA_VERSION = 3
 
 
 class DeploymentStatus(str, Enum):
@@ -161,6 +161,14 @@ class OpsState:
                     error_summary TEXT,
                     lease_owner TEXT,
                     lease_expires_at_utc TEXT
+                );
+                CREATE TABLE IF NOT EXISTS ops_acknowledgements (
+                    entity_kind TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    acknowledged_at_utc TEXT NOT NULL,
+                    operator TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    PRIMARY KEY(entity_kind, entity_id)
                 );
                 """
             )
@@ -450,3 +458,140 @@ class OpsState:
             )
             if cursor.rowcount != 1:
                 raise KeyError(f"unknown delivery: {idempotency_key}")
+
+    def list_runs(
+        self, *, business_date: str | None = None, status: str | None = None
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        values: list[str] = []
+        if business_date:
+            clauses.append("business_date = ?")
+            values.append(business_date)
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.reading() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM pipeline_runs{where} ORDER BY started_at_utc DESC", values
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_deliveries(
+        self, *, business_date: str | None = None, status: str | None = None
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        values: list[str] = []
+        if business_date:
+            clauses.append("business_date = ?")
+            values.append(business_date)
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self.reading() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM deliveries{where} ORDER BY created_at_utc DESC", values
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def recover_delivery(self, idempotency_key: str) -> None:
+        """Release a failed or expired delivery so the owning runner can retry it."""
+
+        now = _utc_now()
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT status, lease_expires_at_utc FROM deliveries WHERE idempotency_key = ?",
+                (idempotency_key,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"unknown delivery: {idempotency_key}")
+            expired = bool(row["lease_expires_at_utc"] and str(row["lease_expires_at_utc"]) <= now)
+            if row["status"] == DeliveryStatus.SENT.value:
+                raise ValueError("a SENT delivery cannot be retried")
+            if row["status"] == DeliveryStatus.PENDING.value and not expired:
+                raise ValueError("an active PENDING delivery lease cannot be recovered")
+            connection.execute(
+                """
+                UPDATE deliveries
+                SET status = 'FAILED', lease_owner = NULL, lease_expires_at_utc = NULL,
+                    error_code = 'OPERATOR_RETRY', error_summary = 'released for runner retry'
+                WHERE idempotency_key = ?
+                """,
+                (idempotency_key,),
+            )
+
+    def acknowledge(
+        self, entity_kind: str, entity_id: str, *, operator: str, reason: str
+    ) -> None:
+        if entity_kind not in {"run", "delivery"}:
+            raise ValueError("entity_kind must be run or delivery")
+        if not operator.strip() or not reason.strip():
+            raise ValueError("operator and reason are required")
+        table, key = (
+            ("pipeline_runs", "run_id")
+            if entity_kind == "run"
+            else ("deliveries", "idempotency_key")
+        )
+        with self.transaction() as connection:
+            exists = connection.execute(
+                f"SELECT 1 FROM {table} WHERE {key} = ?", (entity_id,)
+            ).fetchone()
+            if exists is None:
+                raise KeyError(f"unknown {entity_kind}: {entity_id}")
+            connection.execute(
+                """
+                INSERT INTO ops_acknowledgements(
+                    entity_kind, entity_id, acknowledged_at_utc, operator, reason
+                ) VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
+                    acknowledged_at_utc = excluded.acknowledged_at_utc,
+                    operator = excluded.operator,
+                    reason = excluded.reason
+                """,
+                (entity_kind, entity_id, _utc_now(), operator.strip(), reason.strip()),
+            )
+
+    def previous_pass_signal(
+        self, *, signal_date: str, deployment_id: str
+    ) -> dict[str, Any] | None:
+        with self.reading() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM signals
+                WHERE status = 'PASS' AND signal_date < ? AND deployment_id = ?
+                ORDER BY signal_date DESC LIMIT 1
+                """,
+                (signal_date, deployment_id),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def daily_summary(self, business_date: str) -> dict[str, Any]:
+        runs = self.list_runs(business_date=business_date)
+        deliveries = self.list_deliveries(business_date=business_date)
+
+        def counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+            result: dict[str, int] = {}
+            for row in rows:
+                value = str(row["status"])
+                result[value] = result.get(value, 0) + 1
+            return result
+
+        with self.reading() as connection:
+            acknowledgements = connection.execute(
+                """
+                SELECT entity_kind, entity_id, acknowledged_at_utc, operator, reason
+                FROM ops_acknowledgements ORDER BY acknowledged_at_utc
+                """
+            ).fetchall()
+        relevant_ids = {str(row["run_id"]) for row in runs} | {
+            str(row["idempotency_key"]) for row in deliveries
+        }
+        return {
+            "businessDate": business_date,
+            "runs": {"counts": counts(runs), "items": runs},
+            "deliveries": {"counts": counts(deliveries), "items": deliveries},
+            "acknowledgements": [
+                dict(row) for row in acknowledgements if str(row["entity_id"]) in relevant_ids
+            ],
+        }

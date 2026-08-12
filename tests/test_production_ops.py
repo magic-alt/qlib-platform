@@ -150,6 +150,6 @@ def test_ops_state_migrates_v1_delivery_and_deployment_tables(tmp_path: Path):
         ).fetchone()[0]
         delivery_columns = {row[1] for row in connection.execute("PRAGMA table_info(deliveries)")}
         deployment_columns = {row[1] for row in connection.execute("PRAGMA table_info(deployments)")}
-    assert version == "2"
+    assert version == "3"
     assert {"signal_date", "trade_date", "lease_owner", "lease_expires_at_utc"} <= delivery_columns
     assert {"dataset_id", "model_binary_sha256", "platform_commit", "deployed_at_utc"} <= deployment_columns

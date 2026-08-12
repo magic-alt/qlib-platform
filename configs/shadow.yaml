@@ -1,0 +1,7 @@
+# Advisory simulation only. No broker submit/cancel capability exists in the shadow runner.
+fill_ratio: 1.0
+minimum_observation_days: 20
+acceptance:
+  maximum_duplicate_signals: 0
+  maximum_stale_snapshots: 0
+  maximum_silent_failures: 0
