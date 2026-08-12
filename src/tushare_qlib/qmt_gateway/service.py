@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from .nav_store import NavStore
@@ -22,7 +22,7 @@ class QmtGatewayService:
 
     @staticmethod
     def _snapshot_at_utc() -> str:
-        return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def health(self) -> dict[str, object]:
         try:

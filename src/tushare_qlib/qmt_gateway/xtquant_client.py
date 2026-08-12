@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from threading import RLock
 from typing import Any, Callable, Protocol, Sequence, TypeVar
 from zoneinfo import ZoneInfo
@@ -64,7 +64,7 @@ def _event_time(value: Any) -> str:
     text = str(value or "").strip()
     if len(text) == 14 and text.isdigit():
         local = datetime.strptime(text, "%Y%m%d%H%M%S").replace(tzinfo=ZoneInfo("Asia/Shanghai"))
-        return local.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        return local.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     try:
         timestamp = float(text)
     except ValueError as exc:
@@ -73,7 +73,7 @@ def _event_time(value: Any) -> str:
         raise ValueError(f"unsupported QMT event time: {value!r}")
     if timestamp > 50_000_000_000:
         timestamp /= 1000
-    return datetime.fromtimestamp(timestamp, tz=UTC).isoformat().replace("+00:00", "Z")
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class XtQuantReadOnlyClient:
