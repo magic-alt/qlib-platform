@@ -44,7 +44,7 @@ def label_timing_from_settings(settings: Settings) -> LabelTiming:
 
 
 def effective_label_gap(configured: object, timing: LabelTiming) -> tuple[int, int]:
-    requested = timing.lookahead_days if configured is None else int(configured)
+    requested = timing.lookahead_days if configured is None else int(str(configured))
     if requested < 0:
         raise ValueError("label timing gaps must be non-negative")
     return requested, max(requested, timing.lookahead_days)

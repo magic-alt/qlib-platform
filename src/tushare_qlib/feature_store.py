@@ -223,6 +223,7 @@ def materialize_feature_store(
             and isinstance(coverage, Mapping)
             and pd.Timestamp(coverage.get("startTime")) <= pd.Timestamp(start_time)
         ):
+            assert isinstance(sync_context, Mapping)
             cached_start = str(coverage["startTime"])
             cached_end = str(coverage["endTime"])
             frame = load_feature_store(target, cached_start, cached_end)

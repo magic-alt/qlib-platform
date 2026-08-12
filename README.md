@@ -309,7 +309,29 @@ tq --config configs/pipeline.yaml dump-update
 tq --config configs/pipeline.yaml train-select
 ```
 
-生产环境应增加：交易日判断、数据到齐检查、原始分区哈希、Qlib 查询冒烟测试、模型版本锁定和告警。
+`train-select` 和 walk-forward 的 `selection_*.csv` 是研究 OOS artifact，不能作为 T→T+1 实盘提醒。
+生产 shadow-signal 使用独立的模型部署与每日推理链：
+
+```bash
+# 低频：由已通过 gate 的 walk-forward release 生成 STAGED bundle，再人工激活
+tq --config configs/pipeline.yaml model-refit --research-run <RUN_ID> --as-of 2026-08-10
+tq --config configs/pipeline.yaml model-deploy <DEPLOYMENT_ID>
+
+# 每日收盘：统一入口会先验证交易日，再同步 T 日数据并真正推理 T→T+1
+tq --config configs/pipeline.yaml production-run --phase close --business-date 2026-08-10
+
+# T+1 盘前：消费日期化 broker/quote/account inbox，生成账户动作提醒
+tq --config configs/pipeline.yaml production-run --phase pretrade --business-date 2026-08-11
+
+# 历史 parity：必须显式使用冻结至 T 的数据集，不能使用当前完整数据集代替
+tq --config configs/pipeline.yaml live-inference --as-of 2026-08-10 `
+  --dataset-uri data/snapshots/20260810 `
+  --deployment-id <DEPLOYMENT_ID> `
+  --compare-research data/output/research/<RUN_ID>/oos_predictions.parquet
+```
+
+完整调度、inbox 契约、故障恢复、回滚和 20 日 shadow 验收要求见
+[`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md)。P0 只发布人工确认用 `ORDER_INTENT`，不会提交券商订单。
 
 ## 6. 注意事项
 

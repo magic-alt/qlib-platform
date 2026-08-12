@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
 from pathlib import Path
@@ -15,6 +14,7 @@ import pandas as pd
 
 from .corporate_actions import CorporateActionStore
 from .extract import Extractor
+from .file_lock import FileLock
 from .quality import assert_quality, validate_raw_day, write_report
 from .settings import Settings
 from .store import PartitionStore, frame_content_sha256
@@ -63,51 +63,11 @@ class DailySyncConfig:
         return result
 
 
-class SingleInstanceLock(AbstractContextManager["SingleInstanceLock"]):
-    """Cross-platform advisory lock released automatically when the process exits."""
+class SingleInstanceLock(FileLock):
+    """Backward-compatible non-blocking lock used by daily sync."""
 
     def __init__(self, path: Path):
-        self.path = path
-        self.handle: Any = None
-
-    def __enter__(self) -> "SingleInstanceLock":
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.handle = self.path.open("a+b")
-        self.handle.seek(0)
-        self.handle.write(b"0")
-        self.handle.flush()
-        try:
-            if os.name == "nt":
-                import msvcrt
-
-                self.handle.seek(0)
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
-            else:  # pragma: no cover - exercised on Unix CI/deployments.
-                import fcntl
-
-                fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            self.handle.close()
-            self.handle = None
-            raise RuntimeError("daily sync is already running") from exc
-        return self
-
-    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
-        if self.handle is None:
-            return
-        try:
-            if os.name == "nt":
-                import msvcrt
-
-                self.handle.seek(0)
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:  # pragma: no cover
-                import fcntl
-
-                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            self.handle.close()
-            self.handle = None
+        super().__init__(path, blocking=False, unavailable_message="daily sync is already running")
 
 
 def _changed_symbols(old: pd.DataFrame, new: pd.DataFrame) -> set[str]:

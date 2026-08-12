@@ -30,6 +30,17 @@ def _main_file() -> str | None:
     return None if value is None else str(value)
 
 
+def _is_importable_entrypoint(entrypoint: str) -> bool:
+    path = Path(entrypoint)
+    if path.is_file():
+        return True
+    return (
+        path.name.lower() == "__main__.py"
+        and path.parent.suffix.lower() == ".exe"
+        and path.parent.is_file()
+    )
+
+
 def validate_multiprocessing_runtime(
     kernels: int,
     backend: str,
@@ -58,7 +69,7 @@ def validate_multiprocessing_runtime(
             "`if __name__ == '__main__':`; do not pipe code to `python -` or use `python -c`. "
             "Use research.qlib_kernels=1 only for an isolation smoke test."
         )
-    if entrypoint.startswith("<") or not Path(entrypoint).is_file():
+    if entrypoint.startswith("<") or not _is_importable_entrypoint(entrypoint):
         raise RuntimeError(
             f"Windows Qlib entrypoint is not safely importable: {entrypoint!r}. "
             "Use `python -m tushare_qlib ...` or a guarded .py file."

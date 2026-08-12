@@ -5,13 +5,11 @@ import json
 import math
 import os
 import tempfile
-from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import Iterator
-
-import fcntl
 import pandas as pd
+
+from .file_lock import FileLock
 
 
 class BrokerOrderState(str, Enum):
@@ -97,15 +95,9 @@ def _event_identifier(payload: dict[str, object], event_id: str | None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-@contextmanager
-def _ledger_lock(target: Path) -> Iterator[None]:
+def _ledger_lock(target: Path) -> FileLock:
     lock_path = target.with_suffix(target.suffix + ".lock")
-    with lock_path.open("a+b") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    return FileLock(lock_path, blocking=True)
 
 
 def _read_ledger(target: Path) -> pd.DataFrame:

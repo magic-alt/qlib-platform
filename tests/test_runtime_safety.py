@@ -23,6 +23,25 @@ def test_threading_backend_does_not_require_spawn_importable_main():
     validate_multiprocessing_runtime(4, "threading", platform_name="nt", main_file="<stdin>")
 
 
+def test_windows_console_launcher_is_a_safe_entrypoint(tmp_path):
+    launcher = tmp_path / "pytest.exe"
+    launcher.write_bytes(b"launcher")
+
+    validate_multiprocessing_runtime(
+        4,
+        "loky",
+        platform_name="nt",
+        main_file=str(launcher / "__main__.py"),
+    )
+
+
+def test_windows_missing_console_launcher_is_rejected(tmp_path):
+    entrypoint = tmp_path / "missing.exe" / "__main__.py"
+
+    with pytest.raises(RuntimeError, match="not safely importable"):
+        validate_multiprocessing_runtime(4, "loky", platform_name="nt", main_file=str(entrypoint))
+
+
 def test_runtime_defaults_to_loky(monkeypatch):
     monkeypatch.setattr("tushare_qlib.runtime_safety.os.name", "posix")
     runtime = resolve_qlib_parallel_runtime(

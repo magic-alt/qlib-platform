@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -163,6 +164,44 @@ def parser() -> argparse.ArgumentParser:
     to.add_argument("--cash", type=float, required=True)
     to.add_argument("--daily-pnl-pct", type=float, required=True)
     to.add_argument("--output-dir", default="./data/output")
+
+    model_refit = sub.add_parser("model-refit")
+    model_refit.add_argument("--research-run", required=True)
+    model_refit.add_argument("--as-of", required=True)
+    model_deploy = sub.add_parser("model-deploy")
+    model_deploy.add_argument("deployment_id")
+    model_deploy.add_argument("--device", default="cpu")
+    model_rollback = sub.add_parser("model-rollback")
+    model_rollback.add_argument("--to", required=True, dest="deployment_id")
+    model_rollback.add_argument("--device", default="cpu")
+    sub.add_parser("model-status")
+    live = sub.add_parser("live-inference")
+    live.add_argument("--as-of", required=True)
+    live.add_argument("--deployment-id")
+    live.add_argument("--require-daily-sync", action="store_true")
+    live.add_argument("--supersede", action="store_true")
+    live.add_argument("--dataset-uri")
+    live.add_argument("--compare-research")
+    live.add_argument("--parity-output")
+    daily_signal = sub.add_parser("daily-signal-run")
+    daily_signal.add_argument("--as-of", required=True)
+    daily_signal.add_argument("--no-notify", action="store_true")
+    daily_signal.add_argument("--skip-sync", action="store_true")
+    daily_signal.add_argument("--supersede", action="store_true")
+    daily_action = sub.add_parser("daily-action-run")
+    daily_action.add_argument("--trade-date", required=True)
+    daily_action.add_argument("--no-notify", action="store_true")
+    production_run = sub.add_parser("production-run")
+    production_run.add_argument("--phase", choices=["close", "pretrade"], required=True)
+    production_run.add_argument("--business-date", required=True)
+    production_run.add_argument("--no-notify", action="store_true")
+    production_run.add_argument("--skip-sync", action="store_true")
+    replay = sub.add_parser("production-replay")
+    replay.add_argument("--start", required=True)
+    replay.add_argument("--end", required=True)
+    replay.add_argument("--snapshot-root", required=True)
+    replay.add_argument("--deployment-id")
+    replay.add_argument("--with-pretrade", action="store_true")
     return p
 
 
@@ -372,16 +411,132 @@ def main() -> None:
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
 
+    if args.command == "model-refit":
+        from .production_refit import refit_production_model
+
+        path = refit_production_model(settings, args.research_run, as_of=args.as_of)
+        print(json.dumps({"manifest": str(path)}, ensure_ascii=False))
+        return
+    if args.command in {"model-deploy", "model-rollback", "model-status"}:
+        from .model_registry import ModelRegistry
+
+        registry = ModelRegistry(settings)
+        if args.command == "model-deploy":
+            registry_result = registry.deploy(args.deployment_id, device=args.device)
+        elif args.command == "model-rollback":
+            registry_result = registry.rollback(args.deployment_id, device=args.device)
+        else:
+            registry_result = registry.current()
+        registry_result.pop("metadata_json", None)
+        print(json.dumps(registry_result, ensure_ascii=False))
+        return
+    if args.command == "live-inference":
+        if args.dataset_uri:
+            from dataclasses import replace
+
+            settings = replace(settings, qlib_data_uri=Path(args.dataset_uri).expanduser().resolve())
+        from .live_inference import run_live_inference
+
+        live_result = run_live_inference(
+            settings,
+            as_of=args.as_of,
+            deployment_id=args.deployment_id,
+            require_daily_sync=args.require_daily_sync,
+            supersede=args.supersede,
+        )
+        live_payload: dict[str, Any] = {
+                    "signalId": live_result.signal_id,
+                    "manifest": str(live_result.manifest_path),
+                    "health": live_result.health.to_dict(),
+                }
+        if args.compare_research:
+            from .live_parity import compare_research_live_scores
+
+            manifest = json.loads(live_result.manifest_path.read_text(encoding="utf-8"))
+            topk = int(manifest["canonicalConfig"]["strategy"]["topk"])
+            parity = compare_research_live_scores(
+                args.compare_research,
+                live_result.score_path,
+                signal_date=args.as_of,
+                topk=topk,
+                output_path=args.parity_output or live_result.manifest_path.parent / "research_live_parity.json",
+            )
+            live_payload["parity"] = parity
+        print(json.dumps(live_payload, ensure_ascii=False))
+        if not live_result.health.passed:
+            raise SystemExit(2)
+        if args.compare_research and not live_payload["parity"]["passed"]:
+            raise SystemExit(3)
+        return
+    if args.command == "daily-signal-run":
+        from .daily_signal_runner import run_daily_signal
+
+        daily_result = run_daily_signal(
+            settings,
+            as_of=args.as_of,
+            notify=not args.no_notify,
+            skip_sync=args.skip_sync,
+            supersede=args.supersede,
+        )
+        print(json.dumps({"signalId": daily_result.signal_id, "manifest": str(daily_result.manifest_path)}))
+        return
+    if args.command == "daily-action-run":
+        from .pretrade_runner import run_pretrade_actions
+
+        action_result = run_pretrade_actions(
+            settings, trade_date=args.trade_date, notify=not args.no_notify
+        )
+        print(
+            json.dumps(
+                {
+                    "signalId": action_result.signal_id,
+                    "decision": str(action_result.decision_path),
+                    "orders": str(action_result.orders_path),
+                    "blocked": str(action_result.blocked_path),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+    if args.command == "production-run":
+        from .production_orchestrator import run_production_day
+
+        production_result = run_production_day(
+            settings,
+            phase=args.phase,
+            business_date=args.business_date,
+            notify=not args.no_notify,
+            skip_sync=args.skip_sync,
+        )
+        print(json.dumps(production_result.__dict__, ensure_ascii=False, default=str))
+        return
+    if args.command == "production-replay":
+        from .production_replay import run_production_replay
+
+        replay_path = run_production_replay(
+            settings,
+            start=args.start,
+            end=args.end,
+            snapshot_root=args.snapshot_root,
+            deployment_id=args.deployment_id,
+            with_pretrade=args.with_pretrade,
+        )
+        replay_payload = json.loads(replay_path.read_text(encoding="utf-8"))
+        print(json.dumps({"report": str(replay_path), "passed": replay_payload["passed"]}, ensure_ascii=False))
+        if not replay_payload["passed"]:
+            raise SystemExit(2)
+        return
+
     if args.command == "daily-sync":
         from .daily_sync import run_daily_sync
 
-        manifest = run_daily_sync(
+        sync_manifest_path = run_daily_sync(
             settings,
             as_of=args.as_of,
             check_only=args.check_only,
             force_full=args.force_full,
         )
-        print(json.dumps(json.loads(manifest.read_text(encoding="utf-8")), ensure_ascii=False))
+        print(json.dumps(json.loads(sync_manifest_path.read_text(encoding="utf-8")), ensure_ascii=False))
         return
 
     if args.command == "sync-dividends":
@@ -600,13 +755,13 @@ def main() -> None:
     elif args.command == "feature-store":
         from .feature_store import prepare_feature_data
 
-        _, metadata = prepare_feature_data(
+        _, feature_metadata = prepare_feature_data(
             settings,
             args.start or settings.data["start_date"],
             args.end or settings.data["end_date"],
             force=args.force,
         )
-        print(json.dumps(metadata, ensure_ascii=False))
+        print(json.dumps(feature_metadata, ensure_ascii=False))
     elif args.command in {"train-select", "research-run"}:
         from .train_select import train_backtest_select
 
@@ -615,7 +770,7 @@ def main() -> None:
                 raise ValueError("walk-forward currently requires --stage release")
             from .walk_forward import run_walk_forward
 
-            manifest_path = run_walk_forward(
+            walk_manifest_path = run_walk_forward(
                 settings,
                 start_date=args.start or settings.data["start_date"],
                 end_date=args.end or settings.data["end_date"],
@@ -623,9 +778,9 @@ def main() -> None:
                 topn=args.topn,
                 model_profile=args.model_profile,
             )
-            print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
+            print(json.dumps(_report_payload(walk_manifest_path), ensure_ascii=False))
         elif args.command == "research-run":
-            result = train_backtest_select(
+            research_result = train_backtest_select(
                 settings,
                 benchmark=args.benchmark,
                 topn=args.topn,
@@ -633,12 +788,12 @@ def main() -> None:
                 promotion_mode="signal" if args.stage == "signal" else "release",
                 artifact_level=args.artifact_level,
             )
-            if result.name == "manifest.json":
-                print(json.dumps(_report_payload(result), ensure_ascii=False))
+            if research_result.name == "manifest.json":
+                print(json.dumps(_report_payload(research_result), ensure_ascii=False))
             else:
-                model_id = str(pd.read_csv(result)["model_id"].iloc[0])
-                manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
-                print(json.dumps(_report_payload(manifest_path, result), ensure_ascii=False))
+                model_id = str(pd.read_csv(research_result)["model_id"].iloc[0])
+                research_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
+                print(json.dumps(_report_payload(research_manifest_path, research_result), ensure_ascii=False))
         else:
             train = tuple(args.train) if args.train else None
             valid = tuple(args.valid) if args.valid else None

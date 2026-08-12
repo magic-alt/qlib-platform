@@ -277,8 +277,14 @@ class Extractor:
         if self.source_is_mysql and str(mysql_cfg.get("schema", "")).strip().lower() == "lean_canonical_v1":
             preflight = lean_mysql_preflight(mysql_cfg, dates[0], dates[-1]) if dates else {"passed": True}
             if not preflight.get("passed"):
+                missing_tables_raw: object = preflight.get("missing_tables", [])
+                missing_tables = (
+                    [str(value) for value in missing_tables_raw]
+                    if isinstance(missing_tables_raw, list)
+                    else []
+                )
                 failures = preflight.get("coverage_failures") or [
-                    f"missing_tables:{','.join(preflight.get('missing_tables', []))}"
+                    f"missing_tables:{','.join(missing_tables)}"
                 ]
                 raise RuntimeError(
                     "Lean MySQL source coverage is incomplete for the requested backfill: "

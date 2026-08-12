@@ -818,6 +818,8 @@ def run_walk_forward(
                 else "Alpha158-DNN-WalkForward"
             ),
             "fingerprint": external_id,
+            "artifactRole": "RESEARCH_EVIDENCE",
+            "deployable": False,
         },
         "runtime": runtime.to_manifest(),
         "canonicalConfig": manifests[-1].get("canonicalConfig"),
@@ -850,6 +852,12 @@ def run_walk_forward(
             "foldBoundaryContinuityPath": str(continuity_path),
         },
         "componentRuns": component_runs,
+        "researchRelease": {
+            "status": "APPROVED_RECIPE" if promoted else "CANDIDATE",
+            "evidenceRunId": external_id,
+            "requiresProductionRefit": True,
+            "deployableModelArtifact": None,
+        },
         "artifacts": [
             {"name": report_path.name, "localPath": str(report_path), "rows": len(combined)},
             {"name": audit_path.name, "localPath": str(audit_path), "rows": len(combined_audit)},
@@ -865,8 +873,6 @@ def run_walk_forward(
             {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
         ],
     }
-    if promoted:
-        payload["latestTargets"] = manifests[-1]["latestTargets"]
     from .backtest_report import ReportArtifacts, write_backtest_report
 
     payload["artifacts"].extend(
