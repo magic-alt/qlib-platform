@@ -86,6 +86,10 @@ class XtQuantReadOnlyClient:
         self.constants: Any | None = None
         self._lock = RLock()
         self._reconnect = False
+        self._connection_generation: int | None = None
+        self._next_generation = 0
+        self._last_reconnect_session_id = settings.session_id
+        self._retired_traders: list[Any] = []
 
     def _import_xtquant(self) -> tuple[Any, Any, Any, Any]:
         site_packages = self.settings.xtquant_site_packages
@@ -103,34 +107,55 @@ class XtQuantReadOnlyClient:
             raise RuntimeError("xtquant is not available in the gateway environment") from exc
         return xtconstant, XtQuantTrader, XtQuantTraderCallback, StockAccount
 
-    @staticmethod
-    def _reconnect_session_id() -> int:
-        return int(datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%H%M%S%f")[:-3])
+    def _reconnect_session_id(self) -> int:
+        """Return a session ID distinct from every previous reconnect in this process."""
+        candidate = int(datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%H%M%S%f")[:-3])
+        self._last_reconnect_session_id = max(candidate, self._last_reconnect_session_id + 1)
+        return self._last_reconnect_session_id
 
-    def _invalidate_locked(self) -> None:
+    def _invalidate_locked(self) -> Any | None:
+        trader = self.trader
         self.trader = None
         self.account = None
         self.constants = None
+        self._connection_generation = None
         self._reconnect = True
+        return trader
 
-    def _disconnect_callback(self) -> None:
+    def _stop_retired_traders_locked(self) -> None:
+        retired_traders, self._retired_traders = self._retired_traders, []
+        for trader in retired_traders:
+            try:
+                trader.stop()
+            except Exception:
+                LOGGER.debug("MiniQMT trader stop failed during disconnect cleanup", exc_info=True)
+
+    def _disconnect_callback(self, generation: int) -> None:
         with self._lock:
-            self._invalidate_locked()
+            if generation != self._connection_generation:
+                LOGGER.debug("Ignoring disconnect callback from retired MiniQMT session %s", generation)
+                return
+            trader = self._invalidate_locked()
+            if trader is not None:
+                self._retired_traders.append(trader)
         LOGGER.warning("MiniQMT disconnected; the next read will reconnect with a new session")
 
     def ensure_connected(self) -> None:
         with self._lock:
             if self.trader is not None and self.account is not None:
                 return
+            self._stop_retired_traders_locked()
             if not self.settings.userdata_path.is_dir():
                 raise RuntimeError("QMT_USERDATA_PATH does not exist or is not a directory")
             constants, trader_class, callback_class, account_class = self._import_xtquant()
             session_id = self._reconnect_session_id() if self._reconnect else self.settings.session_id
+            self._next_generation += 1
+            generation = self._next_generation
             owner = self
 
             class GatewayCallback(callback_class):
                 def on_disconnected(self) -> None:
-                    owner._disconnect_callback()
+                    owner._disconnect_callback(generation)
 
             trader = trader_class(str(self.settings.userdata_path), session_id)
             try:
@@ -149,6 +174,7 @@ class XtQuantReadOnlyClient:
                 self._invalidate_locked()
                 raise
             self.trader, self.account, self.constants = trader, account, constants
+            self._connection_generation = generation
             self._reconnect = True
 
     def _query(self, operation: Callable[[Any, Any], T]) -> T:
@@ -159,10 +185,10 @@ class XtQuantReadOnlyClient:
             try:
                 return operation(self.trader, self.account)
             except Exception as exc:
-                stale = self.trader
-                self._invalidate_locked()
+                stale = self._invalidate_locked()
                 try:
-                    stale.stop()
+                    if stale is not None:
+                        stale.stop()
                 except Exception:
                     LOGGER.debug("MiniQMT trader stop failed during query cleanup", exc_info=True)
                 raise RuntimeError("QMT read query failed") from exc
@@ -200,8 +226,12 @@ class XtQuantReadOnlyClient:
             raw_status = _value(item, "order_status")
             try:
                 status = _ORDER_STATUS[int(raw_status)]
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(f"unsupported QMT order status: {raw_status!r}") from exc
+            except (KeyError, TypeError, ValueError):
+                # QMT may add statuses between client upgrades. Preserve the raw
+                # value for reconciliation instead of making the entire snapshot
+                # unavailable; downstream systems must treat UNKNOWN as non-final.
+                LOGGER.warning("Unknown QMT order status %r; exposing it as UNKNOWN", raw_status)
+                status = "UNKNOWN"
             result.append(
                 QmtOrder(
                     order_id=str(_value(item, "order_id")),
@@ -236,7 +266,7 @@ class XtQuantReadOnlyClient:
 
     def close(self) -> None:
         with self._lock:
-            trader = self.trader
-            self._invalidate_locked()
+            trader = self._invalidate_locked()
             if trader is not None:
                 trader.stop()
+            self._stop_retired_traders_locked()
