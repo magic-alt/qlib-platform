@@ -35,14 +35,31 @@
 - Add/extend tests under `tests/` with file names like `test_<feature>.py`.
 - Run targeted tests with `pytest tests/test_normalize.py` before broad runs.
 
-## Commit & Pull Request Guidelines
-- Commit history currently shows only an initial commit (`首次提交`), so no strict convention is established yet.
-- Recommended format: `type(scope): concise summary` (e.g. `feat(pipeline): add incremental backfill option`).
-- PRs should include:
-  - a summary of changed pipeline stages,
-  - commands executed and test status,
-  - sample config changes,
-  - validation screenshots/log snippets when data/accuracy behavior changes.
+## Git Workflow: Trunk-Based Development
+- Use `main` plus short-lived task branches. A branch represents one task, never one computer.
+- Before starting work on either computer, synchronize `main` with:
+  - `git switch main`
+  - `git fetch origin`
+  - `git pull --ff-only`
+- Configure `git config --global pull.ff only` on each development computer. Do not create merge commits merely to synchronize local and remote `main`.
+- Direct commits to `main` are allowed only for low-risk changes such as README/comments, spelling, log wording, or a tiny deterministic fix. Run the relevant local checks before pushing.
+- Create a short-lived branch and PR for normal features and for all changes involving:
+  - research, labels, alpha/features, model selection, or walk-forward logic;
+  - data cleaning, point-in-time correctness, calendars, or survivorship handling;
+  - backtests, costs, portfolios, strategies, gates, or promotion;
+  - production/trading execution;
+  - database schemas, CI, dependencies, large refactors, or experimental work once mature.
+- Use task-oriented branch names such as `feat/walk-forward-v2`, `fix/qlib-calendar`, `refactor/data-layer`, `chore/update-qlib`, or `docs/research-guide`.
+- To continue the same task on another computer, push the task branch and track that same remote branch. Do not restart the task from `main` or create computer-specific branches.
+- Keep feature branches current with `git fetch origin` followed by `git rebase origin/main`; do not merge `origin/main` into a feature branch. If the rebased branch was already published, update it with `git push --force-with-lease`, never plain `--force`.
+- A feature branch may contain several focused commits. Use `type(scope): concise summary` commit messages, for example `feat(research): add walk-forward runner`.
+- Open a PR as the change-set boundary. Before merge:
+  - ensure CI passes `ruff check src tests`, `tq --config configs/pipeline.yaml validate-qrun-contract`, and `pytest`;
+  - review the complete diff, especially correctness and point-in-time effects;
+  - document changed stages, commands/test status, config changes, and validation evidence when data or accuracy behavior changes.
+- Prefer **Squash and merge** so `main` receives one clean commit per PR. After merge, delete the remote task branch, update local `main` with `git pull --ff-only`, delete the local branch, and run `git fetch --prune`.
+- Do not force-push or delete `main`. Repository protection should require PR status checks for critical changes without requiring a self-approval review.
+- Agents working in this repository must follow these rules: use a task branch and PR for functional or critical-path changes, and treat direct-to-`main` work as the documented low-risk exception.
 
 ## Security & Configuration Tips
 - Never commit secrets (`TUSHARE_TOKEN`, `.env`, raw API credentials).
