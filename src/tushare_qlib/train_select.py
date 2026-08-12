@@ -512,9 +512,7 @@ def _backtest_quote_status(
     if raw.empty:
         raise RuntimeError("cannot audit TopkDropout without Qlib trade-status fields")
     transform_timer = (
-        timings.measure_diagnostic("audit_quote_transform_seconds")
-        if timings is not None
-        else nullcontext()
+        timings.measure_diagnostic("audit_quote_transform_seconds") if timings is not None else nullcontext()
     )
     with transform_timer:
         frame = raw.reset_index().rename(columns={"datetime": "trade_date"})
@@ -657,14 +655,15 @@ def train_backtest_select(
         best_iteration = getattr(getattr(model, "model", None), "best_iteration", None)
         if best_iteration is not None:
             recorder.log_params(best_iteration=int(best_iteration))
-        if promotion_mode == "signal":
+        if promotion_mode in {"signal", "component"}:
+            component_mode = promotion_mode == "component"
             model_id = str(getattr(recorder, "id", "unversioned"))
             artifact_dir = settings.paths.output / "research" / model_id
             artifact_dir.mkdir(parents=True, exist_ok=True)
             pred_path = artifact_dir / "oos_predictions.parquet"
             label_path = artifact_dir / "oos_labels.parquet"
             timings_path = artifact_dir / "timings.json"
-            gate_path = artifact_dir / "signal_gate.json"
+            gate_path = artifact_dir / ("component_gate.json" if component_mode else "signal_gate.json")
             manifest_path = artifact_dir / "manifest.json"
             with timings.measure("artifact_export_seconds"):
                 pred.to_parquet(pred_path)
@@ -690,10 +689,14 @@ def train_backtest_select(
                     label_horizon_days=label_horizon_days,
                 )
                 signal_metrics["dirty_research_override"] = dirty_override
-                gate_report = evaluate_signal_metrics(
-                    signal_metrics,
-                    canonical.promotion,
-                    allow_dirty_research=dirty_override,
+                gate_report = (
+                    evaluate_component_metrics(signal_metrics, allow_dirty_research=dirty_override)
+                    if component_mode
+                    else evaluate_signal_metrics(
+                        signal_metrics,
+                        canonical.promotion,
+                        allow_dirty_research=dirty_override,
+                    )
                 )
                 write_gate_report(gate_report, gate_path)
             timing_payload = timings.to_dict()
@@ -704,8 +707,12 @@ def train_backtest_select(
             manifest = {
                 "schemaVersion": "2.0",
                 "externalRunId": model_id,
-                "runKind": "signal_screen",
-                "name": f"Qlib signal screen {oos_start}..{oos_end}",
+                "runKind": run_kind if component_mode else "signal_screen",
+                "name": (
+                    f"Qlib rolling OOS signal component {oos_start}..{oos_end}"
+                    if component_mode
+                    else f"Qlib signal screen {oos_start}..{oos_end}"
+                ),
                 "dataset": {
                     "fingerprint": _dataset_id(settings),
                     "datasetId": canonical.dataset.dataset_id,
@@ -725,9 +732,15 @@ def train_backtest_select(
                 "canonicalConfig": canonical.to_manifest(),
                 "lineage": lineage,
                 "promotion": {
-                    "status": "SCREENED" if gate_report["passed"] else "REJECTED",
+                    "status": (
+                        "CANDIDATE"
+                        if component_mode and gate_report["passed"]
+                        else "SCREENED"
+                        if gate_report["passed"]
+                        else "REJECTED"
+                    ),
                     "decision": gate_report["decision"],
-                    "gateMode": "signal_screen",
+                    "gateMode": "component_validation" if component_mode else "signal_screen",
                     "promotionAuthorized": False,
                 },
                 "runtime": runtime.to_manifest(),
@@ -807,9 +820,7 @@ def train_backtest_select(
             with timings.measure_diagnostic("portfolio_artifact_load_seconds"):
                 report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
                 positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
-                indicators = recorder.load_object(
-                    "portfolio_analysis/indicators_normal_1day_obj.pkl"
-                )
+                indicators = recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl")
             pred.to_parquet(pred_path)
             label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
             label_frame.to_parquet(label_path)

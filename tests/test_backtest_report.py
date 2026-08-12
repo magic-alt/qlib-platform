@@ -5,9 +5,15 @@ import pickle
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from pypdf import PdfReader
 
-from tushare_qlib.backtest_report import export_holding_snapshots, write_backtest_report
+from tushare_qlib.backtest_report import (
+    _plot_font,
+    export_holding_snapshots,
+    load_run_data,
+    write_backtest_report,
+)
 from tushare_qlib.settings import Paths, Settings
 
 
@@ -139,6 +145,55 @@ def _write_run(settings: Settings, *, holdings: bool = True) -> Path:
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return run_dir
+
+
+def test_plot_font_discovers_registered_cjk_family(monkeypatch, tmp_path: Path):
+    from matplotlib import font_manager
+
+    font_path = tmp_path / "cjk-font.ttc"
+    font_path.touch()
+
+    def fake_findfont(properties, *, fallback_to_default):
+        assert fallback_to_default is False
+        if properties.get_family() == ["Microsoft YaHei"]:
+            return str(font_path)
+        raise ValueError("font family not found")
+
+    monkeypatch.setattr(font_manager, "findfont", fake_findfont)
+
+    font = _plot_font()
+
+    assert font is not None
+    assert Path(font.get_file()) == font_path
+
+
+def test_load_run_data_restores_raw_prices_and_quantities(tmp_path: Path):
+    settings = _settings(tmp_path)
+    run_dir = _write_run(settings)
+    dates = pd.to_datetime(["2026-01-05", "2026-01-06", "2026-01-07"])
+    for instrument in ("SZ000001", "SH600000"):
+        pd.DataFrame({"date": dates, "factor": [0.1, 0.1, 0.1]}).to_parquet(
+            settings.paths.staging_full / f"{instrument}.parquet", index=False
+        )
+
+    audit_path = run_dir / "strategy_audit.parquet"
+    audit = pd.read_parquet(audit_path)
+    audit["requested_quantity"] *= 10
+    audit["filled_quantity"] *= 10
+    audit["filled_price"] *= 0.1
+    audit.to_parquet(audit_path, index=False)
+    holdings_path = run_dir / "holdings.parquet"
+    holdings = pd.read_parquet(holdings_path)
+    holdings["quantity"] *= 10
+    holdings["price"] *= 0.1
+    holdings.to_parquet(holdings_path, index=False)
+
+    data = load_run_data(settings, run_dir)
+
+    assert data.audit["filled_price"].tolist() == pytest.approx([10.0, 12.0])
+    assert data.audit["filled_quantity"].tolist() == pytest.approx([10_000.0, 8_000.0])
+    assert data.holdings["price"].tolist() == pytest.approx([10.0, 12.0])
+    assert data.holdings["quantity"].tolist() == pytest.approx([10_000.0, 8_000.0])
 
 
 def test_report_writes_markdown_pdf_charts_and_transaction_appendix(tmp_path: Path):

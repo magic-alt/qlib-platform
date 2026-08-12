@@ -165,12 +165,17 @@ tq --config configs/pipeline.yaml backtest-predictions \
 ```
 
 `minimal` 保存 prediction、组合日表、持仓摘要、策略 audit 和 timings；`full` 额外渲染 Markdown/PDF。
-walk-forward 的 rolling folds 默认使用 `minimal`，只有 final holdout 使用 `full`。
+walk-forward 的 rolling folds 只训练并保存 OOS prediction/label，不运行各自独立的组合回测。系统将所有 rolling
+prediction 严格按日期拼接并校验无重叠后，仅运行一次 `minimal` 的连续账户回测；只有独立 final holdout 使用
+`full`。
 
 Signal Gate 通过后，再运行完整 fixed/walk-forward portfolio Gate。默认 walk-forward 使用 1500 日 train、126 日
 valid、63 日 test，累计 252 日 rolling OOS 与独立 252 日 final holdout，并统一使用 6 日 purge/embargo/label buffer。
 
-一体化流程会自动从 OOS prediction、label 和组合报告计算 Research Gate。只有全部阈值通过且 lineage 完整的
+一体化流程会自动从 OOS prediction、label 和组合报告计算 Research Gate。Signal 指标来自拼接后的完整 OOS
+prediction/label；Portfolio 指标只来自同一信号流驱动的单账户连续回测，不再复合各 fold 的独立账户收益。
+运行产出的 `fold_boundary_continuity.json` 会逐个边界验证未交易持仓的 `holding_days` 没有回退。只有全部阈值
+通过且 lineage 完整的
 运行才标记为 `PROMOTED`，并发布 `data/output/selection_YYYYMMDD.csv` 与
 `data/output/signals/signal_scores_YYYYMMDD.parquet`；未通过的运行保留 manifest、回测产物和
 `research_gate.json` 后失败退出，不会生成执行候选。

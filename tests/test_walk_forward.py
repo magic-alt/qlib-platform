@@ -12,7 +12,8 @@ from tushare_qlib.walk_forward import (
     Fold,
     _aggregate_component_timings,
     _checkpoint_fingerprint,
-    _rebase_reports,
+    _verify_fold_boundary_continuity,
+    _write_continuous_oos_stream,
     build_walk_forward_plan,
     run_walk_forward,
 )
@@ -35,36 +36,6 @@ def test_walk_forward_plan_has_non_overlapping_oos_and_final_holdout():
         assert pd.Timestamp(current.valid[1]) < pd.Timestamp(current.test[0])
 
 
-def test_rebase_reports_chains_account_across_fold_resets():
-    first = pd.DataFrame(
-        {
-            "account": [100.0, 110.0],
-            "return": [0.0, 0.1],
-            "cash": [100.0, 10.0],
-            "value": [0.0, 100.0],
-            "total_cost": [0.0, 1.0],
-            "total_turnover": [0.0, 100.0],
-        },
-        index=pd.to_datetime(["2026-01-05", "2026-01-06"]),
-    )
-    second = pd.DataFrame(
-        {
-            "account": [100.0, 105.0],
-            "return": [0.0, 0.05],
-            "cash": [100.0, 5.0],
-            "value": [0.0, 100.0],
-            "total_cost": [0.0, 2.0],
-            "total_turnover": [0.0, 120.0],
-        },
-        index=pd.to_datetime(["2026-01-07", "2026-01-08"]),
-    )
-
-    combined = _rebase_reports([("rolling_00", first), ("final_holdout", second)])
-
-    assert combined["account"].tolist() == pytest.approx([100.0, 110.0, 110.0, 115.5])
-    assert combined["fold_key"].tolist() == ["rolling_00", "rolling_00", "final_holdout", "final_holdout"]
-
-
 def test_aggregate_component_timings_sums_each_phase():
     manifests = [
         {"timings": {"phasesSeconds": {"train_seconds": 2.5, "backtest_seconds": 1.0}}},
@@ -76,6 +47,68 @@ def test_aggregate_component_timings_sums_each_phase():
         "backtest_seconds": 1.0,
         "predict_seconds": 0.5,
     }
+
+
+def test_continuous_oos_stream_rejects_overlapping_fold_dates(tmp_path: Path):
+    manifests = []
+    for run_id, dates in (
+        ("run-1", pd.to_datetime(["2026-01-05", "2026-01-06"])),
+        ("run-2", pd.to_datetime(["2026-01-06", "2026-01-07"])),
+    ):
+        output = tmp_path / run_id
+        output.mkdir()
+        index = pd.MultiIndex.from_product([dates, ["A", "B"]], names=["datetime", "instrument"])
+        pred_path = output / "oos_predictions.parquet"
+        label_path = output / "oos_labels.parquet"
+        pd.DataFrame({"score": range(len(index))}, index=index).to_parquet(pred_path)
+        pd.DataFrame({"label": range(len(index))}, index=index).to_parquet(label_path)
+        manifests.append(
+            {
+                "externalRunId": run_id,
+                "artifacts": [
+                    {"name": pred_path.name, "localPath": str(pred_path)},
+                    {"name": label_path.name, "localPath": str(label_path)},
+                ],
+            }
+        )
+
+    with pytest.raises(ValueError, match="overlap or are out of order"):
+        _write_continuous_oos_stream(manifests, tmp_path / "aggregate")
+
+
+def test_fold_boundary_continuity_keeps_holding_age(tmp_path: Path):
+    manifests = []
+    for run_id, date in (("run-1", "2026-01-06"), ("run-2", "2026-01-07")):
+        output = tmp_path / run_id
+        output.mkdir()
+        index = pd.MultiIndex.from_product([pd.to_datetime([date]), ["A"]], names=["datetime", "instrument"])
+        pred_path = output / "oos_predictions.parquet"
+        pd.DataFrame({"score": [1.0]}, index=index).to_parquet(pred_path)
+        manifests.append(
+            {
+                "externalRunId": run_id,
+                "artifacts": [{"name": pred_path.name, "localPath": str(pred_path)}],
+            }
+        )
+    holdings = pd.DataFrame(
+        {
+            "trade_date": pd.to_datetime(["2026-01-06", "2026-01-07"]),
+            "instrument": ["A", "A"],
+            "quantity": [100.0, 100.0],
+            "holding_days": [4, 5],
+        }
+    )
+
+    result = _verify_fold_boundary_continuity(manifests, holdings, pd.DataFrame())
+
+    assert result["passed"] is True
+    assert result["boundaries"][0]["untouchedContinuingPositions"] == 1
+    assert result["boundaries"][0]["unexpectedHoldingDayResets"] == []
+
+    reset_holdings = holdings.copy()
+    reset_holdings.loc[1, "holding_days"] = 1
+    with pytest.raises(RuntimeError, match="holding_days reset"):
+        _verify_fold_boundary_continuity(manifests, reset_holdings, pd.DataFrame())
 
 
 def test_checkpoint_fingerprint_changes_with_profile_or_fold(tmp_path):
@@ -123,9 +156,7 @@ def test_checkpoint_fingerprint_changes_with_strategy_or_execution(tmp_path):
         ("2021-02-01", "2021-03-01"),
         ("2021-04-01", "2021-05-01"),
     )
-    base = _checkpoint_fingerprint(
-        settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=None
-    )
+    base = _checkpoint_fingerprint(settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=None)
     settings.data["strategy"]["topk_dropout"]["n_drop"] = 3
     strategy_changed = _checkpoint_fingerprint(
         settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=None
@@ -206,8 +237,11 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
         )
         report = pd.DataFrame(
             {
-                "account": 100_000 * (1.0015 ** np.arange(1, len(dates) + 1)),
-                "return": np.where(np.arange(len(dates)) % 2, 0.001, 0.002),
+                # Component portfolios are deliberately unusable as aggregate
+                # evidence.  The aggregate gate must consume the separate
+                # continuous portfolio created below.
+                "account": 100_000 * (0.99 ** np.arange(1, len(dates) + 1)),
+                "return": -0.01,
                 "bench": 0.0,
                 "cost": 0.0,
                 "cash": 10_000.0,
@@ -222,10 +256,15 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
         artifacts = {
             "oos_predictions.parquet": predictions,
             "oos_labels.parquet": labels,
-            "portfolio_report.parquet": report,
-            "strategy_audit.parquet": audit,
-            "holdings.parquet": holdings,
         }
+        if promotion_mode == "release":
+            artifacts.update(
+                {
+                    "portfolio_report.parquet": report,
+                    "strategy_audit.parquet": audit,
+                    "holdings.parquet": holdings,
+                }
+            )
         entries = []
         for name, frame in artifacts.items():
             path = output / name
@@ -258,6 +297,59 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
 
     monkeypatch.setattr("tushare_qlib.walk_forward.train_backtest_select", fake_train)
 
+    def fake_continuous_backtest(
+        _settings: Settings,
+        predictions: str | Path,
+        **kwargs,
+    ) -> Path:
+        del kwargs
+        pred = pd.read_parquet(predictions)
+        dates = pd.DatetimeIndex(pred.index.get_level_values("datetime").unique()).sort_values()
+        output = paths.output / "research" / "continuous-oos-run"
+        output.mkdir(parents=True, exist_ok=True)
+        report = pd.DataFrame(
+            {
+                "account": 100_000 * (1.0015 ** np.arange(1, len(dates) + 1)),
+                "return": np.where(np.arange(len(dates)) % 2, 0.001, 0.002),
+                "bench": 0.0,
+                "cost": 0.0,
+                "cash": 10_000.0,
+                "value": 90_000.0,
+                "total_cost": 0.0,
+                "total_turnover": np.arange(len(dates), dtype=float),
+            },
+            index=dates,
+        )
+        holdings = pd.DataFrame(
+            {
+                "trade_date": dates,
+                "instrument": "A",
+                "quantity": 100.0,
+                "holding_days": np.arange(1, len(dates) + 1),
+            }
+        )
+        audit = pd.DataFrame(columns=["trade_date", "instrument", "actual_action"])
+        artifacts = {
+            "portfolio_report.parquet": report,
+            "strategy_audit.parquet": audit,
+            "holdings.parquet": holdings,
+        }
+        entries = []
+        for name, frame in artifacts.items():
+            path = output / name
+            frame.to_parquet(path, index=name == "portfolio_report.parquet")
+            entries.append({"name": name, "localPath": str(path), "rows": len(frame)})
+        manifest = {
+            "externalRunId": "continuous-oos-run",
+            "timings": {"phasesSeconds": {"portfolio_engine_seconds": 1.0}},
+            "artifacts": entries,
+        }
+        manifest_path = output / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        return manifest_path
+
+    monkeypatch.setattr("tushare_qlib.walk_forward.backtest_predictions", fake_continuous_backtest)
+
     manifest_path = run_walk_forward(settings, start_date="2016-01-01", end_date="2026-01-31")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
@@ -271,3 +363,9 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
     assert manifest["promotion"]["aggregateOosGate"]["passed"] is True
     assert manifest["promotion"]["finalHoldoutGate"]["status"] == "PROMOTED"
     assert manifest["promotion"]["gateMode"] == "aggregate_oos_and_final_holdout"
+    assert manifest["aggregatePortfolioRun"]["stateMode"] == "single_continuous_account"
+    assert manifest["evaluationScopes"]["topLevelPortfolioArtifacts"] == "rolling_oos_only"
+    rolling_runs = [run for run in manifest["componentRuns"] if run["key"].startswith("rolling_")]
+    assert rolling_runs
+    assert all(run["artifactMode"] == "signal_only" for run in rolling_runs)
+    assert all(run["portfolioBacktestExecuted"] is False for run in rolling_runs)

@@ -199,6 +199,8 @@ def _normalise_audit(frame: pd.DataFrame, names: Mapping[str, str]) -> pd.DataFr
     audit["instrument"] = audit["instrument"].astype(str)
     audit["stock_name"] = audit["instrument"].map(names).fillna("")
     for column in (
+        "quantity_before",
+        "quantity_after",
         "requested_quantity",
         "filled_quantity",
         "filled_price",
@@ -256,6 +258,77 @@ def _normalise_holdings(frame: pd.DataFrame, names: Mapping[str, str]) -> pd.Dat
     )
 
 
+def _load_price_factors(settings: Settings, audit: pd.DataFrame, holdings: pd.DataFrame) -> pd.DataFrame:
+    key_frames = [frame[["trade_date", "instrument"]] for frame in (audit, holdings) if not frame.empty]
+    if not key_frames:
+        return pd.DataFrame(columns=["trade_date", "instrument", "price_factor"])
+    keys = pd.concat(key_frames, ignore_index=True).drop_duplicates()
+    rows: list[pd.DataFrame] = []
+    for instrument, group in keys.groupby("instrument", sort=False):
+        path = settings.paths.staging_full / f"{instrument}.parquet"
+        if not path.is_file():
+            continue
+        factors = pd.read_parquet(path, columns=["date", "factor"])
+        factors["trade_date"] = pd.to_datetime(factors["date"], errors="raise").dt.normalize()
+        factors["price_factor"] = pd.to_numeric(factors["factor"], errors="coerce")
+        factors = factors.sort_values("trade_date", kind="stable")
+        factors["price_factor"] = factors["price_factor"].ffill()
+        wanted = pd.DatetimeIndex(group["trade_date"].unique())
+        selected = factors.loc[factors["trade_date"].isin(wanted), ["trade_date", "price_factor"]].copy()
+        if selected.empty:
+            continue
+        selected["instrument"] = str(instrument)
+        rows.append(selected)
+    if not rows:
+        return pd.DataFrame(columns=["trade_date", "instrument", "price_factor"])
+    return pd.concat(rows, ignore_index=True).drop_duplicates(["trade_date", "instrument"], keep="last")
+
+
+def _restore_raw_trade_units(
+    settings: Settings, audit: pd.DataFrame, holdings: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Convert Qlib-normalized prices and quantities back to CNY and shares."""
+
+    factors = _load_price_factors(settings, audit, holdings)
+    if factors.empty:
+        return audit, holdings
+
+    def restore(
+        frame: pd.DataFrame, *, price_columns: tuple[str, ...], quantity_columns: tuple[str, ...]
+    ) -> pd.DataFrame:
+        if frame.empty:
+            return frame
+        restored = frame.merge(
+            factors, on=["trade_date", "instrument"], how="left", validate="many_to_one", sort=False
+        )
+        valid = restored["price_factor"].notna() & restored["price_factor"].gt(0)
+        for column in price_columns:
+            if column in restored:
+                restored.loc[valid, column] = (
+                    restored.loc[valid, column] / restored.loc[valid, "price_factor"]
+                )
+        for column in quantity_columns:
+            if column in restored:
+                restored.loc[valid, column] = (
+                    restored.loc[valid, column] * restored.loc[valid, "price_factor"]
+                )
+        return restored.drop(columns="price_factor")
+
+    return (
+        restore(
+            audit,
+            price_columns=("filled_price",),
+            quantity_columns=(
+                "quantity_before",
+                "quantity_after",
+                "requested_quantity",
+                "filled_quantity",
+            ),
+        ),
+        restore(holdings, price_columns=("price",), quantity_columns=("quantity",)),
+    )
+
+
 def load_run_data(
     settings: Settings,
     run_dir: str | Path,
@@ -274,12 +347,15 @@ def load_run_data(
         raise FileNotFoundError("portfolio_report.parquet is required for a backtest report")
     if audit_path is None or not audit_path.exists():
         raise FileNotFoundError("strategy_audit.parquet is required for a full backtest report")
+    audit = _normalise_audit(pd.read_parquet(audit_path), names)
+    holdings = _normalise_holdings(_load_holdings(settings, directory, manifest, positions_file), names)
+    audit, holdings = _restore_raw_trade_units(settings, audit, holdings)
     return RunData(
         run_dir=directory,
         manifest=manifest,
         report=_normalise_report(pd.read_parquet(report_path)),
-        audit=_normalise_audit(pd.read_parquet(audit_path), names),
-        holdings=_normalise_holdings(_load_holdings(settings, directory, manifest, positions_file), names),
+        audit=audit,
+        holdings=holdings,
         names=names,
     )
 
@@ -331,7 +407,33 @@ def _metric_values(report: pd.DataFrame, audit: pd.DataFrame) -> dict[str, float
 def _plot_font() -> object | None:
     from matplotlib import font_manager
 
+    families = (
+        "Microsoft YaHei",
+        "SimHei",
+        "Noto Sans CJK SC",
+        "Noto Sans CJK JP",
+        "Source Han Sans SC",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "WenQuanYi Micro Hei",
+        "Arial Unicode MS",
+    )
+    for family in families:
+        try:
+            path = Path(
+                font_manager.findfont(
+                    font_manager.FontProperties(family=family),
+                    fallback_to_default=False,
+                )
+            )
+        except (RuntimeError, ValueError):
+            continue
+        if path.is_file():
+            return font_manager.FontProperties(fname=str(path))
+
     candidates = (
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/simhei.ttf",
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
         "/System/Library/Fonts/PingFang.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",

@@ -26,6 +26,7 @@ from .research_timing import effective_label_gap, label_timing_from_settings, sh
 from .train_select import _research_label_horizon_days, train_backtest_select
 from .canonical_config import StrategySpec
 from .feature_store import feature_store_enabled, prepare_feature_data
+from .prediction_backtest import backtest_predictions
 
 
 @dataclass(frozen=True)
@@ -44,56 +45,6 @@ def _artifact_path(manifest: dict[str, Any], name: str) -> Path:
     raise FileNotFoundError(f"manifest artifact is missing: {name}")
 
 
-def _rebase_reports(reports: list[tuple[str, pd.DataFrame]]) -> pd.DataFrame:
-    """Chain independent walk-forward folds into one account-value series.
-
-    Each Qlib fold starts with the configured account.  Rebuilding account,
-    cash and market value from daily returns avoids showing a false reset at
-    each fold boundary while preserving the source fold artifacts separately.
-    """
-
-    if not reports:
-        raise ValueError("at least one walk-forward report is required")
-    equity = float(pd.to_numeric(reports[0][1]["account"], errors="raise").iloc[0])
-    total_cost = 0.0
-    total_turnover = 0.0
-    frames: list[pd.DataFrame] = []
-    for key, source in reports:
-        frame = source.copy().sort_index()
-        account = pd.to_numeric(frame["account"], errors="raise")
-        returns = pd.to_numeric(frame.get("return", account.pct_change()), errors="coerce").fillna(0.0)
-        cash_source = frame["cash"] if "cash" in frame else pd.Series(0.0, index=frame.index)
-        cash = pd.to_numeric(cash_source, errors="coerce").fillna(0.0)
-        value_source = frame["value"] if "value" in frame else account - cash
-        value = pd.to_numeric(value_source, errors="coerce").fillna(account - cash)
-        cost_source = frame["total_cost"] if "total_cost" in frame else pd.Series(0.0, index=frame.index)
-        turnover_source = (
-            frame["total_turnover"] if "total_turnover" in frame else pd.Series(0.0, index=frame.index)
-        )
-        source_cost = pd.to_numeric(cost_source, errors="coerce").fillna(0.0)
-        source_turnover = pd.to_numeric(turnover_source, errors="coerce").fillna(0.0)
-        daily_cost = source_cost.diff().fillna(source_cost)
-        daily_turnover = source_turnover.diff().fillna(source_turnover)
-        rows: list[pd.Series] = []
-        for position, (_, row) in enumerate(frame.iterrows()):
-            equity *= 1.0 + float(returns.iloc[position])
-            scale = equity / float(account.iloc[position]) if account.iloc[position] else 1.0
-            row = row.copy()
-            row["account"] = equity
-            row["cash"] = float(cash.iloc[position]) * scale
-            row["value"] = float(value.iloc[position]) * scale
-            total_cost += float(daily_cost.iloc[position]) * scale
-            total_turnover += float(daily_turnover.iloc[position]) * scale
-            row["total_cost"] = total_cost
-            row["total_turnover"] = total_turnover
-            row["fold_key"] = key
-            rows.append(row)
-        rebased = pd.DataFrame(rows, index=frame.index)
-        rebased.index.name = frame.index.name
-        frames.append(rebased)
-    return pd.concat(frames).sort_index()
-
-
 def _aggregate_component_timings(manifests: list[dict[str, Any]]) -> dict[str, float]:
     aggregate: dict[str, float] = {}
     for manifest in manifests:
@@ -104,6 +55,162 @@ def _aggregate_component_timings(manifests: list[dict[str, Any]]) -> dict[str, f
         for key, value in phases.items():
             aggregate[str(key)] = aggregate.get(str(key), 0.0) + float(value)
     return {key: round(value, 6) for key, value in aggregate.items()}
+
+
+def _read_oos_frame(manifest: dict[str, Any], name: str, column: str) -> pd.DataFrame:
+    frame = pd.read_parquet(_artifact_path(manifest, name))
+    if isinstance(frame, pd.Series):
+        frame = frame.to_frame(column)
+    if not isinstance(frame.index, pd.MultiIndex) or not {
+        "datetime",
+        "instrument",
+    }.issubset(frame.index.names):
+        raise ValueError(f"{name} must use a datetime/instrument MultiIndex")
+    if column not in frame:
+        if len(frame.columns) != 1:
+            raise ValueError(f"{name} must contain a {column} column")
+        frame = frame.rename(columns={frame.columns[0]: column})
+    return frame[[column]].sort_index()
+
+
+def _write_continuous_oos_stream(
+    manifests: list[dict[str, Any]], output_dir: Path
+) -> tuple[Path, Path, dict[str, object]]:
+    """Persist one strictly ordered prediction/label stream from rolling folds."""
+
+    if not manifests:
+        raise ValueError("continuous OOS stream requires rolling component manifests")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    predictions: list[pd.DataFrame] = []
+    labels: list[pd.DataFrame] = []
+    components: list[dict[str, object]] = []
+    previous_end: pd.Timestamp | None = None
+    for manifest in manifests:
+        pred = _read_oos_frame(manifest, "oos_predictions.parquet", "score")
+        label = _read_oos_frame(manifest, "oos_labels.parquet", "label")
+        pred_dates = pd.DatetimeIndex(pred.index.get_level_values("datetime")).normalize()
+        start = pred_dates.min()
+        end = pred_dates.max()
+        if previous_end is not None and start <= previous_end:
+            raise ValueError(
+                "rolling OOS prediction dates overlap or are out of order: "
+                f"{start.date()} <= {previous_end.date()}"
+            )
+        previous_end = end
+        predictions.append(pred)
+        labels.append(label)
+        components.append(
+            {
+                "externalRunId": str(manifest.get("externalRunId", "")),
+                "startDate": str(start.date()),
+                "endDate": str(end.date()),
+                "predictionRows": len(pred),
+                "labelRows": len(label),
+            }
+        )
+    combined_predictions = pd.concat(predictions).sort_index()
+    combined_labels = pd.concat(labels).sort_index()
+    if combined_predictions.index.has_duplicates:
+        raise ValueError("continuous OOS predictions contain duplicate datetime/instrument rows")
+    if combined_labels.index.has_duplicates:
+        raise ValueError("continuous OOS labels contain duplicate datetime/instrument rows")
+    prediction_path = output_dir / "oos_predictions.parquet"
+    label_path = output_dir / "oos_labels.parquet"
+    combined_predictions.to_parquet(prediction_path)
+    combined_labels.to_parquet(label_path)
+    metadata: dict[str, object] = {
+        "componentCount": len(components),
+        "components": components,
+        "startDate": components[0]["startDate"],
+        "endDate": components[-1]["endDate"],
+        "predictionRows": len(combined_predictions),
+        "labelRows": len(combined_labels),
+        "predictionDates": int(combined_predictions.index.get_level_values("datetime").nunique()),
+        "duplicateRows": 0,
+    }
+    return prediction_path, label_path, metadata
+
+
+def _verify_fold_boundary_continuity(
+    manifests: list[dict[str, Any]], holdings: pd.DataFrame, audit: pd.DataFrame
+) -> dict[str, object]:
+    """Verify untouched positions do not lose their holding age at model boundaries."""
+
+    required = {"trade_date", "instrument", "quantity", "holding_days"}
+    missing = required - set(holdings.columns)
+    if missing:
+        raise ValueError(f"continuous holdings are missing columns: {sorted(missing)}")
+    frame = holdings.copy()
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.normalize()
+    frame["instrument"] = frame["instrument"].astype(str)
+    frame["holding_days"] = pd.to_numeric(frame["holding_days"], errors="raise")
+    audit_frame = audit.copy()
+    if not audit_frame.empty and {"trade_date", "instrument"}.issubset(audit_frame.columns):
+        audit_frame["trade_date"] = pd.to_datetime(audit_frame["trade_date"]).dt.normalize()
+        audit_frame["instrument"] = audit_frame["instrument"].astype(str)
+    results: list[dict[str, object]] = []
+    unexpected_resets: list[dict[str, object]] = []
+    for previous, current in zip(manifests, manifests[1:], strict=False):
+        current_pred = _read_oos_frame(current, "oos_predictions.parquet", "score")
+        boundary = pd.DatetimeIndex(current_pred.index.get_level_values("datetime")).normalize().min()
+        prior_dates = frame.loc[frame["trade_date"] < boundary, "trade_date"]
+        next_dates = frame.loc[frame["trade_date"] >= boundary, "trade_date"]
+        base = {
+            "previousRunId": str(previous.get("externalRunId", "")),
+            "currentRunId": str(current.get("externalRunId", "")),
+            "boundarySignalDate": str(boundary.date()),
+        }
+        if prior_dates.empty or next_dates.empty:
+            results.append({**base, "status": "NO_COMPARABLE_HOLDING_SNAPSHOTS", "continuingPositions": 0})
+            continue
+        prior_date = prior_dates.max()
+        next_date = next_dates.min()
+        before = frame.loc[frame["trade_date"].eq(prior_date)].set_index("instrument")
+        after = frame.loc[frame["trade_date"].eq(next_date)].set_index("instrument")
+        continuing = before.index.intersection(after.index)
+        traded: set[str] = set()
+        if not audit_frame.empty and {"trade_date", "instrument"}.issubset(audit_frame.columns):
+            action_column = "actual_action" if "actual_action" in audit_frame else "target_action"
+            if action_column in audit_frame:
+                traded_rows = audit_frame.loc[
+                    audit_frame["trade_date"].gt(prior_date)
+                    & audit_frame["trade_date"].le(next_date)
+                    & audit_frame[action_column].isin(["BUY", "SELL"])
+                ]
+                traded = set(traded_rows["instrument"])
+        untouched = [instrument for instrument in continuing if instrument not in traded]
+        resets = [
+            {
+                "instrument": str(instrument),
+                "beforeHoldingDays": int(before.at[instrument, "holding_days"]),
+                "afterHoldingDays": int(after.at[instrument, "holding_days"]),
+            }
+            for instrument in untouched
+            if int(after.at[instrument, "holding_days"]) < int(before.at[instrument, "holding_days"])
+        ]
+        unexpected_resets.extend(resets)
+        results.append(
+            {
+                **base,
+                "previousHoldingDate": str(prior_date.date()),
+                "currentHoldingDate": str(next_date.date()),
+                "status": "PASS" if not resets else "FAIL",
+                "continuingPositions": len(continuing),
+                "untouchedContinuingPositions": len(untouched),
+                "unexpectedHoldingDayResets": resets,
+            }
+        )
+    if unexpected_resets:
+        raise RuntimeError(
+            f"fold boundary holding_days reset in continuous backtest: {unexpected_resets[:5]}"
+        )
+    return {
+        "passed": True,
+        "portfolioState": "SINGLE_CONTINUOUS_ACCOUNT",
+        "boundaryCount": len(results),
+        "boundaries": results,
+        "unexpectedHoldingDayResetCount": 0,
+    }
 
 
 def _training_checkpoint_fingerprint(
@@ -208,9 +315,9 @@ def _checkpoint_fingerprint(
         "portfolioFingerprint": portfolio,
         "promotionContract": "release-v3" if fold.final_holdout else "component-validation-v3",
     }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[
+        :16
+    ]
 
 
 def _validated_checkpoint_manifest(
@@ -357,24 +464,25 @@ def build_walk_forward_plan(
 def _evaluate_aggregate_oos_gate(
     settings: Settings,
     manifests: list[dict[str, Any]],
-    reports: list[tuple[str, pd.DataFrame]],
+    prediction_path: Path,
+    label_path: Path,
+    portfolio_manifest: dict[str, Any],
     gate_path: Path,
 ) -> dict[str, object]:
-    """Apply the release gate once to the combined rolling-fold OOS evidence."""
+    """Gate combined signals against one stateful rolling-OOS portfolio."""
 
-    if not manifests or not reports:
+    if not manifests:
         raise ValueError("aggregate OOS gate requires rolling component evidence")
-    prediction_paths = [_artifact_path(manifest, "oos_predictions.parquet") for manifest in manifests]
-    label_paths = [_artifact_path(manifest, "oos_labels.parquet") for manifest in manifests]
-    predictions = pd.concat([pd.read_parquet(path) for path in prediction_paths]).sort_index()
-    labels = pd.concat([pd.read_parquet(path) for path in label_paths]).sort_index()
-    combined_report = _rebase_reports(reports)
+    predictions = pd.read_parquet(prediction_path)
+    labels = pd.read_parquet(label_path)
+    combined_report = pd.read_parquet(_artifact_path(portfolio_manifest, "portfolio_report.parquet"))
     lineage_complete = all(bool(manifest.get("lineage", {}).get("complete")) for manifest in manifests)
     dirty_research_override = not lineage_complete and all(
         bool(manifest.get("lineage", {}).get("complete"))
         or bool(manifest.get("metrics", {}).get("dirty_research_override"))
         for manifest in manifests
     )
+    prediction_paths = [_artifact_path(manifest, "oos_predictions.parquet") for manifest in manifests]
     unique_artifact = len({sha256_file(path) for path in prediction_paths}) == len(prediction_paths)
     metrics = derive_research_metrics(
         predictions,
@@ -394,6 +502,15 @@ def _evaluate_aggregate_oos_gate(
         report["decision"] = "RESEARCH_ONLY"
     report["gate_mode"] = "aggregate_rolling_oos"
     report["component_count"] = len(manifests)
+    report["portfolio_evidence"] = {
+        "mode": "single_continuous_backtest",
+        "externalRunId": str(portfolio_manifest.get("externalRunId", "")),
+        "manifestPath": str(
+            _artifact_path(portfolio_manifest, "portfolio_report.parquet").parent / "manifest.json"
+        ),
+        "predictionSha256": sha256_file(prediction_path),
+        "reportSha256": sha256_file(_artifact_path(portfolio_manifest, "portfolio_report.parquet")),
+    }
     write_gate_report(report, gate_path)
     return report
 
@@ -459,9 +576,6 @@ def run_walk_forward(
     run_root = settings.paths.output / "research" / "walk_forward"
     run_root.mkdir(parents=True, exist_ok=True)
     manifests: list[dict[str, Any]] = []
-    reports: list[tuple[str, pd.DataFrame]] = []
-    audits: list[pd.DataFrame] = []
-    holdings: list[pd.DataFrame] = []
     component_runs: list[dict[str, Any]] = []
 
     def execute_fold(
@@ -529,15 +643,22 @@ def run_walk_forward(
                 f"fold {fold.key} has incompatible promotion contract: "
                 f"status={promotion.get('status')}, gateMode={promotion.get('gateMode')}"
             )
-        report = pd.read_parquet(_artifact_path(manifest, "portfolio_report.parquet"))
-        audit = pd.read_parquet(_artifact_path(manifest, "strategy_audit.parquet"))
-        holding = pd.read_parquet(_artifact_path(manifest, "holdings.parquet"))
+        if fold.final_holdout:
+            report = pd.read_parquet(_artifact_path(manifest, "portfolio_report.parquet"))
+            audit = pd.read_parquet(_artifact_path(manifest, "strategy_audit.parquet"))
+            holding = pd.read_parquet(_artifact_path(manifest, "holdings.parquet"))
+        else:
+            report = pd.DataFrame()
+            audit = pd.DataFrame()
+            holding = pd.DataFrame()
         component_run = {
             "key": fold.key,
             "externalRunId": str(manifest["externalRunId"]),
             "manifestPath": str(fold_manifest_path),
             "checkpointReused": reused,
             "promotionMode": "release" if fold.final_holdout else "component_validation",
+            "artifactMode": "portfolio_full" if fold.final_holdout else "signal_only",
+            "portfolioBacktestExecuted": fold.final_holdout,
             "timings": manifest.get("timings", {}),
         }
         return manifest, report, audit, holding, component_run
@@ -547,19 +668,37 @@ def run_walk_forward(
     if len(final_folds) != 1:
         raise ValueError("walk-forward plan must contain exactly one final holdout")
     for fold in rolling_folds:
-        manifest, report, audit, holding, component_run = execute_fold(fold)
-        if reports and pd.Timestamp(report.index.min()) <= pd.Timestamp(reports[-1][1].index.max()):
-            raise ValueError(f"overlapping OOS reports at fold {fold.key}")
+        manifest, _, _, _, component_run = execute_fold(fold)
         manifests.append(manifest)
-        reports.append((fold.key, report))
-        audits.append(audit.assign(fold_key=fold.key))
-        holdings.append(holding.assign(fold_key=fold.key))
         component_runs.append(component_run)
 
     rolling_ids = [str(manifest["externalRunId"]) for manifest in manifests]
     aggregate_key = hashlib.sha256("|".join(rolling_ids).encode()).hexdigest()[:32]
+    aggregate_dir = run_root / f"aggregate_oos_{aggregate_key}"
+    prediction_path, label_path, oos_stream = _write_continuous_oos_stream(manifests, aggregate_dir)
+    portfolio_manifest_path = backtest_predictions(
+        settings,
+        prediction_path,
+        benchmark=benchmark,
+        topn=topn,
+        artifact_level="minimal",
+    )
+    portfolio_manifest = json.loads(portfolio_manifest_path.read_text(encoding="utf-8"))
+    continuous_report = pd.read_parquet(_artifact_path(portfolio_manifest, "portfolio_report.parquet"))
+    continuous_audit = pd.read_parquet(_artifact_path(portfolio_manifest, "strategy_audit.parquet"))
+    continuous_holdings = pd.read_parquet(_artifact_path(portfolio_manifest, "holdings.parquet"))
+    continuity = _verify_fold_boundary_continuity(manifests, continuous_holdings, continuous_audit)
+    continuity_path = aggregate_dir / "fold_boundary_continuity.json"
+    continuity_path.write_text(json.dumps(continuity, ensure_ascii=False, indent=2), encoding="utf-8")
     aggregate_gate_path = run_root / f"aggregate_oos_gate_{aggregate_key}.json"
-    aggregate_gate = _evaluate_aggregate_oos_gate(settings, manifests, reports, aggregate_gate_path)
+    aggregate_gate = _evaluate_aggregate_oos_gate(
+        settings,
+        manifests,
+        prediction_path,
+        label_path,
+        portfolio_manifest,
+        aggregate_gate_path,
+    )
     if not aggregate_gate["passed"]:
         rejection_manifest = run_root / f"aggregate_oos_{aggregate_key}.manifest.json"
         rejection_manifest.write_text(
@@ -574,7 +713,20 @@ def run_walk_forward(
                         "gateMode": "aggregate_rolling_oos",
                         "gateReportPath": str(aggregate_gate_path),
                     },
+                    "oosStream": oos_stream,
+                    "aggregatePortfolioRun": {
+                        "externalRunId": str(portfolio_manifest.get("externalRunId", "")),
+                        "manifestPath": str(portfolio_manifest_path),
+                        "stateMode": "single_continuous_account",
+                        "foldBoundaryContinuityPath": str(continuity_path),
+                    },
                     "componentRuns": component_runs,
+                    "artifacts": [
+                        {"name": prediction_path.name, "localPath": str(prediction_path)},
+                        {"name": label_path.name, "localPath": str(label_path)},
+                        {"name": continuity_path.name, "localPath": str(continuity_path)},
+                        {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
+                    ],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -584,18 +736,17 @@ def run_walk_forward(
         raise ResearchPromotionError(rejection_manifest)
 
     final_fold = final_folds[0]
-    final_manifest, final_report, final_audit, final_holding, final_run = execute_fold(final_fold)
-    if pd.Timestamp(final_report.index.min()) <= pd.Timestamp(reports[-1][1].index.max()):
+    final_manifest, final_report, _, _, final_run = execute_fold(final_fold)
+    if pd.Timestamp(final_report.index.min()) <= pd.Timestamp(continuous_report.index.max()):
         raise ValueError(f"overlapping OOS reports at fold {final_fold.key}")
     manifests.append(final_manifest)
-    reports.append((final_fold.key, final_report))
-    audits.append(final_audit.assign(fold_key=final_fold.key))
-    holdings.append(final_holding.assign(fold_key=final_fold.key))
     component_runs.append(final_run)
 
-    combined = _rebase_reports(reports)
-    combined_audit = pd.concat(audits, ignore_index=True)
-    combined_holdings = pd.concat(holdings, ignore_index=True)
+    # The top-level portfolio artifacts are the rolling OOS evidence used by the
+    # aggregate gate.  The untouched final holdout remains an independent run.
+    combined = continuous_report
+    combined_audit = continuous_audit
+    combined_holdings = continuous_holdings
     fold_ids = [item["externalRunId"] for item in manifests]
     external_id = hashlib.sha256("|".join(fold_ids).encode()).hexdigest()[:32]
     output_dir = settings.paths.output / "research" / external_id
@@ -623,6 +774,10 @@ def run_walk_forward(
         "qlibPlatformCommit": component_lineage[-1].get("qlibPlatformCommit"),
         "qlibCommit": component_lineage[-1].get("qlibCommit"),
         "datasetFingerprint": manifests[-1]["dataset"].get("fingerprint"),
+        "rollingOosPredictionsSha256": sha256_file(prediction_path),
+        "rollingOosPortfolioReportSha256": sha256_file(
+            _artifact_path(portfolio_manifest, "portfolio_report.parquet")
+        ),
     }
     aggregate_lineage["lineageId"] = hashlib.sha256(
         json.dumps(aggregate_lineage, sort_keys=True, separators=(",", ":")).encode()
@@ -636,6 +791,10 @@ def run_walk_forward(
         and final_manifest.get("promotion", {}).get("status") == "PROMOTED"
     )
     aggregate_phases = _aggregate_component_timings(manifests)
+    portfolio_phases = portfolio_manifest.get("timings", {}).get("phasesSeconds", {})
+    if isinstance(portfolio_phases, dict):
+        for key, value in portfolio_phases.items():
+            aggregate_phases[f"continuous_oos_{key}"] = round(float(value), 6)
     aggregate_phases["shared_feature_store_seconds"] = round(feature_store_seconds, 6)
     timings = {
         "clock": "time.perf_counter",
@@ -678,12 +837,31 @@ def run_walk_forward(
         "labelTiming": timing_contract,
         "execution": manifests[-1]["execution"],
         "metrics": metrics,
+        "evaluationScopes": {
+            "rollingOosPortfolio": "single_continuous_account",
+            "topLevelPortfolioArtifacts": "rolling_oos_only",
+            "finalHoldout": "independent_untouched_component_run",
+        },
+        "oosStream": oos_stream,
+        "aggregatePortfolioRun": {
+            "externalRunId": str(portfolio_manifest.get("externalRunId", "")),
+            "manifestPath": str(portfolio_manifest_path),
+            "stateMode": "single_continuous_account",
+            "foldBoundaryContinuityPath": str(continuity_path),
+        },
         "componentRuns": component_runs,
         "artifacts": [
             {"name": report_path.name, "localPath": str(report_path), "rows": len(combined)},
             {"name": audit_path.name, "localPath": str(audit_path), "rows": len(combined_audit)},
             {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(combined_holdings)},
             {"name": timings_path.name, "localPath": str(timings_path)},
+            {
+                "name": prediction_path.name,
+                "localPath": str(prediction_path),
+                "rows": oos_stream["predictionRows"],
+            },
+            {"name": label_path.name, "localPath": str(label_path), "rows": oos_stream["labelRows"]},
+            {"name": continuity_path.name, "localPath": str(continuity_path)},
             {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
         ],
     }
