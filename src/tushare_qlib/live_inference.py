@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -101,6 +102,7 @@ def run_live_inference(
     deployment_id: str | None = None,
     require_daily_sync: bool = True,
     supersede: bool = False,
+    health_now_utc: datetime | None = None,
 ) -> LiveInferenceResult:
     registry = ModelRegistry(settings)
     deployment = registry.state.deployment(deployment_id) if deployment_id else registry.current()
@@ -153,7 +155,9 @@ def run_live_inference(
         trade_date=trade_date,
         deployment=deployment,
         bundle_manifest=bundle.manifest,
+        features=features,
         require_daily_sync=require_daily_sync,
+        now_utc=health_now_utc,
     )
     signal_root = settings.paths.output / "live" / signal_id
     signal_root.mkdir(parents=True, exist_ok=True)

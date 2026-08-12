@@ -44,7 +44,7 @@ Schedule on the first trading day of each week after data publication. The comma
 Run after the configured TuShare readiness time:
 
 ```powershell
-tq --config configs/pipeline.yaml daily-signal-run --as-of <YYYY-MM-DD>
+tq --config configs/pipeline.yaml production-run --phase close --business-date <YYYY-MM-DD>
 ```
 
 Expected sequence:
@@ -76,7 +76,7 @@ data/inbox/pretrade/<trade_date>/
 Run:
 
 ```powershell
-tq --config configs/pipeline.yaml daily-action-run --trade-date <YYYY-MM-DD>
+tq --config configs/pipeline.yaml production-run --phase pretrade --business-date <YYYY-MM-DD>
 ```
 
 The output is an advisory `STRATEGY_DECISION` and `ORDER_INTENT`. Review BUY/SELL/HOLD/BLOCKED manually;
@@ -85,12 +85,30 @@ no broker submit API is called.
 ## Replay and shadow acceptance
 
 ```powershell
-tq --config configs/pipeline.yaml production-replay --start <YYYY-MM-DD> --end <YYYY-MM-DD>
+tq --config configs/pipeline.yaml production-replay `
+  --start <YYYY-MM-DD> --end <YYYY-MM-DD> `
+  --snapshot-root <FROZEN_DATASET_ROOT>
 ```
 
-Replay never sends notifications. Before considering paper-broker integration, complete at least 20
+`FROZEN_DATASET_ROOT` must contain one Qlib dataset per date, named `YYYY-MM-DD` or `YYYYMMDD`, and each
+`dataset_manifest.json` must end exactly on that signal date. Replay uses an isolated SQLite state and never
+writes deployment, signal, or delivery rows into production state. It never sends notifications. Before
+considering paper-broker integration, complete at least 20
 consecutive trading days with zero duplicate normal messages, zero silent failures, and zero stale signal
 execution. Record expected/generated/notified/manual/reconciled outcomes daily.
+
+For research/live parity on one archived date:
+
+```powershell
+tq --config configs/pipeline.yaml live-inference `
+  --as-of <YYYY-MM-DD> `
+  --dataset-uri <FROZEN_QLIB_DATASET> `
+  --deployment-id <DEPLOYMENT_ID> `
+  --compare-research <OOS_PREDICTIONS> `
+  --parity-output <REPORT_JSON>
+```
+
+The command exits with code 3 if score or TopK parity fails.
 
 ## Incident response
 

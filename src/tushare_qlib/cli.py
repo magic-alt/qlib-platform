@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -179,6 +180,9 @@ def parser() -> argparse.ArgumentParser:
     live.add_argument("--deployment-id")
     live.add_argument("--require-daily-sync", action="store_true")
     live.add_argument("--supersede", action="store_true")
+    live.add_argument("--dataset-uri")
+    live.add_argument("--compare-research")
+    live.add_argument("--parity-output")
     daily_signal = sub.add_parser("daily-signal-run")
     daily_signal.add_argument("--as-of", required=True)
     daily_signal.add_argument("--no-notify", action="store_true")
@@ -187,9 +191,15 @@ def parser() -> argparse.ArgumentParser:
     daily_action = sub.add_parser("daily-action-run")
     daily_action.add_argument("--trade-date", required=True)
     daily_action.add_argument("--no-notify", action="store_true")
+    production_run = sub.add_parser("production-run")
+    production_run.add_argument("--phase", choices=["close", "pretrade"], required=True)
+    production_run.add_argument("--business-date", required=True)
+    production_run.add_argument("--no-notify", action="store_true")
+    production_run.add_argument("--skip-sync", action="store_true")
     replay = sub.add_parser("production-replay")
     replay.add_argument("--start", required=True)
     replay.add_argument("--end", required=True)
+    replay.add_argument("--snapshot-root", required=True)
     replay.add_argument("--deployment-id")
     replay.add_argument("--with-pretrade", action="store_true")
     return p
@@ -421,6 +431,10 @@ def main() -> None:
         print(json.dumps(registry_result, ensure_ascii=False))
         return
     if args.command == "live-inference":
+        if args.dataset_uri:
+            from dataclasses import replace
+
+            settings = replace(settings, qlib_data_uri=Path(args.dataset_uri).expanduser().resolve())
         from .live_inference import run_live_inference
 
         live_result = run_live_inference(
@@ -430,18 +444,29 @@ def main() -> None:
             require_daily_sync=args.require_daily_sync,
             supersede=args.supersede,
         )
-        print(
-            json.dumps(
-                {
+        live_payload: dict[str, Any] = {
                     "signalId": live_result.signal_id,
                     "manifest": str(live_result.manifest_path),
                     "health": live_result.health.to_dict(),
-                },
-                ensure_ascii=False,
+                }
+        if args.compare_research:
+            from .live_parity import compare_research_live_scores
+
+            manifest = json.loads(live_result.manifest_path.read_text(encoding="utf-8"))
+            topk = int(manifest["canonicalConfig"]["strategy"]["topk"])
+            parity = compare_research_live_scores(
+                args.compare_research,
+                live_result.score_path,
+                signal_date=args.as_of,
+                topk=topk,
+                output_path=args.parity_output or live_result.manifest_path.parent / "research_live_parity.json",
             )
-        )
+            live_payload["parity"] = parity
+        print(json.dumps(live_payload, ensure_ascii=False))
         if not live_result.health.passed:
             raise SystemExit(2)
+        if args.compare_research and not live_payload["parity"]["passed"]:
+            raise SystemExit(3)
         return
     if args.command == "daily-signal-run":
         from .daily_signal_runner import run_daily_signal
@@ -473,6 +498,18 @@ def main() -> None:
             )
         )
         return
+    if args.command == "production-run":
+        from .production_orchestrator import run_production_day
+
+        production_result = run_production_day(
+            settings,
+            phase=args.phase,
+            business_date=args.business_date,
+            notify=not args.no_notify,
+            skip_sync=args.skip_sync,
+        )
+        print(json.dumps(production_result.__dict__, ensure_ascii=False, default=str))
+        return
     if args.command == "production-replay":
         from .production_replay import run_production_replay
 
@@ -480,6 +517,7 @@ def main() -> None:
             settings,
             start=args.start,
             end=args.end,
+            snapshot_root=args.snapshot_root,
             deployment_id=args.deployment_id,
             with_pretrade=args.with_pretrade,
         )

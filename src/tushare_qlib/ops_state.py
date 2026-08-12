@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 
-OPS_SCHEMA_VERSION = 1
+OPS_SCHEMA_VERSION = 2
 
 
 class DeploymentStatus(str, Enum):
@@ -91,12 +91,19 @@ class OpsState:
                 CREATE TABLE IF NOT EXISTS deployments (
                     deployment_id TEXT PRIMARY KEY,
                     research_run_id TEXT NOT NULL,
+                    dataset_id TEXT,
                     family TEXT NOT NULL,
                     bundle_uri TEXT NOT NULL,
                     bundle_sha256 TEXT NOT NULL,
                     refit_as_of TEXT NOT NULL,
+                    train_start_date TEXT,
                     train_end_date TEXT NOT NULL,
+                    feature_schema_sha256 TEXT,
+                    model_binary_sha256 TEXT,
+                    platform_commit TEXT,
+                    qlib_commit TEXT,
                     created_at_utc TEXT NOT NULL,
+                    deployed_at_utc TEXT,
                     status TEXT NOT NULL,
                     status_at_utc TEXT NOT NULL,
                     metadata_json TEXT NOT NULL
@@ -140,16 +147,51 @@ class OpsState:
                     channel TEXT NOT NULL,
                     message_kind TEXT NOT NULL,
                     business_date TEXT NOT NULL,
+                    signal_date TEXT,
+                    trade_date TEXT,
+                    deployment_id TEXT,
+                    signal_sha256 TEXT,
                     payload_sha256 TEXT NOT NULL,
                     status TEXT NOT NULL,
                     attempt_count INTEGER NOT NULL DEFAULT 0,
                     created_at_utc TEXT NOT NULL,
                     sent_at_utc TEXT,
+                    last_attempt_at_utc TEXT,
                     error_code TEXT,
-                    error_summary TEXT
+                    error_summary TEXT,
+                    lease_owner TEXT,
+                    lease_expires_at_utc TEXT
                 );
                 """
             )
+            columns = {
+                str(row[1]) for row in connection.execute("PRAGMA table_info(deliveries)").fetchall()
+            }
+            for name, declaration in {
+                "signal_date": "TEXT",
+                "trade_date": "TEXT",
+                "deployment_id": "TEXT",
+                "signal_sha256": "TEXT",
+                "last_attempt_at_utc": "TEXT",
+                "lease_owner": "TEXT",
+                "lease_expires_at_utc": "TEXT",
+            }.items():
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE deliveries ADD COLUMN {name} {declaration}")
+            deployment_columns = {
+                str(row[1]) for row in connection.execute("PRAGMA table_info(deployments)").fetchall()
+            }
+            for name, declaration in {
+                "dataset_id": "TEXT",
+                "train_start_date": "TEXT",
+                "feature_schema_sha256": "TEXT",
+                "model_binary_sha256": "TEXT",
+                "platform_commit": "TEXT",
+                "qlib_commit": "TEXT",
+                "deployed_at_utc": "TEXT",
+            }.items():
+                if name not in deployment_columns:
+                    connection.execute(f"ALTER TABLE deployments ADD COLUMN {name} {declaration}")
             version = connection.execute(
                 "SELECT value FROM schema_meta WHERE key = 'schema_version'"
             ).fetchone()
@@ -163,6 +205,12 @@ class OpsState:
     def register_deployment(self, manifest: Mapping[str, Any], bundle_uri: str, bundle_sha256: str) -> None:
         deployment_id = str(manifest["deploymentId"])
         created = str(manifest.get("createdAtUtc") or _utc_now())
+        lineage = manifest.get("lineage", {})
+        lineage = lineage if isinstance(lineage, Mapping) else {}
+        platform = lineage.get("qlibPlatform", {})
+        qlib = lineage.get("qlib", {})
+        platform_commit = platform.get("commit") if isinstance(platform, Mapping) else None
+        qlib_commit = qlib.get("commit") if isinstance(qlib, Mapping) else None
         with self.transaction() as connection:
             existing = connection.execute(
                 "SELECT bundle_sha256 FROM deployments WHERE deployment_id = ?", (deployment_id,)
@@ -174,18 +222,26 @@ class OpsState:
             connection.execute(
                 """
                 INSERT INTO deployments(
-                    deployment_id, research_run_id, family, bundle_uri, bundle_sha256,
-                    refit_as_of, train_end_date, created_at_utc, status, status_at_utc, metadata_json
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'STAGED', ?, ?)
+                    deployment_id, research_run_id, dataset_id, family, bundle_uri, bundle_sha256,
+                    refit_as_of, train_start_date, train_end_date, feature_schema_sha256,
+                    model_binary_sha256, platform_commit, qlib_commit, created_at_utc,
+                    status, status_at_utc, metadata_json
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'STAGED', ?, ?)
                 """,
                 (
                     deployment_id,
                     str(manifest["researchRunId"]),
+                    str(manifest.get("datasetId", "")),
                     str(manifest["modelFamily"]),
                     bundle_uri,
                     bundle_sha256,
                     str(manifest["refitAsOf"]),
+                    str(manifest.get("trainStartDate", "")),
                     str(manifest["trainEndDate"]),
+                    str(manifest.get("featureSchemaSha256", "")),
+                    str(manifest.get("modelBinarySha256", "")),
+                    platform_commit,
+                    qlib_commit,
                     created,
                     created,
                     json.dumps(dict(manifest), sort_keys=True, ensure_ascii=False, default=str),
@@ -236,8 +292,8 @@ class OpsState:
                     (current_id, now, f"superseded by {deployment_id}"),
                 )
             connection.execute(
-                "UPDATE deployments SET status = 'DEPLOYED', status_at_utc = ? WHERE deployment_id = ?",
-                (now, deployment_id),
+                "UPDATE deployments SET status = 'DEPLOYED', status_at_utc = ?, deployed_at_utc = ? WHERE deployment_id = ?",
+                (now, now, deployment_id),
             )
             connection.execute(
                 "INSERT INTO deployment_events(deployment_id, from_status, to_status, event_at_utc, reason) VALUES(?, ?, 'DEPLOYED', ?, ?)",
@@ -308,23 +364,55 @@ class OpsState:
             raise RuntimeError(f"expected exactly one PASS signal for {trade_date}, found {len(rows)}")
         return dict(rows[0])
 
-    def reserve_delivery(self, record: Mapping[str, str]) -> bool:
+    def reserve_delivery(
+        self,
+        record: Mapping[str, str],
+        *,
+        owner: str = "legacy",
+        lease_seconds: float = 300.0,
+    ) -> bool:
+        if lease_seconds <= 0:
+            raise ValueError("delivery lease_seconds must be positive")
+        now = datetime.now(timezone.utc)
+        now_text = now.isoformat().replace("+00:00", "Z")
+        lease_expires = (now + timedelta(seconds=lease_seconds)).isoformat().replace("+00:00", "Z")
         with self.transaction() as connection:
             existing = connection.execute(
-                "SELECT status FROM deliveries WHERE idempotency_key = ?", (record["idempotency_key"],)
+                "SELECT status, lease_owner, lease_expires_at_utc FROM deliveries WHERE idempotency_key = ?",
+                (record["idempotency_key"],),
             ).fetchone()
             if existing is not None:
-                return bool(existing["status"] != DeliveryStatus.SENT.value)
+                if existing["status"] == DeliveryStatus.SENT.value:
+                    return False
+                lease_until = existing["lease_expires_at_utc"]
+                if (
+                    existing["status"] == DeliveryStatus.PENDING.value
+                    and lease_until
+                    and str(lease_until) > now_text
+                ):
+                    return False
+                connection.execute(
+                    """
+                    UPDATE deliveries
+                    SET status = 'PENDING', lease_owner = ?, lease_expires_at_utc = ?
+                    WHERE idempotency_key = ?
+                    """,
+                    (owner, lease_expires, record["idempotency_key"]),
+                )
+                return True
             connection.execute(
                 """
                 INSERT INTO deliveries(
                     idempotency_key, message_id, channel, message_kind, business_date,
-                    payload_sha256, status, created_at_utc
-                ) VALUES(?, ?, ?, ?, ?, ?, 'PENDING', ?)
+                    signal_date, trade_date, deployment_id, signal_sha256, payload_sha256,
+                    status, created_at_utc, lease_owner, lease_expires_at_utc
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
                 """,
                 (
                     record["idempotency_key"], record["message_id"], record["channel"],
-                    record["message_kind"], record["business_date"], record["payload_sha256"], _utc_now(),
+                    record["message_kind"], record["business_date"], record.get("signal_date"),
+                    record.get("trade_date"), record.get("deployment_id"), record.get("signal_sha256"),
+                    record["payload_sha256"], now_text, owner, lease_expires,
                 ),
             )
         return True
@@ -336,6 +424,7 @@ class OpsState:
         *,
         error_code: str | None = None,
         error_summary: str | None = None,
+        release_lease: bool = True,
     ) -> None:
         sent_at = _utc_now() if status is DeliveryStatus.SENT else None
         with self.transaction() as connection:
@@ -343,10 +432,21 @@ class OpsState:
                 """
                 UPDATE deliveries
                 SET status = ?, attempt_count = attempt_count + 1, sent_at_utc = ?,
-                    error_code = ?, error_summary = ?
+                    last_attempt_at_utc = ?, error_code = ?, error_summary = ?,
+                    lease_owner = CASE WHEN ? THEN NULL ELSE lease_owner END,
+                    lease_expires_at_utc = CASE WHEN ? THEN NULL ELSE lease_expires_at_utc END
                 WHERE idempotency_key = ?
                 """,
-                (status.value, sent_at, error_code, error_summary, idempotency_key),
+                (
+                    status.value,
+                    sent_at,
+                    _utc_now(),
+                    error_code,
+                    error_summary,
+                    release_lease,
+                    release_lease,
+                    idempotency_key,
+                ),
             )
             if cursor.rowcount != 1:
                 raise KeyError(f"unknown delivery: {idempotency_key}")

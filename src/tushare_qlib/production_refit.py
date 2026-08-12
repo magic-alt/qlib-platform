@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -18,6 +19,14 @@ from .runtime_safety import resolve_qlib_parallel_runtime
 from .settings import Settings
 from .store import sha256_file
 from .train_select import _configure_mlflow_tracking, _dataset_id, build_dataset
+
+
+@dataclass(frozen=True)
+class ProductionRefitPlan:
+    selection_train: tuple[str, str]
+    selection_valid: tuple[str, str]
+    final_train: tuple[str, str]
+    label_safe_end: str
 
 
 def _research_manifest(settings: Settings, value: str | Path) -> tuple[Path, dict[str, Any]]:
@@ -43,7 +52,7 @@ def _research_manifest(settings: Settings, value: str | Path) -> tuple[Path, dic
     return path, payload
 
 
-def production_refit_windows(settings: Settings, as_of: str) -> tuple[tuple[str, str], tuple[str, str]]:
+def production_refit_plan(settings: Settings, as_of: str) -> ProductionRefitPlan:
     calendar = shared_research_calendar(settings)
     signal_date = np.datetime64(as_of)
     matches = np.flatnonzero(calendar.values.astype("datetime64[D]") == signal_date.astype("datetime64[D]"))
@@ -68,7 +77,40 @@ def production_refit_windows(settings: Settings, as_of: str) -> tuple[tuple[str,
     def fmt(index: int) -> str:
         return str(calendar[index].strftime("%Y-%m-%d"))
 
-    return (fmt(train_start_pos), fmt(train_end_pos)), (fmt(valid_start_pos), fmt(valid_end_pos))
+    selection_train = (fmt(train_start_pos), fmt(train_end_pos))
+    selection_valid = (fmt(valid_start_pos), fmt(valid_end_pos))
+    final_train = (selection_train[0], fmt(valid_end_pos))
+    return ProductionRefitPlan(
+        selection_train=selection_train,
+        selection_valid=selection_valid,
+        final_train=final_train,
+        label_safe_end=fmt(valid_end_pos),
+    )
+
+
+def production_refit_windows(settings: Settings, as_of: str) -> tuple[tuple[str, str], tuple[str, str]]:
+    """Return the final production-fit window and its selection validation tail."""
+
+    plan = production_refit_plan(settings, as_of)
+    return plan.final_train, plan.selection_valid
+
+
+def _selected_training_steps(model: Any, family: str, parameters: Mapping[str, Any]) -> int:
+    if family == "lightgbm":
+        booster = getattr(model, "model", None)
+        selected = int(getattr(booster, "best_iteration", 0) or 0)
+        return selected or int(getattr(model, "num_boost_round", parameters.get("num_boost_round", 1)))
+    selected = int(getattr(model, "best_step", 0) or 0)
+    return selected or int(getattr(model, "max_steps", parameters.get("max_steps", 1)))
+
+
+def _fit_final_model(model: Any, dataset: Any, family: str, selected_steps: int) -> None:
+    dataset.segments = {key: value for key, value in dataset.segments.items() if key != "valid"}
+    if family == "lightgbm":
+        model.fit(dataset, num_boost_round=selected_steps, early_stopping_rounds=0)
+        return
+    model.max_steps = selected_steps
+    model.fit(dataset)
 
 
 def _assert_recipe(settings: Settings, release: Mapping[str, Any], canonical: Mapping[str, Any]) -> None:
@@ -106,7 +148,7 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
     approved_runtime = release.get("runtime", {})
     if not isinstance(approved_runtime, Mapping) or approved_runtime.get("profileFingerprint") != profile.fingerprint:
         raise ValueError("configured model profile fingerprint differs from approved research release")
-    train, valid = production_refit_windows(settings, as_of)
+    plan = production_refit_plan(settings, as_of)
     research = settings.data.get("research", {})
     research = research if isinstance(research, Mapping) else {}
     seed = int(research.get("random_seed", 42))
@@ -127,16 +169,16 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
     prepared = None
     feature_store_metadata = None
     if feature_store_enabled(settings):
-        prepared, feature_store_metadata = prepare_feature_data(settings, train[0], as_of)
-    dataset = build_dataset(
-        train=train,
-        valid=valid,
+        prepared, feature_store_metadata = prepare_feature_data(settings, plan.selection_train[0], as_of)
+    selection_dataset = build_dataset(
+        train=plan.selection_train,
+        valid=plan.selection_valid,
         test=(as_of, as_of),
         universe=dict(settings.data.get("universe", {})),
         label_horizon_days=label_timing_from_settings(settings).horizon_days,
         prepared_feature_data=prepared,
     )
-    feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
+    feature_columns = [str(column) for column in selection_dataset.handler.get_cols(col_set="feature")]
     parameters = resolved_model_parameters(
         runtime,
         feature_count=len(feature_columns),
@@ -145,7 +187,7 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
     )
     canonical = CanonicalConfig.from_settings(settings, runtime, model_parameters=parameters).to_manifest()
     _assert_recipe(settings, release, canonical)
-    model = build_model(
+    selection_model = build_model(
         runtime,
         feature_count=len(feature_columns),
         seed=seed,
@@ -153,7 +195,26 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
     )
     _configure_mlflow_tracking(settings)
     with R.start(experiment_name="production_refit", uri=os.environ["MLFLOW_TRACKING_URI"]):
-        model.fit(dataset)
+        selection_model.fit(selection_dataset)
+        selected_steps = _selected_training_steps(selection_model, runtime.profile.family, parameters)
+        dataset = build_dataset(
+            train=plan.final_train,
+            valid=plan.selection_valid,
+            test=(as_of, as_of),
+            universe=dict(settings.data.get("universe", {})),
+            label_horizon_days=label_timing_from_settings(settings).horizon_days,
+            prepared_feature_data=prepared,
+        )
+        final_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
+        if final_columns != feature_columns:
+            raise ValueError("production final-fit feature schema differs from selection fit")
+        model = build_model(
+            runtime,
+            feature_count=len(final_columns),
+            seed=seed,
+            num_threads=int(research.get("num_threads", 8)),
+        )
+        _fit_final_model(model, dataset, runtime.profile.family, selected_steps)
     dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
     if not dataset_manifest.is_file():
         raise FileNotFoundError(f"dataset manifest is required for production refit: {dataset_manifest}")
@@ -173,14 +234,21 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
         canonical_config=canonical,
         research_run_id=str(release["externalRunId"]),
         refit_as_of=as_of,
-        train_window=train,
-        valid_window=valid,
+        train_window=plan.final_train,
+        valid_window=plan.selection_valid,
         dataset_id=_dataset_id(settings),
         dataset_sha256=sha256_file(dataset_manifest),
         feature_store=feature_store_metadata,
         lineage=lineage,
         seed=seed,
         runtime=runtime.to_manifest(),
+        refit_metadata={
+            "policy": "select_then_refit_all_label_safe",
+            "selectionTrainWindow": list(plan.selection_train),
+            "selectionValidWindow": list(plan.selection_valid),
+            "labelSafeEndDate": plan.label_safe_end,
+            "selectedTrainingSteps": selected_steps,
+        },
     )
     ModelRegistry(settings).register_bundle(manifest_path)
     return manifest_path

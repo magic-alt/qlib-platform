@@ -102,7 +102,12 @@ production:
   # A refit job may create STAGED bundles weekly, but activation is always manual.
   refit_cadence: weekly_first_trading_day
   max_model_age_days: 45
+  max_train_data_lag_calendar_days: 20
   min_cross_section_coverage: 0.80
+  min_score_dispersion_ratio: 0.10
+  max_score_dispersion_ratio: 10.0
+  max_score_mean_shift_std: 5.0
+  max_score_psi: 0.50
   notification:
     channel: feishu
     webhook_env: FEISHU_WEBHOOK_URL

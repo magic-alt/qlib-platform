@@ -17,6 +17,7 @@ class NotificationEnvelope:
     summary: str
     deployment_id: str | None = None
     signal_sha256: str | None = None
+    signal_date: str | None = None
     sections: Mapping[str, Any] = field(default_factory=dict)
 
     @property

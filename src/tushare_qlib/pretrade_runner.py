@@ -11,8 +11,13 @@ import pandas as pd
 
 from .artifact_resolver import ArtifactResolver
 from .artifacts import ArtifactType
-from .daily_signal_runner import _delivery_service, _failure_envelope, feishu_notifier_from_environment
+from .daily_signal_runner import (
+    _deliver_failure_best_effort,
+    _delivery_service,
+    feishu_notifier_from_environment,
+)
 from .execution import build_topk_orders
+from .failure_codes import classify_failure
 from .freshness import validate_execution_snapshot
 from .holdings_ledger import reconcile_holdings
 from .live_artifacts import validate_live_artifact
@@ -102,16 +107,21 @@ def _action_envelope(
     message_hash = hashlib.sha256(
         f"{payload}|{len(orders)}|{len(blocked)}".encode()
     ).hexdigest()[:16]
+    no_action = orders.empty and blocked.empty
     return NotificationEnvelope(
         message_id=f"pretrade-{record['signal_id']}-{message_hash}",
-        message_kind="PRETRADE_ACTION",
+        message_kind="NO_ACTION" if no_action else "PRETRADE_ACTION",
         business_date=str(record["trade_date"]),
         trade_date=str(record["trade_date"]),
         channel="feishu",
-        title=f"Pretrade Action | {record['trade_date']}",
-        summary=f"signal_id={record['signal_id']}\n人工确认后执行；系统未提交任何订单。",
+        title=("Pretrade No Action" if no_action else "Pretrade Action") + f" | {record['trade_date']}",
+        summary=(
+            f"signal_id={record['signal_id']}\n"
+            + ("模型运行成功；今日无新增 BUY / SELL，当前持仓保持。" if no_action else "人工确认后执行；系统未提交任何订单。")
+        ),
         deployment_id=str(record["deployment_id"]),
         signal_sha256=payload,
+        signal_date=str(record["signal_date"]),
         sections={
             "SELL": _lines(orders, "SELL") or ["无"],
             "BUY": _lines(orders, "BUY") or ["无"],
@@ -198,7 +208,9 @@ def run_pretrade_actions(
             blocked_path=blocked_path,
         )
     except Exception as exc:
-        state.finish_run(run_id, RunStatus.FAILED, {"errorCode": type(exc).__name__})
-        if notifier is not None:
-            service.deliver(_failure_envelope(trade_date, "PRETRADE", type(exc).__name__), notifier)
+        code = classify_failure(exc, "PRETRADE")
+        state.finish_run(run_id, RunStatus.FAILED, {"errorCode": code.value})
+        _deliver_failure_best_effort(
+            service, notifier, business_date=trade_date, phase="PRETRADE", code=code
+        )
         raise

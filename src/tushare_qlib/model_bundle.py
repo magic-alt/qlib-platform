@@ -96,6 +96,7 @@ def create_model_bundle(
     lineage: Mapping[str, Any],
     seed: int,
     runtime: Mapping[str, Any] | None = None,
+    refit_metadata: Mapping[str, Any] | None = None,
 ) -> Path:
     """Write an immutable, checksummed and cross-machine model bundle."""
 
@@ -159,6 +160,7 @@ def create_model_bundle(
             "datasetSha256": dataset_sha256,
             "payloadChecksums": payload_checksums,
             "runtime": runtime_manifest,
+            "refit": dict(refit_metadata or {}),
             "implementationSha256": implementation_checksums,
         }
         deployment_id = _canonical_sha256(identity)[:32]
@@ -188,6 +190,12 @@ def create_model_bundle(
             "referenceCrossSectionCount": int(
                 parity_features.index.get_level_values("instrument").nunique()
             ),
+            "referenceScoreMean": float(parity_scores["score"].mean()),
+            "referenceScoreStd": float(parity_scores["score"].std(ddof=0)),
+            "referenceScoreQuantiles": [
+                float(value)
+                for value in parity_scores["score"].quantile(np.linspace(0.0, 1.0, 11)).tolist()
+            ],
             "createdAtUtc": _utc_now(),
         }
         (building / "model_manifest.json").write_text(
