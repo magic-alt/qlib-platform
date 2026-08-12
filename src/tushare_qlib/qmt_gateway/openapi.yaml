@@ -1,0 +1,124 @@
+openapi: 3.1.0
+info:
+  title: QMT Read-only Broker Gateway
+  version: 1.0.0
+  description: Local read-only adapter between qlib-platform and MiniQMT/XtQuant.
+servers:
+  - url: http://127.0.0.1:8765
+paths:
+  /v1/health:
+    get:
+      responses:
+        '200': {description: QMT connection is ready}
+        '503': {description: QMT is unavailable}
+  /v1/account:
+    get:
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/tradeDate'}]
+      responses:
+        '200':
+          description: Current account snapshot
+          content: {application/json: {schema: {$ref: '#/components/schemas/Account'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/UnsupportedDate'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /v1/positions:
+    get:
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/tradeDate'}]
+      responses:
+        '200':
+          description: Current positions
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Position'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/UnsupportedDate'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /v1/orders:
+    get:
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/tradeDate'}]
+      responses:
+        '200':
+          description: Current-day orders
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Order'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/UnsupportedDate'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /v1/fills:
+    get:
+      security: [{bearerAuth: []}]
+      parameters: [{$ref: '#/components/parameters/tradeDate'}]
+      responses:
+        '200':
+          description: Current-day fills
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Fill'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {$ref: '#/components/responses/UnsupportedDate'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    tradeDate:
+      name: trade_date
+      in: query
+      required: true
+      schema: {type: string, format: date}
+      description: Must be the current Asia/Shanghai calendar date.
+  responses:
+    Unauthorized: {description: Missing or invalid bearer token}
+    UnsupportedDate: {description: Historical QMT snapshots are unsupported}
+    Unavailable: {description: MiniQMT, XtQuant, or NAV baseline is unavailable}
+  schemas:
+    SnapshotFields:
+      type: object
+      required: [as_of_trade_date, snapshot_at_utc]
+      properties:
+        as_of_trade_date: {type: string, format: date}
+        snapshot_at_utc: {type: string, format: date-time}
+    Account:
+      allOf:
+        - {$ref: '#/components/schemas/SnapshotFields'}
+        - type: object
+          required: [portfolio_value, cash, daily_pnl_pct]
+          properties:
+            portfolio_value: {type: number}
+            cash: {type: number}
+            daily_pnl_pct: {type: number}
+    Position:
+      allOf:
+        - {$ref: '#/components/schemas/SnapshotFields'}
+        - type: object
+          required: [instrument, quantity, available_quantity]
+          properties:
+            instrument: {type: string, pattern: '^(SH|SZ)[0-9]+$'}
+            quantity: {type: number, minimum: 0}
+            available_quantity: {type: number, minimum: 0}
+    Order:
+      allOf:
+        - {$ref: '#/components/schemas/SnapshotFields'}
+        - type: object
+          required: [broker_order_id, instrument, side, quantity, filled_quantity, limit_price, status, event_at_utc, qmt_order_status]
+          properties:
+            broker_order_id: {type: string}
+            instrument: {type: string}
+            side: {type: string, enum: [BUY, SELL]}
+            quantity: {type: number}
+            filled_quantity: {type: number}
+            limit_price: {type: number}
+            status: {type: string}
+            event_at_utc: {type: string, format: date-time}
+            qmt_order_status: {}
+    Fill:
+      allOf:
+        - {$ref: '#/components/schemas/SnapshotFields'}
+        - type: object
+          required: [fill_id, broker_order_id, instrument, side, quantity, price, event_at_utc]
+          properties:
+            fill_id: {type: string}
+            broker_order_id: {type: string}
+            instrument: {type: string}
+            side: {type: string, enum: [BUY, SELL]}
+            quantity: {type: number}
+            price: {type: number}
+            event_at_utc: {type: string, format: date-time}

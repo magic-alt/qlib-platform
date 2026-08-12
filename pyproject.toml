@@ -40,6 +40,10 @@ all = [
   "pyqlib==0.9.7",
   "lightgbm==4.6.0",
 ]
+qmt-gateway = [
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.27,<1",
+]
 dev = [
   "pyqlib==0.9.7",
   "lightgbm==4.6.0",
@@ -48,13 +52,19 @@ dev = [
   "ruff>=0.8,<1",
   "mypy>=1.11,<2",
   "types-PyYAML>=6.0",
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.27,<1",
 ]
 
 [project.scripts]
 tq = "tushare_qlib.cli:main"
+tq-qmt-gateway = "tushare_qlib.qmt_gateway.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"tushare_qlib.qmt_gateway" = ["openapi.yaml"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
