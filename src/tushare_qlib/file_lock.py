@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import os
 from contextlib import AbstractContextManager
+from importlib import import_module
 from pathlib import Path
 from typing import Any
+
+
+def _platform_lock_module(name: str) -> Any:
+    """Load a platform-specific lock module without cross-platform type coupling."""
+
+    return import_module(name)
 
 
 class FileLock(AbstractContextManager["FileLock"]):
@@ -23,16 +30,16 @@ class FileLock(AbstractContextManager["FileLock"]):
         self.handle.flush()
         try:
             if os.name == "nt":
-                import msvcrt
+                msvcrt = _platform_lock_module("msvcrt")
 
                 self.handle.seek(0)
                 mode = msvcrt.LK_LOCK if self.blocking else msvcrt.LK_NBLCK
                 msvcrt.locking(self.handle.fileno(), mode, 1)
             else:  # pragma: no cover - covered by Linux CI.
-                import fcntl
+                fcntl = _platform_lock_module("fcntl")
 
-                flags = fcntl.LOCK_EX | (0 if self.blocking else fcntl.LOCK_NB)  # type: ignore[attr-defined]
-                fcntl.flock(self.handle.fileno(), flags)  # type: ignore[attr-defined]
+                flags = fcntl.LOCK_EX | (0 if self.blocking else fcntl.LOCK_NB)
+                fcntl.flock(self.handle.fileno(), flags)
         except OSError as exc:
             self.handle.close()
             self.handle = None
@@ -44,14 +51,14 @@ class FileLock(AbstractContextManager["FileLock"]):
             return
         try:
             if os.name == "nt":
-                import msvcrt
+                msvcrt = _platform_lock_module("msvcrt")
 
                 self.handle.seek(0)
                 msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
             else:  # pragma: no cover - covered by Linux CI.
-                import fcntl
+                fcntl = _platform_lock_module("fcntl")
 
-                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
         finally:
             self.handle.close()
             self.handle = None
