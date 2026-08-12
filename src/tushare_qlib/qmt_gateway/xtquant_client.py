@@ -153,7 +153,7 @@ class XtQuantReadOnlyClient:
             generation = self._next_generation
             owner = self
 
-            class GatewayCallback(callback_class):
+            class GatewayCallback(callback_class):  # type: ignore[misc, valid-type]
                 def on_disconnected(self) -> None:
                     owner._disconnect_callback(generation)
 
