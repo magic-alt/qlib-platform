@@ -30,6 +30,9 @@ The v3 manifest derives `version_id` from sorted file checksums, the semantic co
 parents. Build time and filesystem location are excluded. Every file is checksummed. Registry aliases may
 only target published versions, and `registry-rebuild` reconstructs aliases and lineage from manifests.
 
+Metadata working views (including the stock master and trading calendar) are atomically replaced. This preserves
+the inode of any hard-linked immutable snapshot, so a later metadata refresh cannot mutate a published version.
+
 ## PIT and adjustment contracts
 
 - Canonical market data retains raw OHLCV and `adj_factor`; latest-qfq is only an export view.

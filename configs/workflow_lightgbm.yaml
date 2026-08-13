@@ -1,6 +1,6 @@
-# Run from the sample_project root:
-#   export QLIB_DATA_URI=/absolute/path/to/data/qlib/cn_tushare_v1
-#   qrun configs/workflow_lightgbm.yaml
+# Run from the repository root with a resolved immutable dataset:
+#   $env:QLIB_DATA_URI = '<resolved immutable Qlib dataset path>'
+#   & .\.venv\Scripts\qrun.exe configs\workflow_lightgbm.yaml
 
 sys:
   path:

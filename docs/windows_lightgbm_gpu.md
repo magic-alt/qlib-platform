@@ -12,7 +12,7 @@ Windows 不要求迁移到 Linux 才能使用 LightGBM 加速，但后端名称�
 
 ## 构建与验证
 
-在 Visual Studio x64 Developer PowerShell 中执行：
+在 Visual Studio x64 Developer PowerShell 中执行。项目命令使用仓库本地解释器：`$RepoPython = '.\.venv\python.exe'`。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/build_lightgbm_opencl_windows.ps1 `
@@ -25,7 +25,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_lightgbm_opencl_windows.p
 路径仅为示例，应替换成机器上的实际版本。脚本先验证 Boost 路径，再从源码重装 LightGBM 4.7.0、启用 `USE_GPU=ON`，随后调用：
 
 ```powershell
-python -m tushare_qlib --config configs/pipeline.yaml runtime-probe `
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml runtime-probe `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 ```
 
@@ -34,7 +34,7 @@ python -m tushare_qlib --config configs/pipeline.yaml runtime-probe `
 ## 使用方式
 
 ```powershell
-tq --config configs/pipeline.yaml train-select `
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 ```
 

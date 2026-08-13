@@ -2,6 +2,8 @@
 
 This runbook operates the shadow-signal service only. It never submits broker orders.
 
+All commands below run from the repository root. Set `$RepoPython = '.\.venv\python.exe'` once and use the repository-local interpreter. Production and research resolve `research-current` to an immutable Qlib version; verify the resolved version before an operational run.
+
 ## Security rules
 
 - Configure `TUSHARE_TOKEN`, `QLIB_REPO`, `QLIB_DATA_URI`, `FEISHU_WEBHOOK_URL`, and optionally
@@ -12,8 +14,8 @@ This runbook operates the shadow-signal service only. It never submits broker or
 
 ## One-time setup
 
-1. Install the project and run `tq --config configs/pipeline.yaml validate-qrun-contract`.
-2. Run `tq project-audit --root . --output docs/project_audit.json`.
+1. Install the project and run `& $RepoPython -m tushare_qlib --config configs/pipeline.yaml validate-qrun-contract`.
+2. Run `& $RepoPython -m tushare_qlib --config configs/pipeline.yaml project-audit --root . --output docs/project_audit.json`.
 3. Confirm `data/state/daily_sync/latest.json` is healthy and `pending_publish.json` is clear.
 4. Complete a promoted walk-forward research run.
 
@@ -22,14 +24,14 @@ threshold as legacy integration paths gain tests, and never lower it.
 5. Create a production candidate:
 
    ```powershell
-   tq --config configs/pipeline.yaml model-refit --research-run <RESEARCH_RUN_ID> --as-of <YYYY-MM-DD>
+   & $RepoPython -m tushare_qlib --config configs/pipeline.yaml model-refit --research-run <RESEARCH_RUN_ID> --as-of <YYYY-MM-DD>
    ```
 
 6. Review its manifest/checksums and activate it explicitly:
 
    ```powershell
-   tq --config configs/pipeline.yaml model-deploy <DEPLOYMENT_ID> --device cpu
-   tq --config configs/pipeline.yaml model-status
+   & $RepoPython -m tushare_qlib --config configs/pipeline.yaml model-deploy <DEPLOYMENT_ID> --device cpu
+   & $RepoPython -m tushare_qlib --config configs/pipeline.yaml model-status
    ```
 
 ## Scheduled jobs
@@ -44,7 +46,7 @@ Schedule on the first trading day of each week after data publication. The comma
 Run after the configured TuShare readiness time:
 
 ```powershell
-tq --config configs/pipeline.yaml production-run --phase close --business-date <YYYY-MM-DD>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml production-run --phase close --business-date <YYYY-MM-DD>
 ```
 
 Expected sequence:
@@ -84,7 +86,7 @@ The runner stores a read-only copy of every provider response under the signal's
 Run:
 
 ```powershell
-tq --config configs/pipeline.yaml production-run --phase pretrade --business-date <YYYY-MM-DD>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml production-run --phase pretrade --business-date <YYYY-MM-DD>
 ```
 
 The output is an advisory `STRATEGY_DECISION` and `ORDER_INTENT`. Review BUY/SELL/HOLD/BLOCKED manually;
@@ -95,28 +97,28 @@ no broker submit API is called.
 Query runs and deliveries without opening SQLite manually:
 
 ```powershell
-tq --config configs/pipeline.yaml ops-query --entity runs --business-date <YYYY-MM-DD>
-tq --config configs/pipeline.yaml ops-query --entity deliveries --business-date <YYYY-MM-DD>
-tq --config configs/pipeline.yaml ops-summary --business-date <YYYY-MM-DD> --output <DAILY_JSON>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml ops-query --entity runs --business-date <YYYY-MM-DD>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml ops-query --entity deliveries --business-date <YYYY-MM-DD>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml ops-summary --business-date <YYYY-MM-DD> --output <DAILY_JSON>
 ```
 
 An expired `PENDING` or `FAILED` delivery can be released for a runner retry. This command does not send a
 message by itself and cannot reopen a `SENT` delivery:
 
 ```powershell
-tq --config configs/pipeline.yaml ops-retry-delivery <IDEMPOTENCY_KEY>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml ops-retry-delivery <IDEMPOTENCY_KEY>
 ```
 
 After investigating a failed run or delivery, record an operator and reason:
 
 ```powershell
-tq --config configs/pipeline.yaml ops-ack --entity run --id <RUN_ID> --operator <NAME> --reason <TEXT>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml ops-ack --entity run --id <RUN_ID> --operator <NAME> --reason <TEXT>
 ```
 
 ## Replay and shadow acceptance
 
 ```powershell
-tq --config configs/pipeline.yaml production-replay `
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml production-replay `
   --start <YYYY-MM-DD> --end <YYYY-MM-DD> `
   --snapshot-root <FROZEN_DATASET_ROOT>
 ```
@@ -131,7 +133,7 @@ execution. Record expected/generated/notified/manual/reconciled outcomes daily.
 For research/live parity on one archived date:
 
 ```powershell
-tq --config configs/pipeline.yaml live-inference `
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml live-inference `
   --as-of <YYYY-MM-DD> `
   --dataset-uri <FROZEN_QLIB_DATASET> `
   --deployment-id <DEPLOYMENT_ID> `
@@ -144,7 +146,7 @@ The command exits with code 3 if score or TopK parity fails.
 Run one account-aware shadow day:
 
 ```powershell
-tq --config configs/pipeline.yaml shadow-run `
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml shadow-run `
   --trade-date <YYYY-MM-DD> --shadow-config configs/shadow.yaml
 ```
 
@@ -172,7 +174,7 @@ write endpoint.
 ## Rollback
 
 ```powershell
-tq --config configs/pipeline.yaml model-rollback --to <RETIRED_DEPLOYMENT_ID> --device cpu
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml model-rollback --to <RETIRED_DEPLOYMENT_ID> --device cpu
 ```
 
 Rollback validates bundle checksums and the parity fixture before the registry transaction. A signal already
