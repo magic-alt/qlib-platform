@@ -65,6 +65,7 @@ tq --config configs/pipeline_lean_mysql.yaml dump-full --single-thread
 ```bash
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-universe --start 20160104 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20160104 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill-extended --start 20000101 --end 20260811 --workers 8
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20160104 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20160104 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force

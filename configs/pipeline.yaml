@@ -34,6 +34,7 @@ tushare:
   base_sleep_seconds: 2.0
   max_sleep_seconds: 60.0
   jitter_ratio: 0.15
+  extended_max_workers: 8
   optional_endpoints:
     moneyflow: true
     stock_st: true
