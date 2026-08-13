@@ -30,6 +30,7 @@ class ExtendedEndpoint:
 
     period_parameter: str = "period"
 
+
 EXTENDED_ENDPOINTS: tuple[ExtendedEndpoint, ...] = (
     ExtendedEndpoint("stock_company", "basic", "exchange", exchanges=("SSE", "SZSE", "BSE")),
     ExtendedEndpoint("namechange", "basic", "symbol"),
@@ -57,7 +58,7 @@ EXTENDED_ENDPOINTS: tuple[ExtendedEndpoint, ...] = (
     ExtendedEndpoint("top_list", "market_reference", "trade_date", min_date="20000101"),
     ExtendedEndpoint("margin", "market_reference", "trade_date", min_date="20100101"),
     ExtendedEndpoint("margin_detail", "market_reference", "trade_date", min_date="20100101"),
-    ExtendedEndpoint("hsgt_moneyflow", "market_reference", "trade_date", min_date="20141117"),
+    ExtendedEndpoint("moneyflow_hsgt", "market_reference", "trade_date", min_date="20141117"),
     ExtendedEndpoint("hsgt_top10", "market_reference", "trade_date", min_date="20141117"),
 )
 EXTENDED_GROUPS = tuple(sorted({endpoint.group for endpoint in EXTENDED_ENDPOINTS}))
@@ -71,6 +72,7 @@ def _report_periods(start_date: str, end_date: str) -> list[str]:
     periods = pd.date_range(start=pd.Timestamp(start_date), end=pd.Timestamp(end_date), freq="QE-DEC")
     return [value.strftime("%Y%m%d") for value in periods]
 
+
 def _month_windows(start_date: str, end_date: str) -> list[tuple[str, str]]:
     start = pd.Timestamp(start_date).normalize()
     end = pd.Timestamp(end_date).normalize()
@@ -82,18 +84,35 @@ def _month_windows(start_date: str, end_date: str) -> list[tuple[str, str]]:
         cursor += pd.offsets.MonthBegin(1)
     return windows
 
+
 class ExtendedDataBackfill:
     """Download wider A-share data domains with partition-level resumption."""
 
-    def __init__(self, settings: Settings, *, client: Any | None = None, stock_master: pd.DataFrame | None = None, open_dates: Callable[[str, str], list[str]] | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        client: Any | None = None,
+        stock_master: pd.DataFrame | None = None,
+        open_dates: Callable[[str, str], list[str]] | None = None,
+    ) -> None:
         self.settings = settings
         self.store = PartitionStore(settings.paths.raw / "extended")
         self._extractor: Extractor | None = None
         if client is None or open_dates is None:
             self._extractor = Extractor(settings)
-        self.client = client if client is not None else self._extractor.client
+        if client is None:
+            assert self._extractor is not None
+            self.client = self._extractor.client
+        else:
+            self.client = client
         self._stock_master = stock_master
-        self._open_dates = open_dates if open_dates is not None else self._extractor.open_dates
+        self._open_dates: Callable[[str, str], list[str]]
+        if open_dates is None:
+            assert self._extractor is not None
+            self._open_dates = self._extractor.open_dates
+        else:
+            self._open_dates = open_dates
 
     def _master(self) -> pd.DataFrame:
         if self._stock_master is not None:
@@ -119,7 +138,10 @@ class ExtendedDataBackfill:
                 yield period, {**fixed, endpoint.period_parameter: period}
         elif endpoint.plan == "date_range":
             for window_start, window_end in _month_windows(start, end_date):
-                yield f"{window_start}_{window_end}", {**fixed, "start_date": window_start, "end_date": window_end}
+                yield (
+                    f"{window_start}_{window_end}",
+                    {**fixed, "start_date": window_start, "end_date": window_end},
+                )
         elif endpoint.plan == "symbol":
             master = self._master()
             if "ts_code" not in master:
@@ -139,14 +161,18 @@ class ExtendedDataBackfill:
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         temporary.replace(path)
 
-    def backfill(self, start_date: str, end_date: str, *, groups: Iterable[str] | None = None, force: bool = False) -> dict[str, Any]:
+    def backfill(
+        self, start_date: str, end_date: str, *, groups: Iterable[str] | None = None, force: bool = False
+    ) -> dict[str, Any]:
         requested_groups = set(groups or EXTENDED_GROUPS)
         unknown_groups = requested_groups - set(EXTENDED_GROUPS)
         if unknown_groups:
             raise ValueError(f"unknown extended data groups: {sorted(unknown_groups)}")
         counters = {"success": 0, "empty": 0, "permission_denied": 0, "failed": 0, "skipped": 0}
         started = datetime.now(timezone.utc).isoformat()
-        self._write_run_state({"status": "running", "started_at_utc": started, "groups": sorted(requested_groups)})
+        self._write_run_state(
+            {"status": "running", "started_at_utc": started, "groups": sorted(requested_groups)}
+        )
         try:
             for endpoint in (item for item in EXTENDED_ENDPOINTS if item.group in requested_groups):
                 for partition, params in self._tasks(endpoint, start_date, end_date):
@@ -154,17 +180,48 @@ class ExtendedDataBackfill:
                         counters["skipped"] += 1
                         continue
                     result: FetchResult = self.client.fetch(endpoint.name, required=False, **params)
-                    metadata = {"api": endpoint.name, "group": endpoint.group, "partition": partition, "params": params, "attempts": result.attempts, "error": result.error, "requested_at_utc": datetime.now(timezone.utc).isoformat()}
+                    metadata = {
+                        "api": endpoint.name,
+                        "group": endpoint.group,
+                        "partition": partition,
+                        "params": params,
+                        "attempts": result.attempts,
+                        "error": result.error,
+                        "requested_at_utc": datetime.now(timezone.utc).isoformat(),
+                    }
                     if result.succeeded:
-                        self.store.write(endpoint.name, partition, result.data, metadata, status=result.status)
+                        self.store.write(
+                            endpoint.name, partition, result.data, metadata, status=result.status
+                        )
                     else:
-                        self.store.write_status(endpoint.name, partition, status=result.status, metadata=metadata)
+                        self.store.write_status(
+                            endpoint.name, partition, status=result.status, metadata=metadata
+                        )
                     counters[result.status] = counters.get(result.status, 0) + 1
-                    logger.info("Extended {} {}: status={}, rows={}", endpoint.name, partition, result.status, len(result.data))
+                    logger.info(
+                        "Extended {} {}: status={}, rows={}",
+                        endpoint.name,
+                        partition,
+                        result.status,
+                        len(result.data),
+                    )
         except Exception as exc:
-            payload = {"status": "failed", "started_at_utc": started, "finished_at_utc": datetime.now(timezone.utc).isoformat(), "groups": sorted(requested_groups), "counters": counters, "error": str(exc)}
+            payload = {
+                "status": "failed",
+                "started_at_utc": started,
+                "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+                "groups": sorted(requested_groups),
+                "counters": counters,
+                "error": str(exc),
+            }
             self._write_run_state(payload)
             raise
-        payload = {"status": "complete", "started_at_utc": started, "finished_at_utc": datetime.now(timezone.utc).isoformat(), "groups": sorted(requested_groups), "counters": counters}
+        payload = {
+            "status": "complete",
+            "started_at_utc": started,
+            "finished_at_utc": datetime.now(timezone.utc).isoformat(),
+            "groups": sorted(requested_groups),
+            "counters": counters,
+        }
         self._write_run_state(payload)
         return payload

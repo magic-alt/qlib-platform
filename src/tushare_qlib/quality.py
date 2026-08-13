@@ -117,7 +117,9 @@ def validate_raw_day(
     return make_report(f"raw_day:{trade_date}", results)
 
 
-def validate_curated(df: pd.DataFrame, *, expected_trade_date: str | None = None) -> QualityReport:
+def validate_curated(
+    df: pd.DataFrame, *, expected_trade_date: str | None = None, min_traded_coverage: float = 0.50
+) -> QualityReport:
     results: list[QualityResult] = []
     required = {
         "symbol",
@@ -151,8 +153,8 @@ def validate_curated(df: pd.DataFrame, *, expected_trade_date: str | None = None
     results.append(
         QualityResult(
             "traded_coverage",
-            coverage >= 0.50,
-            f"traded={traded_count}, active={len(df)}, coverage={coverage:.4f}",
+            coverage >= min_traded_coverage,
+            f"traded={traded_count}, active={len(df)}, coverage={coverage:.4f}, threshold={min_traded_coverage:.4f}",
         )
     )
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from tushare_qlib.client import FetchResult
+from tushare_qlib.extended_data import EXTENDED_ENDPOINTS
 from tushare_qlib.extended_parallel import FastExtendedDataBackfill
 from tushare_qlib.settings import Settings
 from tushare_qlib.store import PartitionStore
@@ -53,3 +54,11 @@ def test_extended_backfill_records_permission_and_resumes(tmp_path: Path):
     resumed = backfill.backfill("20200101", "20200331", groups=["basic", "financial"])
     assert resumed["counters"]["skipped"] == 14
     assert len(client.calls) == prior_calls
+
+
+def test_hsgt_moneyflow_uses_tushare_api_name():
+    endpoint = next(item for item in EXTENDED_ENDPOINTS if item.name == "moneyflow_hsgt")
+
+    assert endpoint.group == "market_reference"
+    assert endpoint.plan == "trade_date"
+    assert endpoint.min_date == "20141117"
