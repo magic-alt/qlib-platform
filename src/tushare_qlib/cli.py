@@ -66,6 +66,28 @@ def parser() -> argparse.ArgumentParser:
     fs.add_argument("--start")
     fs.add_argument("--end")
     fs.add_argument("--force", action="store_true")
+    fs.add_argument("--dataset-ref")
+    dataset_build = sub.add_parser("dataset-build")
+    dataset_build.add_argument("--start")
+    dataset_build.add_argument("--end")
+    dataset_build.add_argument("--single-thread", action="store_true")
+    migration = sub.add_parser("migrate-qlib-layout")
+    migration.add_argument("--apply", action="store_true")
+    migration.add_argument("--migration-id")
+    dataset_list = sub.add_parser("dataset-list")
+    dataset_list.add_argument("--name")
+    dataset_show = sub.add_parser("dataset-show")
+    dataset_show.add_argument("reference")
+    dataset_verify = sub.add_parser("dataset-verify")
+    dataset_verify.add_argument("reference")
+    dataset_verify.add_argument("--metadata-only", action="store_true")
+    dataset_resolve = sub.add_parser("dataset-resolve")
+    dataset_resolve.add_argument("reference", nargs="?")
+    dataset_promote = sub.add_parser("dataset-promote")
+    dataset_promote.add_argument("reference")
+    dataset_promote.add_argument("--alias", default="research-current")
+    registry_rebuild = sub.add_parser("registry-rebuild")
+    registry_rebuild.add_argument("--root")
     runtime_probe = sub.add_parser("runtime-probe")
     runtime_probe.add_argument("--model-profile", required=True)
     ts = sub.add_parser("train-select")
@@ -77,6 +99,7 @@ def parser() -> argparse.ArgumentParser:
     ts.add_argument("--model-profile")
     ts.add_argument("--stage", choices=["signal", "release"], default="release")
     ts.add_argument("--artifact-level", choices=["minimal", "full"], default="full")
+    ts.add_argument("--dataset-ref")
     rr = sub.add_parser("research-run")
     rr.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
     rr.add_argument("--start")
@@ -86,11 +109,13 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--model-profile")
     rr.add_argument("--stage", choices=["signal", "release"], default="release")
     rr.add_argument("--artifact-level", choices=["minimal", "full"], default="full")
+    rr.add_argument("--dataset-ref")
     pb = sub.add_parser("backtest-predictions")
     pb.add_argument("predictions")
     pb.add_argument("--benchmark")
     pb.add_argument("--topn", type=int)
     pb.add_argument("--artifact-level", choices=["minimal", "full"], default="minimal")
+    pb.add_argument("--dataset-ref")
     rp = sub.add_parser("research-report")
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
@@ -187,6 +212,7 @@ def parser() -> argparse.ArgumentParser:
     live.add_argument("--require-daily-sync", action="store_true")
     live.add_argument("--supersede", action="store_true")
     live.add_argument("--dataset-uri")
+    live.add_argument("--dataset-ref")
     live.add_argument("--compare-research")
     live.add_argument("--parity-output")
     daily_signal = sub.add_parser("daily-signal-run")
@@ -270,6 +296,18 @@ def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -
 
 def main() -> None:
     args = parser().parse_args()
+    if args.command == "migrate-qlib-layout":
+        from .layout_migration import LayoutMigrator
+
+        migration_settings = Settings.load(args.config, create_dirs=False)
+        migrator = LayoutMigrator(migration_settings)
+        result = (
+            {"journal": str(migrator.apply(args.migration_id)), "applied": True}
+            if args.apply
+            else migrator.plan()
+        )
+        print(json.dumps(result, ensure_ascii=False))
+        return
     if args.command == "project-audit":
         from .project_audit import audit_project, write_audit as write_project_audit
 
@@ -434,6 +472,120 @@ def main() -> None:
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
 
+    if args.command in {
+        "dataset-list",
+        "dataset-show",
+        "dataset-verify",
+        "dataset-resolve",
+        "dataset-promote",
+        "registry-rebuild",
+    }:
+        from .dataset_manifest import verify_dataset_manifest
+        from .dataset_registry import DatasetRegistry
+        from .dataset_resolver import resolve_dataset
+
+        dataset_registry = DatasetRegistry(settings.registry_path)
+        dataset_registry.initialize()
+        if args.command == "dataset-list":
+            versions = dataset_registry.list_versions(args.name)
+            print(
+                json.dumps(
+                    [
+                        {
+                            "versionId": item.version_id,
+                            "datasetName": item.dataset_name,
+                            "layer": item.layer,
+                            "status": item.status,
+                            "dataPath": str(item.data_path),
+                            "createdAtUtc": item.created_at_utc,
+                        }
+                        for item in versions
+                    ],
+                    ensure_ascii=False,
+                )
+            )
+        elif args.command == "registry-rebuild":
+            print(json.dumps({"registered": dataset_registry.rebuild(args.root or settings.paths.root)}))
+        elif args.command == "dataset-promote":
+            direct = dataset_registry.get_version(args.reference)
+            version_id = (
+                direct.version_id
+                if direct is not None
+                else dataset_registry.resolve(args.reference).version_id
+            )
+            promoted = dataset_registry.promote(args.alias, version_id)
+            print(json.dumps({"alias": args.alias, "versionId": promoted.version_id}))
+        else:
+            resolved = resolve_dataset(settings, getattr(args, "reference", None), allow_legacy=False)
+            if args.command == "dataset-resolve":
+                print(
+                    json.dumps(
+                        {
+                            "reference": resolved.reference,
+                            "versionId": resolved.version_id,
+                            "path": str(resolved.data_path),
+                        }
+                    )
+                )
+            elif args.command == "dataset-show":
+                print(resolved.manifest_path.read_text(encoding="utf-8"))
+            else:
+                verified = verify_dataset_manifest(
+                    resolved.manifest_path, verify_files=not args.metadata_only
+                )
+                print(json.dumps({"versionId": verified["version_id"], "verified": True}))
+        return
+
+    dataset_ref = getattr(args, "dataset_ref", None)
+    if dataset_ref:
+        from dataclasses import replace
+        from .dataset_resolver import resolve_dataset
+
+        resolved = resolve_dataset(settings, dataset_ref, allow_legacy=False)
+        settings = replace(settings, qlib_data_uri=resolved.data_path)
+
+    if args.command == "dataset-build":
+        import uuid
+
+        from .dataset_registry import DatasetRegistry
+        from .fundamentals import build_pit_from_extended
+        from .lakehouse import freeze_pipeline_layers
+        from .normalize import build_all_curated, export_full_staging
+        from .qlib_export import dump_full
+
+        run_id = f"dataset-build-{uuid.uuid4().hex}"
+        run_registry = DatasetRegistry(settings.registry_path)
+        run_registry.start_pipeline_run(run_id, "dataset_build")
+        try:
+            build_pit_from_extended(settings)
+            build_all_curated(settings, args.start, args.end)
+            export_full_staging(settings, force=True)
+            snapshots = freeze_pipeline_layers(
+                settings,
+                mode="full",
+                gold_sources=(("qlib_input", settings.paths.staging_full),),
+            )
+            path = dump_full(
+                settings,
+                single_thread=args.single_thread,
+                sync_context={
+                    "dataset_parents": [
+                        {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
+                    ]
+                },
+            )
+        except Exception as exc:
+            run_registry.finish_pipeline_run(run_id, status="FAILED", error_code=type(exc).__name__)
+            raise
+        run_registry.finish_pipeline_run(
+            run_id,
+            status="SUCCEEDED",
+            dataset_version_id=path.name,
+            manifest_path=path / "dataset_manifest.json",
+        )
+        print(json.dumps({"dataset": str(path), "manifest": str(path / "dataset_manifest.json")}))
+        return
+
     if args.command == "ops-query":
         from .ops_cli import query_ops
 
@@ -488,13 +640,13 @@ def main() -> None:
     if args.command in {"model-deploy", "model-rollback", "model-status"}:
         from .model_registry import ModelRegistry
 
-        registry = ModelRegistry(settings)
+        model_registry = ModelRegistry(settings)
         if args.command == "model-deploy":
-            registry_result = registry.deploy(args.deployment_id, device=args.device)
+            registry_result = model_registry.deploy(args.deployment_id, device=args.device)
         elif args.command == "model-rollback":
-            registry_result = registry.rollback(args.deployment_id, device=args.device)
+            registry_result = model_registry.rollback(args.deployment_id, device=args.device)
         else:
-            registry_result = registry.current()
+            registry_result = model_registry.current()
         registry_result.pop("metadata_json", None)
         print(json.dumps(registry_result, ensure_ascii=False))
         return
@@ -513,10 +665,10 @@ def main() -> None:
             supersede=args.supersede,
         )
         live_payload: dict[str, Any] = {
-                    "signalId": live_result.signal_id,
-                    "manifest": str(live_result.manifest_path),
-                    "health": live_result.health.to_dict(),
-                }
+            "signalId": live_result.signal_id,
+            "manifest": str(live_result.manifest_path),
+            "health": live_result.health.to_dict(),
+        }
         if args.compare_research:
             from .live_parity import compare_research_live_scores
 
@@ -527,7 +679,8 @@ def main() -> None:
                 live_result.score_path,
                 signal_date=args.as_of,
                 topk=topk,
-                output_path=args.parity_output or live_result.manifest_path.parent / "research_live_parity.json",
+                output_path=args.parity_output
+                or live_result.manifest_path.parent / "research_live_parity.json",
             )
             live_payload["parity"] = parity
         print(json.dumps(live_payload, ensure_ascii=False))
@@ -551,9 +704,7 @@ def main() -> None:
     if args.command == "daily-action-run":
         from .pretrade_runner import run_pretrade_actions
 
-        action_result = run_pretrade_actions(
-            settings, trade_date=args.trade_date, notify=not args.no_notify
-        )
+        action_result = run_pretrade_actions(settings, trade_date=args.trade_date, notify=not args.no_notify)
         print(
             json.dumps(
                 {
@@ -590,16 +741,16 @@ def main() -> None:
             with_pretrade=args.with_pretrade,
         )
         replay_payload = json.loads(replay_path.read_text(encoding="utf-8"))
-        print(json.dumps({"report": str(replay_path), "passed": replay_payload["passed"]}, ensure_ascii=False))
+        print(
+            json.dumps({"report": str(replay_path), "passed": replay_payload["passed"]}, ensure_ascii=False)
+        )
         if not replay_payload["passed"]:
             raise SystemExit(2)
         return
     if args.command == "shadow-run":
         from .shadow_runner import run_shadow
 
-        shadow_result = run_shadow(
-            settings, trade_date=args.trade_date, config_path=args.shadow_config
-        )
+        shadow_result = run_shadow(settings, trade_date=args.trade_date, config_path=args.shadow_config)
         print(json.dumps(shadow_result.__dict__, ensure_ascii=False, default=str))
         return
 
@@ -641,6 +792,16 @@ def main() -> None:
             groups=args.groups,
             force=args.force,
         )
+        groups = result.get("groups", [])
+        if isinstance(groups, list) and "financial" in groups:
+            from .fundamentals import build_pit_from_extended
+
+            source = settings.paths.raw / "extended" / "fina_indicator_vip"
+            result["pit_fundamentals"] = (
+                str(build_pit_from_extended(settings))
+                if any(source.glob("trade_date=*/data.parquet"))
+                else "unavailable:fina_indicator_vip"
+            )
         print(json.dumps(result, ensure_ascii=False))
         return
     if args.command == "export-kline":
@@ -880,7 +1041,9 @@ def main() -> None:
             else:
                 model_id = str(pd.read_csv(research_result)["model_id"].iloc[0])
                 research_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
-                print(json.dumps(_report_payload(research_manifest_path, research_result), ensure_ascii=False))
+                print(
+                    json.dumps(_report_payload(research_manifest_path, research_result), ensure_ascii=False)
+                )
         else:
             train = tuple(args.train) if args.train else None
             valid = tuple(args.valid) if args.valid else None

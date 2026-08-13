@@ -46,22 +46,36 @@ class Paths:
     quality: Path
     state: Path
     models: Path
+    bronze: Path
+    silver: Path
+    gold: Path
+    registry: Path
+    qlib_versions: Path
+    legacy: Path
+    migration: Path
 
     @classmethod
     def from_root(cls, root: Path) -> "Paths":
         return cls(
             root=root,
-            raw=root / "raw",
-            raw_revisions=root / "raw_revisions",
-            curated=root / "curated" / "daily",
-            staging_full=root / "staging" / "full",
-            staging_update=root / "staging" / "update",
-            staging_repair=root / "staging" / "repair",
-            metadata=root / "metadata",
+            raw=root / "bronze" / "tushare" / "current",
+            raw_revisions=root / "bronze" / "tushare" / "revisions",
+            curated=root / "silver" / "daily" / "current",
+            staging_full=root / "gold" / "qlib_staging" / "full",
+            staging_update=root / "gold" / "qlib_staging" / "update",
+            staging_repair=root / "gold" / "qlib_staging" / "repair",
+            metadata=root / "silver" / "reference" / "current",
             output=root / "output",
             quality=root / "quality",
             state=root / "state",
             models=root / "models",
+            bronze=root / "bronze" / "tushare",
+            silver=root / "silver",
+            gold=root / "gold",
+            registry=root / "registry",
+            qlib_versions=root / "qlib" / "versions",
+            legacy=root / ".legacy",
+            migration=root / ".migration",
         )
 
     def mkdirs(self) -> None:
@@ -148,3 +162,29 @@ class Settings:
         if self.qlib_repo is None or not self.qlib_repo.exists():
             raise RuntimeError("QLIB_REPO is required and must exist for this command")
         return self.qlib_repo
+
+    @property
+    def registry_path(self) -> Path:
+        storage = self.data.get("storage", {})
+        configured = storage.get("registry_path") if isinstance(storage, dict) else None
+        if not configured:
+            return self.paths.registry / "qlib.sqlite"
+        path = Path(str(configured)).expanduser()
+        return path.resolve() if path.is_absolute() else (self.config_path.parent.parent / path).resolve()
+
+    @property
+    def qlib_versions_root(self) -> Path:
+        configured = self.data.get("qlib", {}).get("versions_root")
+        if not configured:
+            return self.paths.qlib_versions
+        path = Path(str(configured)).expanduser()
+        return path.resolve() if path.is_absolute() else (self.config_path.parent.parent / path).resolve()
+
+    @property
+    def qlib_dataset_name(self) -> str:
+        qlib_cfg = self.data.get("qlib", {})
+        return str(qlib_cfg.get("dataset_name") or qlib_cfg.get("dataset_version") or "cn_tushare")
+
+    @property
+    def qlib_dataset_ref(self) -> str:
+        return str(self.data.get("qlib", {}).get("dataset_ref") or "research-current")

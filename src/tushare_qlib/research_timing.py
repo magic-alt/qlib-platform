@@ -58,6 +58,9 @@ def _read_dates(path: Path) -> pd.DatetimeIndex:
 
 
 def shared_research_calendar(settings: Settings) -> pd.DatetimeIndex:
+    from .dataset_resolver import pin_dataset
+
+    settings, _ = pin_dataset(settings)
     """Return dates present in raw partitions, Qlib data and the official open calendar."""
 
     raw = pd.to_datetime(

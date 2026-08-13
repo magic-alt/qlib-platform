@@ -58,6 +58,13 @@ def _replay_paths(settings: Settings, output: Path, state: Path) -> Paths:
         quality=source.quality,
         state=state,
         models=source.models,
+        bronze=source.bronze,
+        silver=source.silver,
+        gold=source.gold,
+        registry=source.registry,
+        qlib_versions=source.qlib_versions,
+        legacy=source.legacy,
+        migration=source.migration,
     )
 
 
@@ -90,7 +97,9 @@ def run_production_replay(
         raise ValueError("production replay range contains no open trading dates")
     snapshots = Path(snapshot_root).expanduser().resolve()
     snapshot_by_date = {date: _snapshot_for_date(snapshots, date) for date in dates}
-    replay_root = settings.paths.output / "replay" / f"{pd.Timestamp(start):%Y%m%d}_{pd.Timestamp(end):%Y%m%d}"
+    replay_root = (
+        settings.paths.output / "replay" / f"{pd.Timestamp(start):%Y%m%d}_{pd.Timestamp(end):%Y%m%d}"
+    )
     replay_output = replay_root / "artifacts"
     replay_output.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, Any]] = []
@@ -108,7 +117,9 @@ def run_production_replay(
                     as_of=signal_date,
                     deployment_id=active_deployment,
                     require_daily_sync=False,
-                    health_now_utc=(pd.Timestamp(signal_date).tz_localize("UTC") + pd.Timedelta(hours=23)).to_pydatetime(),
+                    health_now_utc=(
+                        pd.Timestamp(signal_date).tz_localize("UTC") + pd.Timedelta(hours=23)
+                    ).to_pydatetime(),
                 )
                 manifest = json.loads(inference.manifest_path.read_text(encoding="utf-8"))
                 row: dict[str, Any] = {

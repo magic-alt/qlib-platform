@@ -16,6 +16,7 @@ import yaml
 from .artifact_resolver import ArtifactResolver, sha256_path
 from .artifacts import ArtifactType
 from .feature_store import prepare_feature_data
+from .dataset_resolver import pin_dataset
 from .live_artifacts import payload_sha256, stamp_live_artifact
 from .model_bundle import LoadedModelBundle, load_model_bundle
 from .model_registry import ModelRegistry
@@ -46,7 +47,9 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     os.close(fd)
     temporary = Path(temporary_name)
     try:
-        temporary.write_text(json.dumps(dict(value), ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        temporary.write_text(
+            json.dumps(dict(value), ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
         os.replace(temporary, path)
     finally:
         if temporary.exists():
@@ -79,7 +82,9 @@ def prepare_live_features(raw: pd.DataFrame, bundle: LoadedModelBundle) -> pd.Da
     missing = set(bundle.feature_columns) - set(features.columns)
     extra = set(features.columns) - set(bundle.feature_columns)
     if missing or extra:
-        raise ValueError(f"live raw feature schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}")
+        raise ValueError(
+            f"live raw feature schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
+        )
     features = features.loc[:, bundle.feature_columns]
     values = features.to_numpy(dtype=float)
     values = (values - bundle.mean) / bundle.scale
@@ -98,9 +103,7 @@ def _dataset_sha(settings: Settings) -> str:
 def _previous_live_score(
     settings: Settings, state: OpsState, *, signal_date: str, deployment_id: str
 ) -> pd.Series | None:
-    previous = state.previous_pass_signal(
-        signal_date=signal_date, deployment_id=deployment_id
-    )
+    previous = state.previous_pass_signal(signal_date=signal_date, deployment_id=deployment_id)
     if previous is None:
         return None
     manifest_path = _production_resolver(settings).resolve(str(previous["manifest_uri"]))
@@ -123,6 +126,7 @@ def run_live_inference(
     supersede: bool = False,
     health_now_utc: datetime | None = None,
 ) -> LiveInferenceResult:
+    settings, _ = pin_dataset(settings)
     registry = ModelRegistry(settings)
     deployment = registry.state.deployment(deployment_id) if deployment_id else registry.current()
     if deployment["status"] != "DEPLOYED":
@@ -150,14 +154,18 @@ def run_live_inference(
     if len(dates) != 1 or dates[0] != expected:
         raise ValueError("live inference did not produce exactly the requested signal date")
     trade_date = _next_trade_date(settings, expected)
-    core = pd.DataFrame(
-        {
-            "signal_date": expected.strftime("%Y-%m-%d"),
-            "trade_date": trade_date,
-            "instrument": score.index.get_level_values("instrument").astype(str),
-            "score": score.to_numpy(dtype=float),
-        }
-    ).sort_values(["score", "instrument"], ascending=[False, True]).reset_index(drop=True)
+    core = (
+        pd.DataFrame(
+            {
+                "signal_date": expected.strftime("%Y-%m-%d"),
+                "trade_date": trade_date,
+                "instrument": score.index.get_level_values("instrument").astype(str),
+                "score": score.to_numpy(dtype=float),
+            }
+        )
+        .sort_values(["score", "instrument"], ascending=[False, True])
+        .reset_index(drop=True)
+    )
     core["score_rank"] = np.arange(1, len(core) + 1, dtype=int)
     topk_count = int(canonical["strategy"]["topk"])
     topk_core = core.head(topk_count).copy()

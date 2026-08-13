@@ -89,7 +89,9 @@ def _changed_symbols(old: pd.DataFrame, new: pd.DataFrame) -> set[str]:
         if "ts_code" in new
         else {}
     )
-    return {code for code in old_groups.keys() | new_groups.keys() if old_groups.get(code) != new_groups.get(code)}
+    return {
+        code for code in old_groups.keys() | new_groups.keys() if old_groups.get(code) != new_groups.get(code)
+    }
 
 
 class DailySyncService:
@@ -152,7 +154,9 @@ class DailySyncService:
                 }
             for required in ("daily", "adj_factor", "daily_basic"):
                 if required not in validation:
-                    raise RuntimeError(f"required endpoint did not produce a staged frame: {required} {trade_date}")
+                    raise RuntimeError(
+                        f"required endpoint did not produce a staged frame: {required} {trade_date}"
+                    )
             report = validate_raw_day(validation, trade_date)
             assert_quality(report)
             write_report(report, self.settings.paths.quality / "raw" / f"{trade_date}.json")
@@ -228,11 +232,7 @@ class DailySyncService:
             old = self.store.read(dataset, trade_date)
             existed = self.store.exists(dataset, trade_date)
             logical_hash = frame_content_sha256(frame, key_columns=("ts_code", "trade_date"))
-            old_hash = (
-                frame_content_sha256(old, key_columns=("ts_code", "trade_date"))
-                if existed
-                else None
-            )
+            old_hash = frame_content_sha256(old, key_columns=("ts_code", "trade_date")) if existed else None
             if old_hash == logical_hash:
                 continue
             symbols = _changed_symbols(old, frame)
@@ -259,7 +259,9 @@ class DailySyncService:
         return sorted(changed_dates), revised_symbols, changes
 
     def _qlib_last_date(self) -> str | None:
-        path = self.settings.qlib_data_uri / "calendars" / "day.txt"
+        from .dataset_resolver import resolve_dataset
+
+        path = resolve_dataset(self.settings).data_path / "calendars" / "day.txt"
         if not path.is_file():
             return None
         values = [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -306,6 +308,7 @@ class DailySyncService:
             export_symbol_repair_staging,
         )
         from .qlib_export import dump_full, dump_update_and_fix
+        from .lakehouse import freeze_pipeline_layers
 
         for trade_date in changed_dates:
             if self.store.exists("daily", trade_date):
@@ -314,6 +317,14 @@ class DailySyncService:
         if force_full or last_date is None:
             build_all_curated(self.settings)
             export_full_staging(self.settings, force=True)
+            snapshots = freeze_pipeline_layers(
+                self.settings,
+                mode="full",
+                gold_sources=(("qlib_input", self.settings.paths.staging_full),),
+            )
+            sync_context["dataset_parents"] = [
+                {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
+            ]
             dump_full(self.settings, sync_context=sync_context)
             return {"mode": "full", "append_dates": [], "repair_symbols": []}
 
@@ -327,18 +338,27 @@ class DailySyncService:
             export_incremental_staging(self.settings, append_dates)
         if repair_symbols:
             export_symbol_repair_staging(self.settings, repair_symbols)
+        mode = (
+            "update_fix"
+            if append_dates and repair_symbols
+            else ("update" if append_dates else ("repair" if repair_symbols else "none"))
+        )
         if append_dates or repair_symbols:
+            sources = []
+            if append_dates:
+                sources.append(("qlib_update", self.settings.paths.staging_update))
+            if repair_symbols:
+                sources.append(("qlib_repair", self.settings.paths.staging_repair))
+            snapshots = freeze_pipeline_layers(self.settings, mode=mode, gold_sources=sources)
+            sync_context["dataset_parents"] = [
+                {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
+            ]
             dump_update_and_fix(
                 self.settings,
                 append=bool(append_dates),
                 repair=bool(repair_symbols),
                 sync_context=sync_context,
             )
-        mode = (
-            "update_fix"
-            if append_dates and repair_symbols
-            else ("update" if append_dates else ("repair" if repair_symbols else "none"))
-        )
         return {"mode": mode, "append_dates": append_dates, "repair_symbols": repair_symbols}
 
     def run(
@@ -360,6 +380,10 @@ class DailySyncService:
             "started_at_utc": started.isoformat(),
         }
         _atomic_json(payload, manifest_path)
+        from .dataset_registry import DatasetRegistry
+
+        run_registry = DatasetRegistry(self.settings.registry_path)
+        run_registry.start_pipeline_run(run_id, "daily_sync", manifest_path=manifest_path)
         try:
             eligible = self._eligible_date(as_of)
             dates = self._market_dates(eligible)
@@ -440,6 +464,19 @@ class DailySyncService:
             )
             _atomic_json(payload, manifest_path)
             _atomic_json(payload, self.settings.paths.state / "daily_sync" / "latest.json")
+            dataset_version_id = None
+            if qlib_result is not None and qlib_result.get("mode") != "none":
+                from .dataset_resolver import resolve_dataset
+
+                resolved_version_id = resolve_dataset(self.settings).version_id
+                if run_registry.get_version(resolved_version_id) is not None:
+                    dataset_version_id = resolved_version_id
+            run_registry.finish_pipeline_run(
+                run_id,
+                status="SUCCEEDED",
+                dataset_version_id=dataset_version_id,
+                manifest_path=manifest_path,
+            )
             return manifest_path
         except Exception as exc:
             payload.update(
@@ -452,6 +489,12 @@ class DailySyncService:
             )
             _atomic_json(payload, manifest_path)
             _atomic_json(payload, self.settings.paths.state / "daily_sync" / "latest.json")
+            run_registry.finish_pipeline_run(
+                run_id,
+                status="FAILED",
+                manifest_path=manifest_path,
+                error_code=type(exc).__name__,
+            )
             raise
 
 

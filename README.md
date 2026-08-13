@@ -4,6 +4,12 @@
 
 1. Tushare 只负责采集；训练和回测不直接访问远端 API。
 2. 原始层、整理层、Qlib 二进制层分离，所有阶段均可重跑和审计。
+3. Parquet 是事实层；Qlib Bin 是带版本的派生数据，研究运行必须固定到不可变版本。
+
+当前 Qlib 数据平台采用 `Bronze → Silver → Gold → Qlib versions`，通过 SQLite Registry 管理
+dataset alias、lineage 和 research run。完整的布局、PIT 口径、迁移与命令说明见
+[`docs/qlib_data_platform.md`](docs/qlib_data_platform.md)。LEAN、OMS、交易风控和券商写接口不属于
+本次 Qlib 数据平台边界。
 3. 复权价格、成交量和 `factor` 使用同一套可逆公式。
 4. 财务数据必须按公告日做 point-in-time 展开，不能按报告期直接回填。
 5. 全量构建与每日增量使用不同 staging 目录。
@@ -68,9 +74,9 @@ tq --config configs/pipeline_lean_mysql.yaml dump-full --single-thread
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill-extended --start 20000101 --end 20260811 --workers 8
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20160104 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20160104 --end 20260810
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml feature-store --start 20160104 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml dataset-build --start 20160104 --end 20260810
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml feature-store --dataset-ref research-current --start 20160104 --end 20260810
 ```
 
 完成首次构建后，可将 TuShare 下载和 Qlib 数据发布作为独立后台任务。先运行
@@ -89,8 +95,7 @@ sync-dividends --bootstrap --resume 补齐公司行为，再用 daily-sync --che
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml backfill --start 20230801 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20230801 --end 20260810
 <venv-python> -m tushare_qlib --config configs/pipeline.yaml curate --start 20230801 --end 20260810
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml stage-full --force
-<venv-python> -m tushare_qlib --config configs/pipeline.yaml dump-full --single-thread
+<venv-python> -m tushare_qlib --config configs/pipeline.yaml dataset-build --start 20160104 --end 20260810 --single-thread
 ```
 
 ## 4. 训练、回测和选股

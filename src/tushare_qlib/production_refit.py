@@ -10,6 +10,7 @@ import numpy as np
 
 from .canonical_config import CanonicalConfig
 from .feature_store import feature_store_enabled, prepare_feature_data
+from .dataset_resolver import pin_dataset
 from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .model_bundle import create_model_bundle
 from .model_registry import ModelRegistry
@@ -74,6 +75,7 @@ def production_refit_plan(settings: Settings, as_of: str) -> ProductionRefitPlan
     train_start_pos = train_end_pos - train_days + 1
     if train_start_pos < 0:
         raise ValueError("insufficient history for the approved production refit recipe")
+
     def fmt(index: int) -> str:
         return str(calendar[index].strftime("%Y-%m-%d"))
 
@@ -142,11 +144,15 @@ def _assert_recipe(settings: Settings, release: Mapping[str, Any], canonical: Ma
 
 
 def refit_production_model(settings: Settings, research_run: str | Path, *, as_of: str) -> Path:
+    settings, _ = pin_dataset(settings)
     _, release = _research_manifest(settings, research_run)
     profile = load_model_profile(settings)
     runtime = resolve_runtime(profile)
     approved_runtime = release.get("runtime", {})
-    if not isinstance(approved_runtime, Mapping) or approved_runtime.get("profileFingerprint") != profile.fingerprint:
+    if (
+        not isinstance(approved_runtime, Mapping)
+        or approved_runtime.get("profileFingerprint") != profile.fingerprint
+    ):
         raise ValueError("configured model profile fingerprint differs from approved research release")
     plan = production_refit_plan(settings, as_of)
     research = settings.data.get("research", {})
@@ -220,7 +226,9 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
         raise FileNotFoundError(f"dataset manifest is required for production refit: {dataset_manifest}")
     release_lineage = release.get("lineage", {})
     lineage = {
-        "researchLineageId": release_lineage.get("lineageId") if isinstance(release_lineage, Mapping) else None,
+        "researchLineageId": release_lineage.get("lineageId")
+        if isinstance(release_lineage, Mapping)
+        else None,
         "researchRunId": str(release["externalRunId"]),
         "qlibPlatform": git_revision(Path(__file__).resolve().parents[2]),
         "qlib": git_revision(resolve_qlib_repo(settings.qlib_repo)),

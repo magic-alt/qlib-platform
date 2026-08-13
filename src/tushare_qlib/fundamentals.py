@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+
+from .settings import Settings
 
 
 PIT_FIELDS = (
@@ -38,30 +41,106 @@ def build_pit_fundamentals(reports: pd.DataFrame, calendar: pd.DataFrame) -> pd.
     records["end_date"] = pd.to_datetime(records["end_date"], errors="coerce").dt.normalize()
     if records[["ann_date", "end_date"]].isna().any().any():
         raise ValueError("fundamental reports contain invalid dates")
+    if "f_ann_date" in records:
+        final_announcement = pd.to_datetime(records["f_ann_date"], errors="coerce").dt.normalize()
+        records["source_ann_date"] = pd.concat([records["ann_date"], final_announcement], axis=1).max(axis=1)
+    else:
+        records["source_ann_date"] = records["ann_date"]
+    records["ingest_time"] = pd.to_datetime(
+        records.get("ingest_time", pd.Series(pd.NaT, index=records.index)), errors="coerce", utc=True
+    )
+    update_flag = records.get("update_flag", pd.Series("0", index=records.index))
+    records["update_flag"] = update_flag.astype(str)
+    effective_positions = dates.searchsorted(records["source_ann_date"], side="right")
+    records["effective_time"] = [
+        dates[position] if position < len(dates) else pd.NaT for position in effective_positions
+    ]
+    records = records.dropna(subset=["effective_time"])
     rows: list[pd.DataFrame] = []
     open_days = pd.DataFrame({"trade_date": dates})
-    for code, group in records.sort_values(["ann_date", "end_date"]).groupby("ts_code", sort=True):
-        events = group.drop_duplicates("ann_date", keep="last")[["ann_date", *PIT_FIELDS]].copy()
+    for code, group in records.groupby("ts_code", sort=True):
+        group = group.sort_values(
+            ["effective_time", "end_date", "update_flag", "ingest_time"], na_position="first"
+        ).drop_duplicates(["end_date", "effective_time"], keep="last")
+        known_periods: dict[pd.Timestamp, pd.Series] = {}
+        event_rows: list[dict[str, Any]] = []
+        for effective_time, effective_group in group.groupby("effective_time", sort=True):
+            for row in effective_group.itertuples(index=False):
+                values = pd.Series(row._asdict())
+                known_periods[pd.Timestamp(values["end_date"])] = values
+            latest_period = max(known_periods)
+            latest = known_periods[latest_period]
+            event_rows.append(
+                {
+                    "effective_time": pd.Timestamp(effective_time),
+                    "source_period": latest_period,
+                    "source_ann_date": latest["source_ann_date"],
+                    "ingest_time": latest["ingest_time"],
+                    **{field: latest[field] for field in PIT_FIELDS},
+                }
+            )
+        events = pd.DataFrame(event_rows)
         events[list(PIT_FIELDS)] = events[list(PIT_FIELDS)].apply(pd.to_numeric, errors="coerce")
-        # A weekend/holiday announcement becomes usable on the first following
-        # open day.  merge_asof also ensures a restatement only supersedes the
-        # previously known values after its own announcement timestamp.
         expanded = pd.merge_asof(
             open_days,
-            events.sort_values("ann_date"),
+            events.sort_values("effective_time"),
             left_on="trade_date",
-            right_on="ann_date",
+            right_on="effective_time",
             direction="backward",
             allow_exact_matches=True,
-        ).drop(columns="ann_date")
+        )
         expanded = expanded.loc[expanded[list(PIT_FIELDS)].notna().any(axis=1)]
         expanded.insert(0, "ts_code", str(code))
         rows.append(expanded)
     return (
         pd.concat(rows, ignore_index=True)
         if rows
-        else pd.DataFrame(columns=["ts_code", "trade_date", *PIT_FIELDS])
+        else pd.DataFrame(
+            columns=[
+                "ts_code",
+                "trade_date",
+                "effective_time",
+                "source_period",
+                "source_ann_date",
+                "ingest_time",
+                *PIT_FIELDS,
+            ]
+        )
     )
+
+
+def pit_fundamentals_path(settings: Settings) -> Path:
+    paths = settings.paths
+    gold = paths.gold / "pit" / "current" / "fundamentals_daily.parquet"
+    legacy = paths.curated / "fundamentals_pit.parquet"
+    return gold if gold.is_file() or not legacy.is_file() else legacy
+
+
+def build_pit_from_extended(settings: Settings) -> Path:
+    paths = settings.paths
+    source_root = paths.raw / "extended" / "fina_indicator_vip"
+    files = sorted(source_root.glob("trade_date=*/data.parquet"))
+    if not files:
+        raise FileNotFoundError(f"fina_indicator_vip Bronze partitions are missing: {source_root}")
+    reports = pd.concat([pd.read_parquet(path) for path in files], ignore_index=True)
+    mapping = {
+        "roe_waa": "roe_waa_pit",
+        "roa": "roa_pit",
+        "netprofit_margin": "netprofit_margin_pit",
+        "netprofit_yoy": "netprofit_yoy_pit",
+        "or_yoy": "or_yoy_pit",
+        "debt_to_assets": "debt_to_assets_pit",
+        "ocf_to_or": "ocf_to_or_pit",
+    }
+    reports = reports.rename(columns=mapping)
+    calendar = pd.read_parquet(paths.metadata / "trade_calendar.parquet")
+    result = build_pit_fundamentals(reports, calendar)
+    target = paths.gold / "pit" / "current" / "fundamentals_daily.parquet"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".parquet.tmp")
+    result.to_parquet(temporary, index=False)
+    temporary.replace(target)
+    return target
 
 
 def ingest_pit_fundamentals(

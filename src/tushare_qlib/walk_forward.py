@@ -26,6 +26,7 @@ from .research_timing import effective_label_gap, label_timing_from_settings, sh
 from .train_select import _research_label_horizon_days, train_backtest_select
 from .canonical_config import StrategySpec
 from .feature_store import feature_store_enabled, prepare_feature_data
+from .dataset_resolver import pin_dataset
 from .prediction_backtest import backtest_predictions
 
 
@@ -524,6 +525,7 @@ def run_walk_forward(
     topn: int | None = None,
     model_profile: str | Path | None = None,
 ) -> Path:
+    settings, pinned_dataset = pin_dataset(settings)
     orchestration_started = time.perf_counter()
     runtime = resolve_runtime(load_model_profile(settings, model_profile))
     calendar = shared_research_calendar(settings)
@@ -811,6 +813,7 @@ def run_walk_forward(
         "runKind": "walk_forward",
         "name": f"Qlib CSI300 walk-forward {start_date}..{end_date}",
         "dataset": manifests[-1]["dataset"],
+        "datasetVersionId": pinned_dataset.version_id,
         "model": {
             "name": (
                 "Alpha158-LGBM-WalkForward"
@@ -884,5 +887,8 @@ def run_walk_forward(
     )
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    from .dataset_registry import DatasetRegistry
+
+    DatasetRegistry(settings.registry_path).register_research_manifest(manifest_path)
     write_backtest_report(settings, output_dir)
     return manifest_path

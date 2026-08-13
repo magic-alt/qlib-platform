@@ -38,6 +38,7 @@ from .research_gate import (
 )
 from .research_timing import label_timing_from_settings, shared_research_calendar
 from .feature_store import feature_store_enabled, prepare_feature_data
+from .dataset_resolver import pin_dataset
 from .runtime_safety import resolve_qlib_parallel_runtime
 
 _DEFAULT_BENCHMARK = "SH000300"
@@ -543,6 +544,7 @@ def train_backtest_select(
     feature_store_metadata: dict[str, object] | None = None,
     artifact_level: str = "full",
 ) -> Path:
+    settings, pinned_dataset = pin_dataset(settings)
     if promotion_mode not in {"release", "component", "signal"}:
         raise ValueError("promotion_mode must be 'release', 'component', or 'signal'")
     if runtime is not None and model_profile is not None:
@@ -715,6 +717,7 @@ def train_backtest_select(
                 ),
                 "dataset": {
                     "fingerprint": _dataset_id(settings),
+                    "versionId": pinned_dataset.version_id,
                     "datasetId": canonical.dataset.dataset_id,
                     "source": canonical.dataset.source,
                     "universe": canonical.dataset.universe_name,
@@ -754,6 +757,9 @@ def train_backtest_select(
                 ],
             }
             manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            from .dataset_registry import DatasetRegistry
+
+            DatasetRegistry(settings.registry_path).register_research_manifest(manifest_path)
             return manifest_path
         with timings.measure("benchmark_load_seconds"):
             benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
@@ -1009,6 +1015,9 @@ def train_backtest_select(
                 "scorePath": str(signal_paths[latest]),
             }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        from .dataset_registry import DatasetRegistry
+
+        DatasetRegistry(settings.registry_path).register_research_manifest(manifest_path)
         if artifact_level == "full":
             with timings.measure("report_seconds"):
                 write_backtest_report(settings, artifact_dir)

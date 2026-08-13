@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -20,7 +22,7 @@ from .mysql_source import (
 )
 from .quality import assert_quality, validate_raw_day, write_report
 from .settings import Settings
-from .store import PartitionStore
+from .store import PartitionStore, _atomic_replace
 from .universe import (
     build_membership_from_source_intervals,
     build_membership_intervals,
@@ -43,6 +45,18 @@ SUSPEND_FIELDS = "ts_code,trade_date,suspend_timing,suspend_type"
 ST_FIELDS = "ts_code,name,trade_date,type,type_name"
 INDEX_DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
 INDEX_DAILY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
+
+
+def _write_parquet_atomic(frame: pd.DataFrame, path: Path) -> None:
+    """Replace mutable metadata without changing any hard-linked snapshot inode."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        frame.to_parquet(temporary, index=False)
+        _atomic_replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
@@ -176,7 +190,7 @@ class Extractor:
         master["list_date"] = pd.to_datetime(master["list_date"], errors="coerce")
         master["delist_date"] = pd.to_datetime(master["delist_date"], errors="coerce")
         path = self.settings.paths.metadata / "stock_master.parquet"
-        master.to_parquet(path, index=False)
+        _write_parquet_atomic(master, path)
         logger.info("Saved stock master: {} rows -> {}", len(master), path)
         return master
 
@@ -194,7 +208,7 @@ class Extractor:
         cal["cal_date"] = pd.to_datetime(cal["cal_date"], errors="raise")
         cal["is_open"] = cal["is_open"].astype(int)
         path = self.settings.paths.metadata / "trade_calendar.parquet"
-        cal.to_parquet(path, index=False)
+        _write_parquet_atomic(cal, path)
         logger.info("Saved trade calendar: {} rows -> {}", len(cal), path)
         return cal
 

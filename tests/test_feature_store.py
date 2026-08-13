@@ -75,6 +75,7 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
     )
     refresh_index = pd.MultiIndex.from_tuples(
         [
+            (pd.Timestamp("2026-01-02"), "SH600000"),
             (pd.Timestamp("2026-01-03"), "SH600000"),
             (pd.Timestamp("2026-01-04"), "SH600000"),
         ],
@@ -82,7 +83,7 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
     )
     frames = [
         pd.DataFrame([[1.0, 0.1], [2.0, 0.2]], index=original_index, columns=columns),
-        pd.DataFrame([[20.0, 0.2], [3.0, 0.3]], index=refresh_index, columns=columns),
+        pd.DataFrame([[1.0, 0.1], [20.0, 0.2], [3.0, 0.3]], index=refresh_index, columns=columns),
     ]
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr(
@@ -124,7 +125,9 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
     updated = materialize_feature_store(settings, "2026-01-02", "2026-01-04")
     loaded = load_feature_store(updated, "2026-01-02", "2026-01-04")
 
-    assert updated == store
+    assert updated != store
     assert len(calls) == 2
+    original = load_feature_store(store, "2026-01-02", "2026-01-03")
+    assert original.loc[(pd.Timestamp("2026-01-03"), "SH600000")].iloc[0] == 2.0
     assert loaded.loc[(pd.Timestamp("2026-01-03"), "SH600000")].iloc[0] == 20.0
     assert loaded.loc[(pd.Timestamp("2026-01-04"), "SH600000")].iloc[0] == 3.0

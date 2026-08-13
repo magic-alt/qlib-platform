@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 
-from .fundamentals import PIT_FIELDS
+from .fundamentals import PIT_FIELDS, pit_fundamentals_path
 from .quality import assert_quality, validate_curated, validate_normalized, write_report
 from .settings import Settings
 from .store import PartitionStore, _atomic_replace, sha256_file
@@ -93,7 +93,7 @@ def _merge_pit_fundamentals(
     trade_date: str,
     fundamentals: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    path = settings.paths.curated / "fundamentals_pit.parquet"
+    path = pit_fundamentals_path(settings)
     if not path.exists():
         result = frame.copy()
         for field in PIT_FIELDS:
@@ -207,10 +207,10 @@ def build_curated_day(
             )
         },
         "pit_fundamentals": {
-            "path": str(settings.paths.curated / "fundamentals_pit.parquet"),
+            "path": str(pit_fundamentals_path(settings)),
             "sha256": (
-                sha256_file(settings.paths.curated / "fundamentals_pit.parquet")
-                if (settings.paths.curated / "fundamentals_pit.parquet").exists()
+                sha256_file(pit_fundamentals_path(settings))
+                if pit_fundamentals_path(settings).exists()
                 else None
             ),
         },
@@ -235,7 +235,7 @@ def build_all_curated(settings: Settings, start_date: str | None = None, end_dat
     if not master_path.is_file():
         raise FileNotFoundError(f"stock master not found: {master_path}")
     master = pd.read_parquet(master_path)
-    fundamentals_path = settings.paths.curated / "fundamentals_pit.parquet"
+    fundamentals_path = pit_fundamentals_path(settings)
     pit_fundamentals = pd.read_parquet(fundamentals_path) if fundamentals_path.is_file() else None
     configured = configured_universe(settings)
     universe_membership = (
