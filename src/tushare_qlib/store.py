@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -113,8 +114,11 @@ class PartitionStore:
                 break
             time.sleep(0.1)
         else:
-            # Direct write fallback if tmp file keeps disappearing
-            df.to_parquet(target, index=False)
+            # Never truncate the current file in place: it may be hard-linked
+            # to an immutable Bronze revision.
+            fallback = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+            df.to_parquet(fallback, index=False)
+            _atomic_replace(fallback, target)
             actual_status = status or ("empty" if df.empty else "success")
             fallback_meta: dict[str, Any] = {
                 "dataset": dataset,
@@ -125,10 +129,13 @@ class PartitionStore:
                 "bytes": target.stat().st_size,
                 "sha256": sha256_file(target),
                 "written_at_utc": datetime.now(timezone.utc).isoformat(),
+                "ingest_run_id": uuid.uuid4().hex,
             }
             if metadata:
                 fallback_meta.update(metadata)
-            self._write_manifest(dataset, trade_date, fallback_meta)
+            fallback_meta.setdefault("content_sha256", fallback_meta["sha256"])
+            fallback_manifest = self._write_manifest(dataset, trade_date, fallback_meta)
+            self._persist_immutable_revision(dataset, trade_date, target, fallback_manifest, fallback_meta)
             return target
         _atomic_replace(tmp, target)
         actual_status = status or ("empty" if df.empty else "success")
@@ -141,10 +148,13 @@ class PartitionStore:
             "bytes": target.stat().st_size,
             "sha256": sha256_file(target),
             "written_at_utc": datetime.now(timezone.utc).isoformat(),
+            "ingest_run_id": uuid.uuid4().hex,
         }
         if metadata:
             meta.update(metadata)
-        self._write_manifest(dataset, trade_date, meta)
+        meta.setdefault("content_sha256", meta["sha256"])
+        manifest_path = self._write_manifest(dataset, trade_date, meta)
+        self._persist_immutable_revision(dataset, trade_date, target, manifest_path, meta)
         return target
 
     def write_if_changed(
@@ -207,6 +217,7 @@ class PartitionStore:
             "rows": 0,
             "columns": [],
             "written_at_utc": datetime.now(timezone.utc).isoformat(),
+            "ingest_run_id": uuid.uuid4().hex,
         }
         if metadata:
             meta.update(metadata)
@@ -218,6 +229,31 @@ class PartitionStore:
         tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         _atomic_replace(tmp, path)
         return path
+
+    def _persist_immutable_revision(
+        self,
+        dataset: str,
+        trade_date: str,
+        data_path: Path,
+        manifest_path: Path,
+        metadata: dict[str, Any],
+    ) -> None:
+        if self.root.name != "current" or self.root.parent.name != "tushare":
+            return
+        revision_hash = str(metadata.get("content_sha256") or metadata.get("sha256") or "")
+        if not revision_hash:
+            return
+        revision = self.root.parent / "revisions" / dataset / f"trade_date={trade_date}" / revision_hash
+        revision.mkdir(parents=True, exist_ok=True)
+        immutable_data = revision / "data.parquet"
+        immutable_manifest = revision / "manifest.json"
+        if not immutable_data.exists():
+            try:
+                os.link(data_path, immutable_data)
+            except OSError:
+                shutil.copy2(data_path, immutable_data)
+        if not immutable_manifest.exists():
+            shutil.copy2(manifest_path, immutable_manifest)
 
     def read(self, dataset: str, trade_date: str) -> pd.DataFrame:
         path = self.data_path(dataset, trade_date)

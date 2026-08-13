@@ -9,13 +9,14 @@ from typing import Any, Mapping
 
 import pandas as pd
 
+from .dataset_resolver import pin_dataset
 from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .research_timing import label_timing_from_settings
 from .runtime_safety import resolve_qlib_parallel_runtime
 from .settings import Settings
 from .store import sha256_file
 
-FEATURE_STORE_SCHEMA = "research_features_v2"
+FEATURE_STORE_SCHEMA = "research_features_v3"
 
 
 def _feature_store_config(settings: Settings) -> Mapping[str, Any]:
@@ -40,12 +41,13 @@ def _dataset_snapshot(settings: Settings) -> dict[str, object]:
         "syncContext": payload.get("sync_context"),
         "lastDate": smoke.get("last_date") if isinstance(smoke, Mapping) else None,
         "datasetId": payload.get("dataset_id"),
+        "versionId": payload.get("version_id") or payload.get("sha256"),
+        "manifestSha256": sha256_file(path),
         "fields": payload.get("fields"),
     }
 
 
 def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, object]:
-    del start_time, end_time
     project_root = Path(__file__).resolve().parents[2]
     snapshot = _dataset_snapshot(settings)
     implementation = [
@@ -56,6 +58,9 @@ def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, o
     return {
         "schema": FEATURE_STORE_SCHEMA,
         "datasetId": snapshot.get("datasetId") or settings.qlib_data_uri.name,
+        "datasetVersionId": snapshot.get("versionId") or snapshot.get("sha256"),
+        "datasetManifestSha256": snapshot.get("manifestSha256"),
+        "requestedCoverage": {"startTime": start_time, "endTime": end_time},
         "datasetFields": snapshot.get("fields"),
         "labelTiming": label_timing_from_settings(settings).to_manifest(),
         "universe": settings.data.get("universe", {}),
@@ -177,6 +182,7 @@ def _write_feature_store(
 def materialize_feature_store(
     settings: Settings, start_time: str, end_time: str, *, force: bool = False
 ) -> Path:
+    settings, _ = pin_dataset(settings)
     contract = _contract(settings, start_time, end_time)
     store_id = sha256_json(contract)[:32]
     root = _store_root(settings)
@@ -273,9 +279,7 @@ def load_feature_store(
         match = str(entry["name"]).removeprefix("year=").removesuffix(".parquet")
         if match.isdigit() and int(match) not in requested_years:
             continue
-        if not file_path.is_file() or (
-            verify_checksums and sha256_file(file_path) != entry.get("sha256")
-        ):
+        if not file_path.is_file() or (verify_checksums and sha256_file(file_path) != entry.get("sha256")):
             raise ValueError(f"feature-store partition checksum mismatch: {file_path}")
         frames.append(pd.read_parquet(file_path))
     if not frames:
@@ -292,6 +296,7 @@ def prepare_feature_data(
     manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
     return frame, {
         "featureStoreId": manifest["featureStoreId"],
+        "datasetVersionId": manifest.get("contract", {}).get("datasetVersionId"),
         "path": str(path),
         "rows": len(frame),
         "manifestSha256": sha256_file(path / "manifest.json"),

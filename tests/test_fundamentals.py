@@ -34,7 +34,8 @@ def test_pit_fundamentals_do_not_leak_before_announcement():
     )
     calendar = pd.DataFrame({"cal_date": ["2026-03-27", "2026-03-30", "2026-03-31"], "is_open": [1, 1, 1]})
     result = build_pit_fundamentals(reports, calendar)
-    assert result["trade_date"].dt.strftime("%Y-%m-%d").tolist() == ["2026-03-30", "2026-03-31"]
+    assert result["trade_date"].dt.strftime("%Y-%m-%d").tolist() == ["2026-03-31"]
+    assert result["effective_time"].dt.strftime("%Y-%m-%d").tolist() == ["2026-03-31"]
 
 
 def _report(ann_date: str, value: float) -> dict[str, object]:
@@ -63,6 +64,26 @@ def test_weekend_announcement_maps_to_next_open_day_and_restatement_is_asof():
         "2026-04-06",
     ]
     assert result["roe_waa_pit"].tolist() == [0.1, 0.1, 0.2]
+
+
+def test_older_period_restatement_does_not_replace_later_known_period():
+    reports = pd.DataFrame(
+        [
+            {**_report("2026-01-02", 0.1), "end_date": "2025-09-30"},
+            {**_report("2026-03-30", 0.2), "end_date": "2025-12-31"},
+            {**_report("2026-04-01", 0.9), "end_date": "2025-09-30", "update_flag": "1"},
+        ]
+    )
+    calendar = pd.DataFrame(
+        {"cal_date": ["2026-01-05", "2026-03-31", "2026-04-01", "2026-04-02"], "is_open": [1, 1, 1, 1]}
+    )
+
+    result = build_pit_fundamentals(reports, calendar)
+
+    assert result.loc[result["trade_date"] == pd.Timestamp("2026-04-02"), "roe_waa_pit"].item() == 0.2
+    assert result.loc[
+        result["trade_date"] == pd.Timestamp("2026-04-02"), "source_period"
+    ].item() == pd.Timestamp("2025-12-31")
 
 
 def test_pit_fundamentals_merge_into_daily_curated_partition(tmp_path: Path):

@@ -27,16 +27,27 @@ def test_logical_hash_ignores_row_order_and_archives_changed_partition(tmp_path:
         reordered, key_columns=("ts_code", "trade_date")
     )
 
-    _, changed, first_hash = store.write_if_changed(
-        "daily", "20260810", first, revision_root=revisions
-    )
+    _, changed, first_hash = store.write_if_changed("daily", "20260810", first, revision_root=revisions)
     assert changed is True
-    _, changed, _ = store.write_if_changed(
-        "daily", "20260810", reordered, revision_root=revisions
-    )
+    _, changed, _ = store.write_if_changed("daily", "20260810", reordered, revision_root=revisions)
     assert changed is False
 
     revised = first.copy()
     revised.loc[0, "close"] = 10.1
     store.write_if_changed("daily", "20260810", revised, revision_root=revisions)
     assert (revisions / "daily" / "trade_date=20260810" / first_hash / "data.parquet").is_file()
+
+
+def test_bronze_current_always_preserves_content_addressed_revision(tmp_path: Path):
+    store = PartitionStore(tmp_path / "bronze" / "tushare" / "current")
+    first = pd.DataFrame({"ts_code": ["000001.SZ"], "trade_date": ["20260810"], "close": [10.0]})
+    second = first.assign(close=11.0)
+
+    store.write("daily", "20260810", first)
+    first_hash = store.read_manifest("daily", "20260810")["content_sha256"]
+    store.write("daily", "20260810", second)
+    second_hash = store.read_manifest("daily", "20260810")["content_sha256"]
+
+    revision_root = tmp_path / "bronze" / "tushare" / "revisions" / "daily" / "trade_date=20260810"
+    assert pd.read_parquet(revision_root / first_hash / "data.parquet")["close"].item() == 10.0
+    assert pd.read_parquet(revision_root / second_hash / "data.parquet")["close"].item() == 11.0

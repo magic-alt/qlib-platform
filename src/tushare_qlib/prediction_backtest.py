@@ -9,6 +9,7 @@ from typing import Any, Mapping, cast
 import pandas as pd
 
 from .canonical_config import StrategySpec
+from .dataset_resolver import pin_dataset
 from .lineage import sha256_json
 from .model_runtime import StageTimings
 from .runtime_safety import resolve_qlib_parallel_runtime
@@ -132,6 +133,7 @@ def backtest_predictions(
 ) -> Path:
     """Run portfolio construction from immutable OOS predictions without fitting a model."""
 
+    settings, pinned_dataset = pin_dataset(settings)
     if artifact_level not in {"minimal", "full"}:
         raise ValueError("artifact_level must be 'minimal' or 'full'")
     source_path = Path(predictions).expanduser().resolve()
@@ -272,7 +274,12 @@ def backtest_predictions(
             "externalRunId": run_id,
             "runKind": "predictions_only_backtest",
             "name": f"Predictions-only portfolio {start_time}..{end_time}",
-            "dataset": {"fingerprint": _dataset_id(settings), "startDate": start_time, "endDate": end_time},
+            "dataset": {
+                "fingerprint": _dataset_id(settings),
+                "versionId": pinned_dataset.version_id,
+                "startDate": start_time,
+                "endDate": end_time,
+            },
             "sourcePrediction": {
                 "localPath": str(source_path),
                 "sha256": source_sha,
@@ -282,13 +289,16 @@ def backtest_predictions(
             "portfolioFingerprint": portfolio_fingerprint,
             "execution": {
                 "benchmark": benchmark or "SH000300",
-                "dealPrice": cast(Any, _portfolio_config(
-                    settings,
-                    policy=policy,
-                    benchmark="<LOCAL_SERIES>",
-                    start_time=start_time,
-                    end_time=end_time,
-                ))["backtest"]["exchange_kwargs"]["deal_price"],
+                "dealPrice": cast(
+                    Any,
+                    _portfolio_config(
+                        settings,
+                        policy=policy,
+                        benchmark="<LOCAL_SERIES>",
+                        start_time=start_time,
+                        end_time=end_time,
+                    ),
+                )["backtest"]["exchange_kwargs"]["deal_price"],
                 "topkDropout": asdict(strategy),
             },
             "promotion": {
@@ -318,4 +328,7 @@ def backtest_predictions(
         recorder.log_metrics(
             **{f"timing.{key}": float(value) for key, value in timings.to_dict()["phasesSeconds"].items()}
         )
+    from .dataset_registry import DatasetRegistry
+
+    DatasetRegistry(settings.registry_path).register_research_manifest(manifest_path)
     return manifest_path

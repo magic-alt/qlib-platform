@@ -1,4 +1,6 @@
 project_root: ./data
+storage:
+  registry_path: ./data/registry/qlib.sqlite
 start_date: "20160104"
 end_date: "20260810"
 calendar_end_date: "20261231"
@@ -46,6 +48,9 @@ qlib:
   dataset_dir: ${QLIB_DATA_URI}
   frequency: day
   dataset_version: cn_tushare_v1
+  dataset_name: cn_tushare
+  dataset_ref: research-current
+  versions_root: ./data/qlib/versions
   export:
     copy_on_write_update: true
     max_workers: 4

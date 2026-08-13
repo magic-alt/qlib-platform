@@ -1,4 +1,6 @@
 project_root: ./data/lean_mysql
+storage:
+  registry_path: ./data/lean_mysql/registry/qlib.sqlite
 start_date: "20160808"
 end_date: "20260810"
 calendar_end_date: "20261231"
@@ -45,6 +47,9 @@ qlib:
   dataset_dir: ./data/qlib/lean_mysql_csi300_10y
   frequency: day
   dataset_version: cn_tushare_v1
+  dataset_name: cn_tushare_lean_mysql
+  dataset_ref: research-current
+  versions_root: ./data/lean_mysql/qlib/versions
   export:
     copy_on_write_update: true
     max_workers: 4
