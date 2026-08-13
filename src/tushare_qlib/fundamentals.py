@@ -147,6 +147,14 @@ def build_pit_from_extended(settings: Settings) -> Path:
     if not files:
         raise FileNotFoundError(f"fina_indicator_vip Bronze partitions are missing: {source_root}")
     reports = pd.concat([pd.read_parquet(path) for path in files], ignore_index=True)
+    valid_report = (
+        reports["ts_code"].notna()
+        & pd.to_datetime(reports["ann_date"], errors="coerce").notna()
+        & pd.to_datetime(reports["end_date"], errors="coerce").notna()
+    )
+    reports = reports.loc[valid_report].copy()
+    if reports.empty:
+        raise ValueError("fina_indicator_vip contains no reports with valid identifiers and dates")
     mapping = {
         "roe_waa": "roe_waa_pit",
         "roa": "roa_pit",
@@ -154,9 +162,16 @@ def build_pit_from_extended(settings: Settings) -> Path:
         "netprofit_yoy": "netprofit_yoy_pit",
         "or_yoy": "or_yoy_pit",
         "debt_to_assets": "debt_to_assets_pit",
-        "ocf_to_or": "ocf_to_or_pit",
     }
+    if "ocf_to_or" not in reports.columns and "q_ocf_to_sales" not in reports.columns:
+        raise ValueError("fina_indicator_vip is missing ocf_to_or and q_ocf_to_sales")
     reports = reports.rename(columns=mapping)
+    cashflow_to_sales = reports.get("ocf_to_or")
+    if cashflow_to_sales is None:
+        cashflow_to_sales = reports["q_ocf_to_sales"]
+    elif "q_ocf_to_sales" in reports.columns:
+        cashflow_to_sales = cashflow_to_sales.combine_first(reports["q_ocf_to_sales"])
+    reports["ocf_to_or_pit"] = cashflow_to_sales
     calendar = pd.read_parquet(paths.metadata / "trade_calendar.parquet")
     result = build_pit_fundamentals(reports, calendar)
     target = paths.gold / "pit" / "current" / "fundamentals_daily.parquet"
