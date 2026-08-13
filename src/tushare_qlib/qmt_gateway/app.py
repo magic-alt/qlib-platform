@@ -62,4 +62,11 @@ def create_app(
     def fills(trade_date: str) -> list[dict[str, object]]:
         return gateway_call(lambda: service.fills(trade_date))  # type: ignore[return-value]
 
+    @app.get("/v1/quotes", dependencies=[Depends(require_token)])
+    def quotes(trade_date: str, instruments: str) -> list[dict[str, object]]:
+        requested = [item.strip().upper() for item in instruments.split(",") if item.strip()]
+        if not requested:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="instruments is required")
+        return gateway_call(lambda: service.quotes(trade_date, requested))  # type: ignore[return-value]
+
     return app

@@ -38,3 +38,14 @@ class QmtFill:
     traded_volume: float
     traded_price: float
     event_at_utc: str
+
+
+@dataclass(frozen=True)
+class QmtQuote:
+    stock_code: str
+    price: float
+    paused: int
+    is_limit_up: int
+    is_limit_down: int
+    adv20_volume: float
+    adv20_amount: float

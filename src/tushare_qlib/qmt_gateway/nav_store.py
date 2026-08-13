@@ -63,6 +63,18 @@ class NavStore:
                 (trade_date, value, reference.strip(), self._now_text()),
             )
 
+    def readiness(self, trade_date: str) -> tuple[bool, str | None]:
+        """Return whether a prior close exists for the requested trading day."""
+        with self._connection() as connection:
+            prior = connection.execute(
+                """
+                SELECT trade_date FROM daily_nav
+                WHERE trade_date < ? ORDER BY trade_date DESC LIMIT 1
+                """,
+                (trade_date,),
+            ).fetchone()
+        return prior is not None, (str(prior[0]) if prior is not None else None)
+
     def daily_pnl_pct(self, trade_date: str, total_asset: float) -> float:
         current = float(total_asset)
         with self._connection() as connection:

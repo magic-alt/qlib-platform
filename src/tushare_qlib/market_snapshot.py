@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence, runtime_checkable
 
@@ -135,13 +136,18 @@ def market_snapshot_provider_from_settings(settings: Settings) -> MarketSnapshot
         )
     if kind != "http_readonly":
         raise ValueError(f"unsupported market snapshot provider: {kind}")
-    # Market gateways should normally use network-level authentication. If an
-    # authorization header is required, configure a reverse proxy rather than
-    # putting credentials in pipeline.yaml.
+    token_env = str(config.get("token_env", "")).strip()
+    headers = {"Accept": "application/json"}
+    if token_env:
+        token = os.environ.get(token_env, "").strip()
+        if not token:
+            raise RuntimeError(f"market gateway token environment variable is missing: {token_env}")
+        header = str(config.get("token_header", "Authorization")).strip() or "Authorization"
+        headers[header] = token if header.lower() != "authorization" else f"Bearer {token}"
     return HttpMarketSnapshotProvider(
         ReadOnlyJsonClient(
             str(config.get("base_url", "")),
-            headers={"Accept": "application/json"},
+            headers=headers,
             timeout_seconds=float(str(config.get("timeout_seconds", 10))),
             max_attempts=int(str(config.get("max_attempts", 3))),
             retry_delay_seconds=float(str(config.get("retry_delay_seconds", 0.25))),
