@@ -8,7 +8,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from tushare_qlib.qmt_gateway import GatewaySettings, create_app
-from tushare_qlib.qmt_gateway.models import QmtAsset, QmtFill, QmtOrder, QmtPosition
+from tushare_qlib.qmt_gateway.models import QmtAsset, QmtFill, QmtOrder, QmtPosition, QmtQuote
 from tushare_qlib.qmt_gateway.nav_store import NavStore
 from tushare_qlib.qmt_gateway.xtquant_client import _event_time, qmt_to_qlib_symbol
 
@@ -53,6 +53,10 @@ class FakeQmtClient:
                 event_at_utc="2026-08-12T01:31:00Z",
             )
         ]
+
+    def query_quotes(self, instruments: list[str]) -> list[QmtQuote]:
+        assert instruments == ["SH600000"]
+        return [QmtQuote("600000.SH", 10.5, 0, 1, 0, 1_000_000.0, 10_000_000.0)]
 
 
 def _trade_date() -> str:
@@ -107,6 +111,18 @@ def test_gateway_maps_qmt_positions_orders_and_fills(tmp_path: Path):
     assert fills.json()[0]["fill_id"] == "trade-1"
 
 
+
+def test_gateway_returns_authenticated_quote_snapshot(tmp_path: Path):
+    client, _ = _app(tmp_path)
+    response = client.get(
+        "/v1/quotes",
+        params={"trade_date": _trade_date(), "instruments": "SH600000"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["instrument"] == "SH600000"
+    assert response.json()[0]["adv20_volume"] == 1_000_000.0
 def test_gateway_rejects_historical_trade_date_and_missing_nav(tmp_path: Path):
     client, _ = _app(tmp_path)
     headers = {"Authorization": "Bearer test-token"}

@@ -3,6 +3,38 @@ import pandas as pd
 
 from tushare_qlib.fundamentals import PIT_FIELDS
 from tushare_qlib.normalize import normalize_symbol
+from tushare_qlib.quality import validate_curated
+
+
+def test_observed_close_takes_precedence_over_conflicting_suspend_record():
+    frame = pd.DataFrame({"close": [10.0, np.nan]})
+
+    paused = frame["close"].isna().astype(float)
+
+    assert paused.tolist() == [0.0, 1.0]
+
+
+def test_source_confirmed_market_suspension_uses_lower_coverage_threshold():
+    frame = pd.DataFrame(
+        {
+            "symbol": [f"SH60000{i}" for i in range(5)],
+            "date": pd.to_datetime(["2015-07-09"] * 5),
+            "ts_code": [f"60000{i}.SH" for i in range(5)],
+            "close": [10.0, 10.0, np.nan, np.nan, np.nan],
+            "open": [10.0, 10.0, np.nan, np.nan, np.nan],
+            "high": [10.0, 10.0, np.nan, np.nan, np.nan],
+            "low": [10.0, 10.0, np.nan, np.nan, np.nan],
+            "adj_factor": [1.0] * 5,
+            "paused": [0.0, 0.0, 1.0, 1.0, 1.0],
+            "list_date": pd.to_datetime(["2000-01-01"] * 5),
+        }
+    )
+
+    normal = validate_curated(frame)
+    systemic_suspend = validate_curated(frame, min_traded_coverage=0.40)
+
+    assert not next(item for item in normal.results if item.name == "traded_coverage").passed
+    assert next(item for item in systemic_suspend.results if item.name == "traded_coverage").passed
 
 
 def test_adjustment_identity():

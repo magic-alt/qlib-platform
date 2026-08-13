@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import time
+import threading
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
@@ -41,16 +42,18 @@ class MinuteRateLimiter:
             raise ValueError("calls_per_minute must be positive")
         self.limit = calls_per_minute
         self.timestamps: deque[float] = deque()
+        self._lock = threading.Lock()
 
     def acquire(self) -> None:
         while True:
-            now = time.monotonic()
-            while self.timestamps and now - self.timestamps[0] >= 60:
-                self.timestamps.popleft()
-            if len(self.timestamps) < self.limit:
-                self.timestamps.append(now)
-                return
-            sleep_for = max(0.05, 60 - (now - self.timestamps[0]))
+            with self._lock:
+                now = time.monotonic()
+                while self.timestamps and now - self.timestamps[0] >= 60:
+                    self.timestamps.popleft()
+                if len(self.timestamps) < self.limit:
+                    self.timestamps.append(now)
+                    return
+                sleep_for = max(0.05, 60 - (now - self.timestamps[0]))
             time.sleep(sleep_for)
 
 

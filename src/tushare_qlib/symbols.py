@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-_TS_PATTERN = re.compile(r"^(?P<code>\d{6})\.(?P<exchange>SH|SZ|BJ)$", re.IGNORECASE)
+_TS_PATTERN = re.compile(r"^(?:[A-Z]+)?(?P<code>\d{6})\.(?P<exchange>SH|SZ|BJ)$", re.IGNORECASE)
 _QLIB_PATTERN = re.compile(r"^(?P<exchange>SH|SZ|BJ)(?P<code>\d{6})$", re.IGNORECASE)
 
 

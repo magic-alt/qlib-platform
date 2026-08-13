@@ -19,6 +19,12 @@ def parser() -> argparse.ArgumentParser:
     b.add_argument("--start")
     b.add_argument("--end")
     b.add_argument("--force", action="store_true")
+    extended = sub.add_parser("backfill-extended")
+    extended.add_argument("--start")
+    extended.add_argument("--end")
+    extended.add_argument("--groups", nargs="+", help="data domains; defaults to all extended domains")
+    extended.add_argument("--force", action="store_true")
+    extended.add_argument("--workers", type=int, help="parallel workers for per-symbol history endpoints")
     sp = sub.add_parser("source-preflight")
     sp.add_argument("--start")
     sp.add_argument("--end")
@@ -626,6 +632,17 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False))
         return
 
+    if args.command == "backfill-extended":
+        from .extended_parallel import FastExtendedDataBackfill
+
+        result = FastExtendedDataBackfill(settings, max_workers=args.workers).backfill(
+            args.start or settings.data["start_date"],
+            args.end or settings.data["end_date"],
+            groups=args.groups,
+            force=args.force,
+        )
+        print(json.dumps(result, ensure_ascii=False))
+        return
     if args.command == "export-kline":
         from .kline_export import export_kline
 

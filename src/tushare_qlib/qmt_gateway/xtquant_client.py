@@ -8,7 +8,7 @@ from typing import Any, Callable, Protocol, Sequence, TypeVar
 from zoneinfo import ZoneInfo
 
 from .config import GatewaySettings
-from .models import QmtAsset, QmtFill, QmtOrder, QmtPosition
+from .models import QmtAsset, QmtFill, QmtOrder, QmtPosition, QmtQuote
 
 
 LOGGER = logging.getLogger(__name__)
@@ -25,6 +25,8 @@ class QmtReadOnlyClient(Protocol):
     def query_orders(self) -> Sequence[QmtOrder]: ...
 
     def query_fills(self) -> Sequence[QmtFill]: ...
+
+    def query_quotes(self, instruments: Sequence[str]) -> Sequence[QmtQuote]: ...
 
     def close(self) -> None: ...
 
@@ -51,6 +53,13 @@ def qmt_to_qlib_symbol(stock_code: str) -> str:
     if market not in {"SH", "SZ"} or not code.isdigit():
         raise ValueError(f"unsupported QMT stock code: {stock_code!r}")
     return f"{market}{code}"
+
+
+def qlib_to_qmt_symbol(instrument: str) -> str:
+    text = instrument.strip().upper()
+    if len(text) < 3 or text[:2] not in {"SH", "SZ"} or not text[2:].isdigit():
+        raise ValueError(f"unsupported Qlib instrument: {instrument!r}")
+    return f"{text[2:]}.{text[:2]}"
 
 
 def _value(record: Any, name: str, default: Any = None) -> Any:
@@ -264,6 +273,58 @@ class XtQuantReadOnlyClient:
             )
         return result
 
+    def query_quotes(self, instruments: Sequence[str]) -> Sequence[QmtQuote]:
+        """Read current XtData ticks and local 20-day history without any write API."""
+        requested = sorted({str(item).upper().strip() for item in instruments})
+        if not requested:
+            raise ValueError("at least one instrument is required")
+        codes = [qlib_to_qmt_symbol(item) for item in requested]
+        with self._lock:
+            self.ensure_connected()
+            try:
+                from xtquant import xtdata
+            except ImportError as exc:
+                raise RuntimeError("xtquant XtData is not available in the gateway environment") from exc
+            ticks = xtdata.get_full_tick(codes)
+            history = xtdata.get_market_data_ex(
+                ["volume", "amount"], codes, period="1d", count=20, dividend_type="none", fill_data=False
+            )
+            if not isinstance(ticks, dict) or not isinstance(history, dict):
+                raise RuntimeError("XtData returned an unsupported quote payload")
+            result: list[QmtQuote] = []
+            for instrument, code in zip(requested, codes):
+                tick, daily = ticks.get(code), history.get(code)
+                if tick is None or daily is None:
+                    raise RuntimeError(f"XtData quote is unavailable for {instrument}")
+                try:
+                    price = float(_value(tick, "lastPrice"))
+                    volume = [float(value) for value in list(daily["volume"])[-20:]]
+                    amount = [float(value) for value in list(daily["amount"])[-20:]]
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise RuntimeError(f"XtData quote payload is invalid for {instrument}") from exc
+                if len(volume) < 20 or len(amount) < 20:
+                    raise RuntimeError("XtData daily history has fewer than 20 observations")
+                detail = xtdata.get_instrument_detail(code)
+                try:
+                    up_limit = float(_value(detail, "UpStopPrice"))
+                    down_limit = float(_value(detail, "DownStopPrice"))
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError(f"XtData limit prices are unavailable for {instrument}") from exc
+                if up_limit <= 0 or down_limit <= 0:
+                    raise RuntimeError(f"XtData limit prices are invalid for {instrument}")
+                tolerance = max(0.005, price * 0.0001)
+                result.append(
+                    QmtQuote(
+                        stock_code=code,
+                        price=price,
+                        paused=int(price <= 0),
+                        is_limit_up=int(price > 0 and abs(price - up_limit) <= tolerance),
+                        is_limit_down=int(price > 0 and abs(price - down_limit) <= tolerance),
+                        adv20_volume=sum(volume) / len(volume) * 100.0,
+                        adv20_amount=sum(amount) / len(amount),
+                    )
+                )
+            return result
     def close(self) -> None:
         with self._lock:
             trader = self._invalidate_locked()

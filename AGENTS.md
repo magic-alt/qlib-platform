@@ -2,25 +2,26 @@
 
 ## Project Structure & Module Organization
 - `src/tushare_qlib/`: Python package (main pipeline, CLI, data processing, model workflow).
+- `src/tushare_qlib/qmt_gateway/`: loopback-only, read-only QMT broker gateway and its OpenAPI contract.
 - `tests/`: pytest test suites (`test_*.py`).
 - `scripts/`: utility entry scripts.
 - `configs/`: pipeline and workflow YAML files.
+- `docs/`: operational runbooks and API documentation.
+- `.github/workflows/`: CI definitions; `constraints/`: CI dependency constraints.
 - `data/`: generated/raw/curated output datasets (large artifacts, keep untracked).
 - `mlruns/`: experiment metadata/artifacts from training runs.
 - `README.md`: operational command reference.
 
 ## Build, Test, and Development Commands
-- `python -m venv .venv && source .venv/bin/activate`
-- `pip install --break-system-packages --no-deps -e .[dev]`
-- `tq --config configs/pipeline.yaml init-metadata`
-- `tq --config configs/pipeline.yaml backfill --start 20250101 --end 20260805`
-- `tq --config configs/pipeline.yaml curate`
-- `tq --config configs/pipeline.yaml stage-full --force`
-- `tq --config configs/pipeline.yaml dump-full`
-- `tq --config configs/pipeline.yaml train-select`
-- `qrun configs/workflow_lightgbm.yaml` (Qlib workflow run, requires `QLIB_DATA_URI`).
-- Tests: `pytest` (discovers `tests/test_*.py`).
-- Lint/type check: `ruff check src tests` and `ruff format`/`ruff check`.
+- Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
+- In PowerShell, define `$RepoPython = '.\.venv\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m tushare_qlib --config configs/pipeline.yaml <command>`.
+- Install core development dependencies: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev]"`.
+- Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[all,dev]"`; QMT gateway work: `<repo-python> -m pip install -e ".[qmt-gateway,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
+- Pipeline example: `<repo-python> -m tushare_qlib --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.
+- Qlib workflow run: use the venv-local `qrun` launcher (`.\.venv\Scripts\qrun.exe` on Windows; `.venv/bin/qrun` on macOS/Linux) with `configs/workflow_lightgbm.yaml` (requires `QLIB_DATA_URI`).
+- Tests: `<repo-python> -m pytest` (discovers `tests/test_*.py`).
+- Lint/type check: `<repo-python> -m ruff check src tests`, `<repo-python> -m ruff format --check src tests`, and `<repo-python> -m mypy src`.
+- Do not use Makefile targets locally until they are parameterized to use `$RepoPython`; they currently resolve Python tools from `PATH`.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+.
@@ -30,10 +31,12 @@
 - Store credentials in environment variables, never in code.
 
 ## Testing Guidelines
-- Test framework: `pytest` (declared in optional dev dependencies).
+- Test framework: `pytest` (declared in optional dev dependencies; invoke it through the repository-local interpreter).
 - Keep tests deterministic and lightweight; avoid live Tushare calls in tests.
 - Add/extend tests under `tests/` with file names like `test_<feature>.py`.
-- Run targeted tests with `pytest tests/test_normalize.py` before broad runs.
+- Run targeted tests with `<repo-python> -m pytest tests/test_normalize.py` before broad runs.
+- Before a PR, run the local equivalents of CI quality gates: ruff, mypy, `validate-qrun-contract`, `pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60`, and `project-audit --root . --output <temporary-path>`.
+- For QMT gateway/API changes, update `openapi.yaml`, `docs/qmt_gateway.md`, and gateway/adapter tests together.
 
 ## Git Workflow: Trunk-Based Development
 - Use `main` plus short-lived task branches. A branch represents one task, never one computer.
@@ -54,7 +57,7 @@
 - Keep feature branches current with `git fetch origin` followed by `git rebase origin/main`; do not merge `origin/main` into a feature branch. If the rebased branch was already published, update it with `git push --force-with-lease`, never plain `--force`.
 - A feature branch may contain several focused commits. Use `type(scope): concise summary` commit messages, for example `feat(research): add walk-forward runner`.
 - Open a PR as the change-set boundary. Before merge:
-  - ensure CI passes `ruff check src tests`, `tq --config configs/pipeline.yaml validate-qrun-contract`, and `pytest`;
+  - ensure CI passes ruff, mypy, Qlib workflow-contract validation, coverage, project audit, and pytest;
   - review the complete diff, especially correctness and point-in-time effects;
   - document changed stages, commands/test status, config changes, and validation evidence when data or accuracy behavior changes.
 - Prefer **Squash and merge** so `main` receives one clean commit per PR. After merge, delete the remote task branch, update local `main` with `git pull --ff-only`, delete the local branch, and run `git fetch --prune`.
@@ -63,4 +66,6 @@
 
 ## Security & Configuration Tips
 - Never commit secrets (`TUSHARE_TOKEN`, `.env`, raw API credentials).
+- QMT gateway code must remain loopback-only and read-only: do not add order submission, cancellation, replacement, or HTTP write endpoints.
 - Validate date windows before running full rebuilds; production jobs should run idempotent checks and data-completeness guards.
+- Treat `backfill`, `stage-*`, `dump-*`, `daily-sync`, `production-*`, `model-deploy`, `model-rollback`, and scheduled-task installation/removal as state-changing operations. Run them only with explicit user authorization and report affected outputs.

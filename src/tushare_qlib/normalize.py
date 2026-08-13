@@ -163,14 +163,24 @@ def build_curated_day(
     )
     st_codes = set(st["ts_code"]) if not st.empty else set()
     frame["known_suspended"] = frame["ts_code"].isin(suspended_codes).astype(float)
-    frame["paused"] = (frame["close"].isna() | frame["ts_code"].isin(suspended_codes)).astype(float)
+    # Historical suspend_d records can conflict with an observed same-day trade.
+    # The observed close is authoritative for whether the Qlib bar is paused;
+    # retain known_suspended separately for audit and diagnostics.
+    frame["paused"] = frame["close"].isna().astype(float)
     stock_st_manifest = raw.read_manifest("stock_st", trade_date)
     st_known = stock_st_manifest.get("status") in {"success", "empty"}
     frame["is_st"] = frame["ts_code"].isin(st_codes).astype(float) if st_known else np.nan
     frame["symbol"] = frame["ts_code"].map(ts_to_qlib)
     frame["date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d")
 
-    report = validate_curated(frame, expected_trade_date=trade_date)
+    # A broad, source-confirmed suspension event can legitimately reduce
+    # same-day trading coverage below the normal 50% threshold. This is only
+    # accepted when suspend_d marks at least 40% of the active universe.
+    report = validate_curated(
+        frame,
+        expected_trade_date=trade_date,
+        min_traded_coverage=0.40 if float(frame["known_suspended"].mean()) >= 0.40 else 0.50,
+    )
     write_report(report, settings.paths.quality / "curated" / f"{trade_date}.json")
     assert_quality(report)
 

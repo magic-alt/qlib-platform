@@ -25,11 +25,32 @@ class QmtGatewayService:
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def health(self) -> dict[str, object]:
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
         try:
             self.client.ensure_connected()
         except Exception as exc:
-            return {"status": "degraded", "reason": str(exc), "qmt_connected": False}
-        return {"status": "ready", "qmt_connected": True}
+            return {
+                "status": "degraded",
+                "reason": str(exc),
+                "qmt_connected": False,
+                "nav_ready": False,
+                "last_nav_trade_date": None,
+            }
+        nav_ready, last_nav_trade_date = self.nav_store.readiness(today)
+        if not nav_ready:
+            return {
+                "status": "degraded",
+                "reason": "no prior closing NAV is available",
+                "qmt_connected": True,
+                "nav_ready": False,
+                "last_nav_trade_date": last_nav_trade_date,
+            }
+        return {
+            "status": "ready",
+            "qmt_connected": True,
+            "nav_ready": True,
+            "last_nav_trade_date": last_nav_trade_date,
+        }
 
     def account(self, trade_date: str) -> dict[str, object]:
         requested = self._trade_date(trade_date)
@@ -96,4 +117,23 @@ class QmtGatewayService:
                 "snapshot_at_utc": snapshot_at,
             }
             for item in self.client.query_fills()
+        ]
+
+    def quotes(self, trade_date: str, instruments: list[str]) -> list[dict[str, object]]:
+        requested = self._trade_date(trade_date)
+        self.client.ensure_connected()
+        snapshot_at = self._snapshot_at_utc()
+        return [
+            {
+                "instrument": qmt_to_qlib_symbol(item.stock_code),
+                "price": item.price,
+                "paused": item.paused,
+                "is_limit_up": item.is_limit_up,
+                "is_limit_down": item.is_limit_down,
+                "adv20_volume": item.adv20_volume,
+                "adv20_amount": item.adv20_amount,
+                "as_of_trade_date": requested.isoformat(),
+                "snapshot_at_utc": snapshot_at,
+            }
+            for item in self.client.query_quotes(instruments)
         ]
