@@ -8,8 +8,8 @@ from typing import Any, Mapping, cast
 
 import pandas as pd
 
-from .canonical_config import StrategySpec
-from .dataset_resolver import pin_dataset
+from .canonical_config import DatasetSpec, StrategySpec
+from .dataset_resolver import ResolvedDataset, pin_dataset
 from .lineage import sha256_json
 from .model_runtime import StageTimings
 from .prediction_snapshot import load_prediction_snapshot, prediction_snapshot_path
@@ -124,6 +124,39 @@ def _portfolio_config(
     }
 
 
+def _validate_snapshot_data_release(
+    settings: Settings,
+    pinned_dataset: ResolvedDataset,
+    snapshot: Mapping[str, Any],
+) -> None:
+    contract = snapshot.get("contract")
+    if not isinstance(contract, Mapping):
+        raise ValueError("PredictionSnapshot contract is missing")
+    snapshot_release = str(contract.get("data_release_id") or "").strip()
+    expected_release = DatasetSpec.from_settings(settings).dataset_id
+    if snapshot_release != expected_release:
+        raise ValueError(
+            "PredictionSnapshot DataRelease does not match pinned DataRelease: "
+            f"snapshot={snapshot_release!r}, pinned={expected_release!r}"
+        )
+
+    manifest_path = pinned_dataset.manifest_path
+    if not manifest_path.is_file():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    semantic_contract = manifest.get("semantic_contract", {})
+    materialized_release = (
+        str(semantic_contract.get("data_release_id") or "").strip()
+        if isinstance(semantic_contract, Mapping)
+        else ""
+    )
+    if materialized_release and snapshot_release != materialized_release:
+        raise ValueError(
+            "PredictionSnapshot DataRelease does not match pinned DataRelease: "
+            f"snapshot={snapshot_release!r}, materialized={materialized_release!r}"
+        )
+
+
 def backtest_predictions(
     settings: Settings,
     predictions: str | Path,
@@ -141,6 +174,7 @@ def backtest_predictions(
     source_snapshot: dict[str, Any] | None = None
     if source_reference.suffix == ".json" or prediction_snapshot_path(source_reference).is_file():
         pred, source_snapshot = load_prediction_snapshot(source_reference)
+        _validate_snapshot_data_release(settings, pinned_dataset, source_snapshot)
         pred = pred[["score"]]
         payload = source_snapshot["payload"]
         snapshot_manifest = (

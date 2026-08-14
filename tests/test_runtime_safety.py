@@ -44,9 +44,7 @@ def test_windows_missing_console_launcher_is_rejected(tmp_path):
 
 def test_runtime_defaults_to_loky(monkeypatch):
     monkeypatch.setattr("tushare_qlib.runtime_safety.os.name", "posix")
-    runtime = resolve_qlib_parallel_runtime(
-        SimpleNamespace(data={"research": {"qlib_kernels": 6}})
-    )
+    runtime = resolve_qlib_parallel_runtime(SimpleNamespace(data={"research": {"qlib_kernels": 6}}))
 
     assert runtime.kernels == 6
     assert runtime.joblib_backend == "loky"

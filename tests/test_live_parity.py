@@ -39,12 +39,12 @@ def test_research_live_parity_compares_score_rank_and_topk(tmp_path: Path):
 def test_research_live_parity_rejects_rank_change(tmp_path: Path):
     research = tmp_path / "research.csv"
     live = tmp_path / "live.csv"
-    pd.DataFrame(
-        {"signal_date": ["2026-08-10"] * 2, "instrument": ["A", "B"], "score": [0.2, 0.1]}
-    ).to_csv(research, index=False)
-    pd.DataFrame(
-        {"signal_date": ["2026-08-10"] * 2, "instrument": ["A", "B"], "score": [0.1, 0.2]}
-    ).to_csv(live, index=False)
+    pd.DataFrame({"signal_date": ["2026-08-10"] * 2, "instrument": ["A", "B"], "score": [0.2, 0.1]}).to_csv(
+        research, index=False
+    )
+    pd.DataFrame({"signal_date": ["2026-08-10"] * 2, "instrument": ["A", "B"], "score": [0.1, 0.2]}).to_csv(
+        live, index=False
+    )
 
     report = compare_research_live_scores(research, live, signal_date="2026-08-10", topk=1)
 

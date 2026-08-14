@@ -32,10 +32,7 @@ class ArtifactResolver:
         if root is None and not roots:
             raise ValueError("artifact resolver requires a root or per-kind roots")
         base = Path(root).expanduser().resolve() if root is not None else None
-        self.roots = {
-            kind: Path(value).expanduser().resolve()
-            for kind, value in (roots or {}).items()
-        }
+        self.roots = {kind: Path(value).expanduser().resolve() for kind, value in (roots or {}).items()}
         if base is not None:
             for kind in self._KINDS:
                 self.roots.setdefault(kind, base / kind)

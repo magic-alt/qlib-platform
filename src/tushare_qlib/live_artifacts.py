@@ -41,7 +41,9 @@ def payload_sha256(frame: pd.DataFrame) -> str:
                 for key, value in row.items()
             }
         )
-    encoded = json.dumps(records, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str).encode()
+    encoded = json.dumps(
+        records, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -103,16 +105,10 @@ def validate_live_artifact(
         raise ValueError("live artifact deployment does not match expected deployment")
     if payload_sha256(frame) != metadata["payload_sha256"]:
         raise ValueError("live artifact payload checksum mismatch")
-    attestation_path = resolver.resolve(
-        metadata["manifest_uri"], expected_sha256=metadata["manifest_sha256"]
-    )
+    attestation_path = resolver.resolve(metadata["manifest_uri"], expected_sha256=metadata["manifest_sha256"])
     attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
     payloads = attestation.get("artifactPayloads", {})
-    attested_payload = (
-        payloads.get(expected_type.value)
-        if isinstance(payloads, dict)
-        else None
-    )
+    attested_payload = payloads.get(expected_type.value) if isinstance(payloads, dict) else None
     expected = {
         "deployment_id": str(attestation.get("deploymentId", "")),
         "dataset_sha256": str(attestation.get("datasetSha256", "")),

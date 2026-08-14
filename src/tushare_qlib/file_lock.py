@@ -16,7 +16,13 @@ def _platform_lock_module(name: str) -> Any:
 class FileLock(AbstractContextManager["FileLock"]):
     """Cross-platform advisory lock without import-time platform coupling."""
 
-    def __init__(self, path: str | Path, *, blocking: bool = True, unavailable_message: str = "file lock is already held") -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        blocking: bool = True,
+        unavailable_message: str = "file lock is already held",
+    ) -> None:
         self.path = Path(path)
         self.blocking = blocking
         self.unavailable_message = unavailable_message

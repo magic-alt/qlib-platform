@@ -24,9 +24,9 @@ def _settings(tmp_path: Path) -> Settings:
         json.dumps({"status": "published", "eligible_date": "2026-08-10"}), encoding="utf-8"
     )
     (sync / "pending_publish.json").write_text(json.dumps({"status": "clear"}), encoding="utf-8")
-    pd.DataFrame(
-        {"cal_date": pd.to_datetime(["2026-08-10", "2026-08-11"]), "is_open": [1, 1]}
-    ).to_parquet(paths.metadata / "trade_calendar.parquet", index=False)
+    pd.DataFrame({"cal_date": pd.to_datetime(["2026-08-10", "2026-08-11"]), "is_open": [1, 1]}).to_parquet(
+        paths.metadata / "trade_calendar.parquet", index=False
+    )
     return Settings(
         config_path=tmp_path / "pipeline.yaml",
         data={

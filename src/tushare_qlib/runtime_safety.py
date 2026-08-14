@@ -35,9 +35,7 @@ def _is_importable_entrypoint(entrypoint: str) -> bool:
     if path.is_file():
         return True
     return (
-        path.name.lower() == "__main__.py"
-        and path.parent.suffix.lower() == ".exe"
-        and path.parent.is_file()
+        path.name.lower() == "__main__.py" and path.parent.suffix.lower() == ".exe" and path.parent.is_file()
     )
 
 
@@ -55,8 +53,7 @@ def validate_multiprocessing_runtime(
     normalized = str(backend).strip().lower()
     if normalized not in _SUPPORTED_JOBLIB_BACKENDS:
         raise ValueError(
-            "research.joblib_backend must be one of "
-            f"{sorted(_SUPPORTED_JOBLIB_BACKENDS)}, got {backend!r}"
+            f"research.joblib_backend must be one of {sorted(_SUPPORTED_JOBLIB_BACKENDS)}, got {backend!r}"
         )
     if (platform_name or os.name) != "nt" or kernels <= 1 or normalized == "threading":
         return

@@ -29,8 +29,12 @@ def _deployment(identifier: str) -> dict[str, object]:
 
 def test_registry_activation_and_rollback_are_transactional(tmp_path: Path):
     state = OpsState(tmp_path / "ops.sqlite3")
-    state.register_deployment(_deployment("model-a"), "artifact://deployment/model-a/model_manifest.json", "a")
-    state.register_deployment(_deployment("model-b"), "artifact://deployment/model-b/model_manifest.json", "b")
+    state.register_deployment(
+        _deployment("model-a"), "artifact://deployment/model-a/model_manifest.json", "a"
+    )
+    state.register_deployment(
+        _deployment("model-b"), "artifact://deployment/model-b/model_manifest.json", "b"
+    )
 
     state.deploy("model-a")
     current = state.current_deployment()
@@ -49,7 +53,9 @@ def test_registry_activation_and_rollback_are_transactional(tmp_path: Path):
 
 def test_signal_revision_conflict_is_fail_closed(tmp_path: Path):
     state = OpsState(tmp_path / "ops.sqlite3")
-    state.register_deployment(_deployment("model-a"), "artifact://deployment/model-a/model_manifest.json", "a")
+    state.register_deployment(
+        _deployment("model-a"), "artifact://deployment/model-a/model_manifest.json", "a"
+    )
     state.deploy("model-a")
     record = {
         "signal_id": "signal-a",
@@ -145,9 +151,9 @@ def test_ops_state_migrates_v1_delivery_and_deployment_tables(tmp_path: Path):
     state = OpsState(path)
 
     with state.reading() as connection:
-        version = connection.execute(
-            "SELECT value FROM schema_meta WHERE key = 'schema_version'"
-        ).fetchone()[0]
+        version = connection.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[
+            0
+        ]
         delivery_columns = {row[1] for row in connection.execute("PRAGMA table_info(deliveries)")}
         deployment_columns = {row[1] for row in connection.execute("PRAGMA table_info(deployments)")}
     assert version == "3"
