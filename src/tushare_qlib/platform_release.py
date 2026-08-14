@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -294,8 +295,11 @@ def materialize_platform_release(settings: Settings) -> PlatformRelease:
     candidate = stage.parent / f".{stage.name}.platform.{uuid.uuid4().hex[:12]}"
     candidate.mkdir(parents=True)
     files: dict[str, str] = {}
+    coverage_start = pd.Timestamp(str(release.coverage["start"])).normalize()
+    coverage_end = pd.Timestamp(str(release.coverage["end"])).normalize()
     try:
-        for index, item in enumerate(component["files"]):
+        materialized_count = 0
+        for item in component["files"]:
             source = _inside(
                 release.data_root,
                 str(item["path"]),
@@ -307,11 +311,21 @@ def materialize_platform_release(settings: Settings) -> PlatformRelease:
             schema_names = set(pq.read_schema(source).names)
             if not {"date", "symbol"}.issubset(schema_names):
                 raise ValueError(f"{role} file must contain date and symbol columns: {source.name}")
-            target = candidate / f"{index:05d}.parquet"
-            shutil.copy2(source, target)
-            digest = _sha256_file(target)
-            if digest != str(item["sha256"]):
-                raise ValueError(f"Materialized staging checksum mismatch: {source.name}")
+            frame = pd.read_parquet(source)
+            dates = pd.to_datetime(frame["date"], errors="raise").dt.normalize()
+            selected = frame.loc[dates.between(coverage_start, coverage_end)]
+            if selected.empty:
+                continue
+            symbols = selected["symbol"].dropna().astype(str).str.strip().str.upper().unique()
+            if len(symbols) != 1 or re.fullmatch(r"(?:SH|SZ|BJ)\d{6}", symbols[0]) is None:
+                raise ValueError(f"{role} file must contain exactly one valid Qlib symbol: {source.name}")
+            target = candidate / f"{symbols[0]}.parquet"
+            if target.exists():
+                raise ValueError(f"{role} contains duplicate source files for symbol: {symbols[0]}")
+            selected.to_parquet(target, index=False)
+            materialized_count += 1
+        if materialized_count == 0:
+            raise ValueError(f"{role} contains no rows inside the DataRelease coverage")
         _attach_industry_component(release, candidate)
         for materialized in sorted(candidate.glob("*.parquet")):
             files[materialized.name] = _sha256_file(materialized)
@@ -323,6 +337,10 @@ def materialize_platform_release(settings: Settings) -> PlatformRelease:
                     "source": "platform_release",
                     "data_release_id": release.data_release_id,
                     "manifest_sha256": release.manifest_sha256,
+                    "coverage": {
+                        "start": str(coverage_start.date()),
+                        "end": str(coverage_end.date()),
+                    },
                     "files": files,
                 },
                 ensure_ascii=False,

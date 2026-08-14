@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
+
 from .alpha.registry import alpha_pack_from_settings, assert_alpha_pack_compatible, handler_class
 
 from .dataset_resolver import pin_dataset
@@ -100,7 +101,16 @@ def _raw_features(
         learn_processors=[],
         init_data=False,
     )
-    frame = handler.data_loader.load(handler.instruments, start_time=start_time, end_time=end_time)
+    # A feature snapshot intentionally has no label payload.  Passing the handler's
+    # loader through here would retain the empty label group and recent Qlib versions
+    # reject that group with ``ValueError: fields cannot be empty``.  Build the loader
+    # from the feature contract only so cold materialization has exactly one, explicit
+    # raw-feature request.
+    from qlib.data.dataset.loader import QlibDataLoader
+
+    frame = QlibDataLoader({"feature": handler.get_feature_config()}).load(
+        handler.instruments, start_time=start_time, end_time=end_time
+    )
     if frame.empty:
         raise RuntimeError("Qlib returned no rows while materializing the research feature store")
     if frame.index.names != ["datetime", "instrument"]:
@@ -203,9 +213,9 @@ def _reusable_snapshot(
     return min(matches, key=lambda item: item[0])[1] if matches else None
 
 
-def materialize_feature_store(
+def _materialize_feature_store(
     settings: Settings, start_time: str, end_time: str, *, force: bool = False
-) -> Path:
+) -> tuple[Path, bool]:
     settings, _ = pin_dataset(settings)
     contract = _contract(settings, start_time, end_time)
     recipe_id = "fr_" + sha256_json(contract)
@@ -218,7 +228,7 @@ def materialize_feature_store(
     )
     if reusable is not None:
         load_feature_store(reusable, start_time, end_time, verify_checksums=True)
-        return reusable
+        return reusable, True
 
     import qlib
     from qlib.constant import REG_CN
@@ -232,7 +242,14 @@ def materialize_feature_store(
         **parallel.qlib_init_kwargs(),
     )
     frame = _raw_features(settings, start_time, end_time)
-    return _write_feature_snapshot(snapshots_root, recipe_id, contract, snapshot, frame)
+    return _write_feature_snapshot(snapshots_root, recipe_id, contract, snapshot, frame), False
+
+
+def materialize_feature_store(
+    settings: Settings, start_time: str, end_time: str, *, force: bool = False
+) -> Path:
+    path, _ = _materialize_feature_store(settings, start_time, end_time, force=force)
+    return path
 
 
 def load_feature_store(
@@ -267,7 +284,7 @@ def load_feature_store(
 def prepare_feature_data(
     settings: Settings, start_time: str, end_time: str, *, force: bool = False
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    path = materialize_feature_store(settings, start_time, end_time, force=force)
+    path, reused = _materialize_feature_store(settings, start_time, end_time, force=force)
     frame = load_feature_store(path, start_time, end_time)
     manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
     return frame, {
@@ -277,6 +294,8 @@ def prepare_feature_data(
         "path": str(path),
         "rows": len(frame),
         "manifestSha256": sha256_file(path / "manifest.json"),
+        "cacheStatus": "REUSED" if reused else "MATERIALIZED",
+        "rawMaterializationCalls": 0 if reused else 1,
     }
 
 

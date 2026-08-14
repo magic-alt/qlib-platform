@@ -163,6 +163,8 @@ def backtest_predictions(
     *,
     benchmark: str | None = None,
     topn: int | None = None,
+    n_drop: int | None = None,
+    hold_thresh: int | None = None,
     artifact_level: str = "full",
 ) -> Path:
     """Run portfolio construction from immutable OOS predictions without fitting a model."""
@@ -227,7 +229,12 @@ def backtest_predictions(
     end_time = str(dates.max().date())
     with timings.measure("benchmark_load_seconds"):
         benchmark_data = _resolve_benchmark(settings, benchmark, start_time, end_time)
-    strategy = StrategySpec.from_settings(settings, topk_override=topn)
+    strategy = StrategySpec.from_settings(
+        settings,
+        topk_override=topn,
+        n_drop_override=n_drop,
+        hold_thresh_override=hold_thresh,
+    )
     policy = strategy.to_policy()
     portfolio_identity = {
         "sourcePredictionsSha256": source_sha,
@@ -259,6 +266,9 @@ def backtest_predictions(
         )
         recorder.save_objects(**{"pred.pkl": pred})
         with timings.measure("portfolio_engine_seconds"):
+            from .topk_dropout import enforce_deterministic_qlib_position_order
+
+            enforce_deterministic_qlib_position_order()
             PredictionsPortAnaRecord(
                 recorder=recorder,
                 config=_portfolio_config(
@@ -361,6 +371,12 @@ def backtest_predictions(
             "runtime": {
                 "qlibKernels": parallel.kernels,
                 "joblibBackend": parallel.joblib_backend,
+            },
+            "executionIsolation": {
+                "featureComputeCalls": 0,
+                "rawMaterializationCalls": 0,
+                "modelTrainCalls": 0,
+                "modelPredictCalls": 0,
             },
             "timings": timing_payload,
             "metrics": metrics,

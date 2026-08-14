@@ -105,17 +105,56 @@ def shared_research_calendar(settings: Settings) -> pd.DatetimeIndex:
     from .dataset_resolver import pin_dataset
 
     settings, _ = pin_dataset(settings)
-    """Return dates present in raw partitions, Qlib data and the official open calendar."""
+    """Return governed open dates that are also present in the pinned Qlib dataset."""
+
+    qlib_dates = _read_dates(settings.qlib_data_uri / "calendars" / "day.txt")
+    if qlib_dates.empty:
+        raise ValueError("Qlib calendar contains no trading dates")
+
+    if settings.uses_platform_release():
+        # Production research is owned by platform's immutable DataRelease.  The
+        # legacy raw store is intentionally absent in this mode and must not be
+        # consulted as an undeclared second data source.
+        from .platform_release import load_platform_release
+
+        release = load_platform_release(settings)
+        official = pd.concat(
+            (pd.read_parquet(path) for path in release.files("trading_calendar")),
+            ignore_index=True,
+        )
+        required = {"cal_date", "is_open"}
+        if not required.issubset(official.columns):
+            raise ValueError(
+                f"DataRelease trading calendar missing columns: {sorted(required - set(official.columns))}"
+            )
+        open_dates = pd.to_datetime(
+            official.loc[pd.to_numeric(official["is_open"], errors="coerce") == 1, "cal_date"],
+            errors="coerce",
+        )
+        official_dates = pd.DatetimeIndex(open_dates.dropna().sort_values().unique()).normalize()
+        coverage_start = pd.Timestamp(str(release.coverage.get("start"))).normalize()
+        coverage_end = pd.Timestamp(str(release.coverage.get("end"))).normalize()
+        official_dates = official_dates[(official_dates >= coverage_start) & (official_dates <= coverage_end)]
+        dates = qlib_dates.intersection(official_dates).sort_values()
+        if dates.empty:
+            raise ValueError("DataRelease and Qlib calendars have no shared open dates")
+        if dates.min() != coverage_start or dates.max() != coverage_end:
+            raise ValueError(
+                "pinned Qlib calendar does not cover the DataRelease research interval: "
+                f"expected {coverage_start.date()}..{coverage_end.date()}, "
+                f"found {dates.min().date()}..{dates.max().date()}"
+            )
+        return dates
+
+    # The repository-owned TuShare path remains available only for the explicit
+    # development profile, where raw, Qlib and curated official calendars agree.
 
     raw = pd.to_datetime(
         PartitionStore(settings.paths.raw).list_dates("daily"), format="%Y%m%d", errors="coerce"
     )
     raw_dates = pd.DatetimeIndex(sorted(value for value in raw if pd.notna(value))).normalize()
-    qlib_dates = _read_dates(settings.qlib_data_uri / "calendars" / "day.txt")
     if raw_dates.empty:
         raise ValueError("raw daily store contains no trading dates")
-    if qlib_dates.empty:
-        raise ValueError("Qlib calendar contains no trading dates")
     official_path = settings.paths.metadata / "trade_calendar.parquet"
     if not official_path.is_file():
         raise FileNotFoundError(f"official trading calendar is required: {official_path}")

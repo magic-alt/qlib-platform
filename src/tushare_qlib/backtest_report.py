@@ -57,7 +57,7 @@ def export_holding_snapshots(positions: Mapping[pd.Timestamp, Any]) -> pd.DataFr
         position = positions[value]
         account = float(position.calculate_value())
         cash = float(position.get_cash())
-        for instrument in position.get_stock_list():
+        for instrument in sorted(position.get_stock_list()):
             code = str(instrument)
             quantity = float(position.get_stock_amount(code))
             price = float(position.get_stock_price(code))

@@ -11,7 +11,7 @@ from .topk_dropout import TopkDropoutPolicy, topk_dropout_decision
 
 def _position_frame(position: Any) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
-    for instrument in position.get_stock_list():
+    for instrument in sorted(position.get_stock_list()):
         rows.append(
             {
                 "instrument": str(instrument),

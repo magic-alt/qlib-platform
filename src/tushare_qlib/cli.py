@@ -114,6 +114,8 @@ def parser() -> argparse.ArgumentParser:
     pb.add_argument("predictions")
     pb.add_argument("--benchmark")
     pb.add_argument("--topn", type=int)
+    pb.add_argument("--n-drop", type=int)
+    pb.add_argument("--hold-thresh", type=int)
     pb.add_argument("--artifact-level", choices=["minimal", "full"], default="minimal")
     pb.add_argument("--dataset-ref")
     rp = sub.add_parser("research-report")
@@ -702,6 +704,8 @@ def main() -> None:
             args.predictions,
             benchmark=args.benchmark,
             topn=args.topn,
+            n_drop=args.n_drop,
+            hold_thresh=args.hold_thresh,
             artifact_level=args.artifact_level,
         )
         print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))

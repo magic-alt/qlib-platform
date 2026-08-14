@@ -5,7 +5,26 @@ import types
 from types import SimpleNamespace
 
 import pandas as pd
-from tushare_qlib.topk_dropout import TopkDropoutPolicy, topk_dropout_decision
+from tushare_qlib.topk_dropout import (
+    TopkDropoutPolicy,
+    enforce_deterministic_qlib_position_order,
+    topk_dropout_decision,
+)
+
+
+def test_qlib_position_iteration_is_sorted_for_cross_process_determinism():
+    from qlib.backtest.position import Position
+
+    enforce_deterministic_qlib_position_order()
+    position = Position(
+        cash=100.0,
+        position_dict={
+            "SZ000001": {"amount": 1.0, "price": 1.0},
+            "SH600000": {"amount": 1.0, "price": 1.0},
+        },
+    )
+
+    assert position.get_stock_list() == ["SH600000", "SZ000001"]
 
 
 def _quotes(rows: list[str], *, limited_up: set[str] | None = None) -> pd.DataFrame:

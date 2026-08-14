@@ -34,7 +34,7 @@ dist/
 .vscode/
 .qoder
 
-data/
+data
 mlruns/
 tmp/
 

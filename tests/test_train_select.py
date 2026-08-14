@@ -10,6 +10,8 @@ from tushare_qlib.train_select import (
     _default_splits_from_data,
     _export_daily_selections,
     _export_daily_signal_scores,
+    _load_local_benchmark_series,
+    _official_calendar,
     _research_label_horizon_days,
 )
 
@@ -62,6 +64,61 @@ def test_research_label_horizon_defaults_to_strategy_hold_threshold(tmp_path):
     )
 
     assert _research_label_horizon_days(settings) == 7
+
+
+def test_platform_benchmark_is_loaded_from_bound_release(tmp_path, monkeypatch):
+    benchmark_path = tmp_path / "benchmark.parquet"
+    pd.DataFrame(
+        {
+            "ts_code": ["000300.SH", "000300.SH", "000905.SH"],
+            "trade_date": ["2024-01-02", "2024-01-03", "2024-01-02"],
+            "close": [100.0, 102.0, 200.0],
+        }
+    ).to_parquet(benchmark_path, index=False)
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={"data_source": {"kind": "platform_release"}},
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    release = SimpleNamespace(
+        data_release_id="ds_test",
+        files=lambda role: [benchmark_path] if role == "benchmark" else [],
+    )
+    monkeypatch.setattr("tushare_qlib.platform_release.load_platform_release", lambda value: release)
+
+    actual = _load_local_benchmark_series(
+        settings, "SH000300", pd.DatetimeIndex(["2024-01-02", "2024-01-03"])
+    )
+
+    assert actual.tolist() == pytest.approx([0.0, 0.02])
+
+
+def test_platform_official_calendar_is_loaded_from_bound_release(tmp_path, monkeypatch):
+    calendar_path = tmp_path / "calendar.parquet"
+    pd.DataFrame({"cal_date": ["2024-01-01", "2024-01-02", "2024-01-03"], "is_open": [0, 1, 1]}).to_parquet(
+        calendar_path, index=False
+    )
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={"data_source": {"kind": "platform_release"}},
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    release = SimpleNamespace(
+        data_release_id="ds_test",
+        files=lambda role: [calendar_path] if role == "trading_calendar" else [],
+    )
+    monkeypatch.setattr("tushare_qlib.platform_release.load_platform_release", lambda value: release)
+
+    assert _official_calendar(settings).tolist() == [
+        pd.Timestamp("2024-01-02"),
+        pd.Timestamp("2024-01-03"),
+    ]
 
 
 def test_default_splits_fail_fast_when_qlib_calendar_is_stale(tmp_path, monkeypatch):

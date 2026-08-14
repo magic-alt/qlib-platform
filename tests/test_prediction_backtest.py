@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from tushare_qlib.canonical_config import StrategySpec
 from tushare_qlib.prediction_backtest import (
     _load_predictions,
     _portfolio_config,
@@ -167,3 +168,29 @@ def test_portfolio_config_uses_strategy_and_execution_settings(tmp_path):
     assert config["strategy"]["kwargs"]["topk"] == 20
     assert config["backtest"]["account"] == 123_000
     assert config["backtest"]["exchange_kwargs"]["open_cost"] == pytest.approx(0.001)
+
+
+def test_strategy_overrides_support_prediction_only_portfolio_matrix(tmp_path):
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={
+            "strategy": {
+                "topk_dropout": {"topk": 30, "n_drop": 5, "hold_thresh": 5},
+            }
+        },
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+
+    strategy = StrategySpec.from_settings(
+        settings,
+        topk_override=50,
+        n_drop_override=10,
+        hold_thresh_override=7,
+    )
+
+    assert strategy.topk == 50
+    assert strategy.n_drop == 10
+    assert strategy.hold_thresh == 7
