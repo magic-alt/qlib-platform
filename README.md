@@ -229,63 +229,31 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 若旧运行未导出 `holdings.parquet`，命令会自动查找本地 MLflow 的 Qlib 仓位快照；存在多个候选时传入
 `--positions-file path/to/positions_normal_1day.pkl`。
 
-### 4.1 TopkDropout 实盘决策与持仓对账
+### 4.1 TargetPortfolio 研究交接边界
 
-`TopkDropoutStrategy(topk=30, n_drop=5, hold_thresh=5)` 每日重算排名，但不是每日清仓重买 Top30。
-精确模式用 T−1 分数、T 日盘前券商仓位快照和 T 日报价快照生成有限换仓的订单；原有 `build-trade-plan` 仍是独立的
-风险配权路径，只发布 `TARGET_PORTFOLIO`/`STRATEGY_DECISION`，不再发布可执行 `ORDER_INTENT`。
-
-先以券商仓位快照和成交回报更新本地持有期账本：
+`qlib-platform` 只负责从模型分数构建不可变的 `TARGET_PORTFOLIO`，不再读取券商仓位、账户或成交，
+也不生成 `ORDER_INTENT`、订单、成交或持仓账本。使用研究策略生成目标组合：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml reconcile-holdings broker_positions.csv `
-  --fills broker_fills.csv --as-of-date 2026-08-10
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml build-target-portfolio `
+  --selection-file data/output/selection_<YYYYMMDD>.csv `
+  --trade-date <YYYY-MM-DD>
 ```
 
-`broker_positions.csv` 是 execution position snapshot，必须包含：
-
-- `instrument,quantity,available_quantity`：券商可执行仓位；
-- `as_of_trade_date`：该快照所属交易日，必须与 `--as-of-date` 一致；
-- `snapshot_at_utc`：券商原始仓位响应的 UTC 采集时刻，不能填对账完成时刻；
-- `account_id`：可选但推荐；
-- `source`：可选，取值为 `broker` 或 `paper`，省略时按 `broker` 处理。
-
-对账输出可直接作为 `build-topk-orders` 的 positions 输入，字段为
-`instrument,quantity,available_quantity,holding_days,opened_trade_date,as_of_trade_date,snapshot_at_utc`，并保留可选
-`account_id` 与 `source`。持有期账本内部仍使用 `last_quantity` 和 `as_of_date`；这两个内部字段不会泄漏到执行快照。
-
-成交 CSV 必须包含 `fill_id,trade_date,instrument,side,quantity,fill_price`。首次导入的既有仓位没有可追溯买入成交时，
-额外传入 `--initial-holdings`（字段：`instrument,opened_trade_date`）。未能解释的券商持仓会失败关闭，避免错误绕过
-`hold_thresh`。
-
-在交易日读取完整分数、对账后仓位、报价和可用现金生成决策及订单：
+正式交接使用 Artifact Contract v2：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml build-topk-orders `
-  data/output/signals/signal_scores_20260807.parquet `
-  data/output/holdings_state_20260810.csv trade_quotes.csv `
-  --cash 1000000 --daily-pnl-pct -0.002
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml artifact-v2-export `
+  data/output/research/<RUN_ID>/manifest.json `
+  --output-dir data/output/exports/<RUN_ID> `
+  --git-commit <GIT_COMMIT> --container-digest <CONTAINER_DIGEST>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml lean-register `
+  data/output/exports/<RUN_ID>/qlib_research_bundle.v2.json
 ```
 
-该命令生成 `strategy_decision_YYYYMMDD.csv`、`orders_YYYYMMDD.csv` 和
-`blocked_orders_YYYYMMDD.csv`。`--daily-pnl-pct` 是当日券商账户收益率，缺失时订单发布失败关闭。
-
-`trade_quotes.csv` 是 quote snapshot，必须包含
-`instrument,price,paused,is_limit_up,is_limit_down,sector,as_of_trade_date,snapshot_at_utc`。其中
-`as_of_trade_date` 必须等于信号 artifact 声明的 `trade_date`，`snapshot_at_utc` 必须是行情源实际采集时刻；仓位和报价
-各自只能包含一个快照时刻，并且都必须满足配置的最大 age。可选
-`adv20_volume` 以 `ADV20 × max_participation_rate` 约束实盘委托。回测仍使用当日实际成交量，因此审计文件应作为
-两种流动性口径的对照，而不是把回测成交量当作开盘前可知信息。
-
-`2026-08-07`（周五）信号对应 `2026-08-10`（周一）交易日；上面的日期仅用于说明文件配对。真实下单前必须使用
-当前交易日文件，并在采集券商仓位和行情后立即运行，复用原始 `snapshot_at_utc`，否则 freshness 检查会失败关闭。
-
-完整的 `reconcile → freshness → topk` 回归冒烟命令：
-
-```powershell
-& $RepoPython -m pytest -q tests/test_holdings_ledger.py tests/test_live_controls.py tests/test_topk_dropout.py
-& $RepoPython -m ruff check src tests
-```
+`platform` 校验 DataRelease、payload SHA256、lineage 和 `RESEARCH_PROMOTED` 状态后，才可创建
+LEAN validation draft。组合构造、hard risk、Paper、OMS、QMT、订单、成交与 ledger 全部属于 `platform`。
+旧的 execution/broker/ledger Python 模块仅作为 P3 兼容审计代码暂存，不再有 CLI 或安装入口。
 
 ### 4.2 SH000300 基准回测结果解读（历史示例）
 
@@ -329,29 +297,18 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 
 `curate-day`、`stage-update` 和 `dump-update` 是低层恢复工具，不是常规每日发布入口。
 
-`train-select` 和 walk-forward 的 `selection_*.csv` 是研究 OOS artifact，不能作为 T→T+1 实盘提醒。
-生产 shadow-signal 使用独立的模型部署与每日推理链：
+`train-select` 和 walk-forward 的 `selection_*.csv` 是研究 OOS artifact，不能作为实盘指令。
+每日推理仅生成模型分数、信号健康报告和可交接的研究 Artifact：
 
 ```powershell
-# 低频：由已通过 gate 的 walk-forward release 生成 STAGED bundle，再人工激活
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml model-refit --research-run <RUN_ID> --as-of 2026-08-10
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml model-deploy <DEPLOYMENT_ID>
-
-# 每日收盘：统一入口会先验证交易日，再同步 T 日数据并真正推理 T→T+1
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml production-run --phase close --business-date 2026-08-10
-
-# T+1 盘前：消费日期化 broker/quote/account inbox，生成账户动作提醒
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml production-run --phase pretrade --business-date 2026-08-11
-
-# 历史 parity：必须显式使用冻结至 T 的数据集，不能使用当前完整数据集代替
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml live-inference --as-of 2026-08-10 `
-  --dataset-uri data/snapshots/20260810 `
-  --deployment-id <DEPLOYMENT_ID> `
-  --compare-research data/output/research/<RUN_ID>/oos_predictions.parquet
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml live-inference --as-of <YYYY-MM-DD> `
+  --dataset-ref <DATA_RELEASE_ID> --deployment-id <LOCAL_MODEL_RELEASE_ID>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml daily-signal-run --as-of <YYYY-MM-DD>
 ```
 
-完整调度、inbox 契约、故障恢复、回滚和 20 日 shadow 验收要求见
-[`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md)。P0 只发布人工确认用 `ORDER_INTENT`，不会提交券商订单。
+模型在本仓库内的 `model-deploy` 仅表示本地推理激活，不代表 platform 的 `PRODUCTION` 状态。
+Qlib 的最高晋级状态仍为 `RESEARCH_PROMOTED`。LEAN validation、Paper 和 Production 晋级必须在
+`platform` 完成。
 
 ## 6. 注意事项
 

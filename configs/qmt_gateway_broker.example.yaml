@@ -1,16 +1,6 @@
-# Merge this production.broker block into a local pipeline configuration only
-# after the local QMT Gateway smoke test succeeds. Do not commit token values.
-production:
-  broker:
-    kind: http_readonly
-    base_url: http://127.0.0.1:8765/v1
-    token_env: BROKER_READONLY_TOKEN
-    token_header: Authorization
-    timeout_seconds: 10
-    max_attempts: 3
-    retry_delay_seconds: 0.25
-    endpoints:
-      account: account
-      positions: positions
-      orders: orders
-      fills: fills
+# Deprecated in qlib-platform.
+# QMT broker connectivity is configured and operated by the sibling platform repository.
+# This file remains only as an explicit P3 migration marker and contains no credential fields.
+migration:
+  status: moved_to_platform
+  documentation: ../platform/docs/qmt_gateway.md
