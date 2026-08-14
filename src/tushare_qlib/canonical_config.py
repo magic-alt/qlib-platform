@@ -86,12 +86,23 @@ class StrategySpec:
     risk_degree: float = 0.95
 
     @classmethod
-    def from_settings(cls, settings: Settings, *, topk_override: int | None = None) -> "StrategySpec":
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        topk_override: int | None = None,
+        n_drop_override: int | None = None,
+        hold_thresh_override: int | None = None,
+    ) -> "StrategySpec":
         strategy = _mapping(settings.data.get("strategy"))
         configured = _mapping(strategy.get("topk_dropout"))
         values = dict(configured)
         if topk_override is not None:
             values["topk"] = topk_override
+        if n_drop_override is not None:
+            values["n_drop"] = n_drop_override
+        if hold_thresh_override is not None:
+            values["hold_thresh"] = hold_thresh_override
         spec = cls(
             topk=int(values.get("topk", cls.topk)),
             n_drop=int(values.get("n_drop", cls.n_drop)),
