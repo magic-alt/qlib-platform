@@ -13,6 +13,7 @@ from tushare_qlib.prediction_snapshot import (
     write_prediction_snapshot,
 )
 from tushare_qlib.settings import Paths, Settings
+from tushare_qlib.store import sha256_file
 from tushare_qlib import backtest_report
 from tushare_qlib.walk_forward import (
     Fold,
@@ -228,7 +229,7 @@ def test_checkpoint_fingerprint_changes_with_strategy_or_execution(tmp_path):
     assert execution_changed != strategy_changed
 
 
-def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
+def test_default_three_month_walk_forward_completes_when_final_quality_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     paths = Paths.from_root(tmp_path / "data")
@@ -264,13 +265,31 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
     monkeypatch.setattr("tushare_qlib.walk_forward.load_model_profile", lambda *args, **kwargs: profile)
     monkeypatch.setattr("tushare_qlib.walk_forward.resolve_runtime", lambda value: runtime)
     monkeypatch.setattr("tushare_qlib.walk_forward.shared_research_calendar", lambda value: calendar)
+    monkeypatch.setattr(
+        "tushare_qlib.walk_forward.git_revision",
+        lambda value: {"commit": "test-commit", "dirty": False},
+    )
     monkeypatch.setattr(backtest_report, "write_backtest_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr("tushare_qlib.walk_forward.feature_store_enabled", lambda value: True)
+    monkeypatch.setattr(
+        "tushare_qlib.walk_forward.prepare_feature_data",
+        lambda *args, **kwargs: (
+            pd.DataFrame(),
+            {
+                "featureSnapshotId": "fs-test",
+                "cacheStatus": "REUSED",
+                "rawMaterializationCalls": 0,
+            },
+        ),
+    )
 
     calls: list[tuple[str, str, int]] = []
 
     def fake_train(
         _settings: Settings,
         *,
+        train: tuple[str, str],
+        valid: tuple[str, str],
         test: tuple[str, str],
         run_kind: str,
         promotion_mode: str,
@@ -295,9 +314,6 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
         )
         report = pd.DataFrame(
             {
-                # Component portfolios are deliberately unusable as aggregate
-                # evidence.  The aggregate gate must consume the separate
-                # continuous portfolio created below.
                 "account": 100_000 * (0.99 ** np.arange(1, len(dates) + 1)),
                 "return": -0.01,
                 "bench": 0.0,
@@ -315,7 +331,7 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
             "oos_predictions.parquet": predictions,
             "oos_labels.parquet": labels,
         }
-        if promotion_mode == "release":
+        if promotion_mode == "holdout":
             artifacts.update(
                 {
                     "portfolio_report.parquet": report,
@@ -323,35 +339,66 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
                     "holdings.parquet": holdings,
                 }
             )
+        gate_path = output / ("research_gate.json" if promotion_mode == "holdout" else "component_gate.json")
+        gate_path.write_text(
+            json.dumps(
+                {
+                    "passed": promotion_mode != "holdout",
+                    "decision": "REJECT" if promotion_mode == "holdout" else "COMPONENT_VALIDATED",
+                }
+            ),
+            encoding="utf-8",
+        )
         entries = []
         for name, frame in artifacts.items():
             path = output / name
             frame.to_parquet(path)
             entries.append({"name": name, "localPath": str(path), "rows": len(frame)})
+        entries.append({"name": gate_path.name, "localPath": str(gate_path)})
         manifest = {
             "schemaVersion": "2.0",
             "externalRunId": run_id,
             "dataset": {"fingerprint": "dataset-1"},
+            "featureStore": {"featureSnapshotId": "fs-test"},
+            "processorState": {
+                "fitWindow": list(train),
+                "processorStateSha256": f"processor-{run_id}",
+            },
+            "researchExperiment": {
+                "data_release_id": "dataset-1",
+                "alpha_pack_id": "alpha-test",
+                "alpha_pack_sha256": "alpha-sha",
+                "label_spec_id": "label-test",
+                "label": {"lookahead_days": 6},
+                "split_profile_id": "wf-test",
+                "model_profile_id": "test",
+                "model_profile_sha256": "model-sha",
+                "portfolio_policy_id": "topk_dropout_v1",
+                "portfolio_policy_sha256": "portfolio-sha",
+            },
             "canonicalConfig": {},
             "lineage": {"lineageId": f"lineage-{run_id}", "complete": True},
             "promotion": {
-                "status": "PROMOTED" if promotion_mode == "release" else "CANDIDATE",
-                "decision": "PROMOTE" if promotion_mode == "release" else "COMPONENT_VALIDATED",
-                "gateMode": "release" if promotion_mode == "release" else "component_validation",
+                "status": "REJECTED" if promotion_mode == "holdout" else "CANDIDATE",
+                "decision": "REJECT" if promotion_mode == "holdout" else "COMPONENT_VALIDATED",
+                "gateMode": "final_holdout" if promotion_mode == "holdout" else "component_validation",
+                "gateReportPath": str(gate_path),
             },
             "execution": {},
             "timings": {"phasesSeconds": {}},
+            "folds": [
+                {
+                    "key": run_kind,
+                    "train": list(train),
+                    "valid": list(valid),
+                    "test": list(test),
+                }
+            ],
             "artifacts": entries,
         }
         manifest_path = output / "manifest.json"
-        if promotion_mode == "release":
-            manifest["latestTargets"] = {"artifactType": "MODEL_TOPK", "targets": []}
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        if promotion_mode == "component":
-            return manifest_path
-        selection = output / "selection.csv"
-        pd.DataFrame({"model_id": [run_id]}).to_csv(selection, index=False)
-        return selection
+        return manifest_path
 
     monkeypatch.setattr("tushare_qlib.walk_forward.train_backtest_select", fake_train)
 
@@ -408,7 +455,20 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
 
     monkeypatch.setattr("tushare_qlib.walk_forward.backtest_predictions", fake_continuous_backtest)
 
-    manifest_path = run_walk_forward(settings, start_date="2016-01-01", end_date="2026-01-31")
+    with pytest.raises(RuntimeError, match="interrupted after fold rolling_02"):
+        run_walk_forward(
+            settings,
+            start_date="2016-01-01",
+            end_date="2026-01-31",
+            acceptance_mode=True,
+            interrupt_after_fold=3,
+        )
+    manifest_path = run_walk_forward(
+        settings,
+        start_date="2016-01-01",
+        end_date="2026-01-31",
+        acceptance_mode=True,
+    )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     rolling_calls = [call for call in calls if call[0] == "walk_forward_fold"]
@@ -416,10 +476,10 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
     assert rolling_calls and all(
         mode == "component" and observations < 252 for _, mode, observations in rolling_calls
     )
-    assert final_calls == [("final_holdout", "release", final_calls[0][2])]
+    assert final_calls == [("final_holdout", "holdout", final_calls[0][2])]
     assert final_calls[0][2] >= 252
     assert manifest["promotion"]["aggregateOosGate"]["passed"] is True
-    assert manifest["promotion"]["finalHoldoutGate"]["status"] == "PROMOTED"
+    assert manifest["promotion"]["finalHoldoutGate"]["passed"] is False
     assert manifest["promotion"]["gateMode"] == "aggregate_oos_and_final_holdout"
     assert manifest["aggregatePortfolioRun"]["stateMode"] == "single_continuous_account"
     assert manifest["evaluationScopes"]["topLevelPortfolioArtifacts"] == "rolling_oos_only"
@@ -427,3 +487,26 @@ def test_default_three_month_walk_forward_reaches_aggregate_and_final_gates(
     assert rolling_runs
     assert all(run["artifactMode"] == "signal_only" for run in rolling_runs)
     assert all(run["portfolioBacktestExecuted"] is False for run in rolling_runs)
+    assert manifest["walkForwardEvidence"]["checkpointRecovery"]["validFoldReuseCount"] == 3
+    assert manifest["walkForwardEvidence"]["systemAcceptance"] == "PASS"
+    assert manifest["walkForwardEvidence"]["researchQuality"] == "REJECT"
+
+    artifact_paths = {
+        item["name"]: Path(item["localPath"])
+        for item in manifest["artifacts"]
+        if item["name"] in {"oos_predictions.parquet", "portfolio_report.parquet", "holdings.parquet"}
+    }
+    exact_before = {name: sha256_file(path) for name, path in artifact_paths.items()}
+    replay_path = run_walk_forward(
+        settings,
+        start_date="2016-01-01",
+        end_date="2026-01-31",
+        acceptance_mode=True,
+    )
+    replay = json.loads(replay_path.read_text(encoding="utf-8"))
+    exact_after = {
+        item["name"]: sha256_file(Path(item["localPath"]))
+        for item in replay["artifacts"]
+        if item["name"] in exact_before
+    }
+    assert exact_after == exact_before

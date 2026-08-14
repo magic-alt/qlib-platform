@@ -110,6 +110,9 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--stage", choices=["signal", "release"], default="release")
     rr.add_argument("--artifact-level", choices=["minimal", "full"], default="full")
     rr.add_argument("--dataset-ref")
+    rr.add_argument("--full-acceptance", action="store_true")
+    rr.add_argument("--interrupt-after-fold", type=int)
+    rr.add_argument("--checkpoint-namespace", default="default")
     pb = sub.add_parser("backtest-predictions")
     pb.add_argument("predictions")
     pb.add_argument("--benchmark")
@@ -825,6 +828,9 @@ def main() -> None:
                 benchmark=args.benchmark,
                 topn=args.topn,
                 model_profile=args.model_profile,
+                acceptance_mode=args.full_acceptance,
+                interrupt_after_fold=args.interrupt_after_fold,
+                checkpoint_namespace=args.checkpoint_namespace,
             )
             print(json.dumps(_report_payload(walk_manifest_path), ensure_ascii=False))
         elif args.command == "research-run":
