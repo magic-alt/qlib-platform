@@ -16,6 +16,7 @@ from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .model_bundle import create_model_bundle
 from .model_registry import ModelRegistry
 from .model_runtime import build_model, load_model_profile, resolve_runtime, resolved_model_parameters
+from .models.registry import get_model_adapter
 from .research_timing import (
     effective_label_gap,
     label_spec_from_settings,
@@ -104,21 +105,11 @@ def production_refit_windows(settings: Settings, as_of: str) -> tuple[tuple[str,
 
 
 def _selected_training_steps(model: Any, family: str, parameters: Mapping[str, Any]) -> int:
-    if family == "lightgbm":
-        booster = getattr(model, "model", None)
-        selected = int(getattr(booster, "best_iteration", 0) or 0)
-        return selected or int(getattr(model, "num_boost_round", parameters.get("num_boost_round", 1)))
-    selected = int(getattr(model, "best_step", 0) or 0)
-    return selected or int(getattr(model, "max_steps", parameters.get("max_steps", 1)))
+    return get_model_adapter(family).selected_training_steps(model, parameters)
 
 
 def _fit_final_model(model: Any, dataset: Any, family: str, selected_steps: int) -> None:
-    dataset.segments = {key: value for key, value in dataset.segments.items() if key != "valid"}
-    if family == "lightgbm":
-        model.fit(dataset, num_boost_round=selected_steps, early_stopping_rounds=0)
-        return
-    model.max_steps = selected_steps
-    model.fit(dataset)
+    get_model_adapter(family).fit_final(model, dataset, selected_steps)
 
 
 def _assert_recipe(settings: Settings, release: Mapping[str, Any], canonical: Mapping[str, Any]) -> None:

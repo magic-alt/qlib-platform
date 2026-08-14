@@ -6,6 +6,12 @@ import pandas as pd
 import pytest
 
 from tushare_qlib.model_runtime import ModelProfile, ResolvedRuntime
+from tushare_qlib.prediction_snapshot import (
+    PredictionSnapshotSpec,
+    load_prediction_snapshot,
+    prediction_snapshot_path,
+    write_prediction_snapshot,
+)
 from tushare_qlib.settings import Paths, Settings
 from tushare_qlib import backtest_report
 from tushare_qlib.walk_forward import (
@@ -74,6 +80,58 @@ def test_continuous_oos_stream_rejects_overlapping_fold_dates(tmp_path: Path):
 
     with pytest.raises(ValueError, match="overlap or are out of order"):
         _write_continuous_oos_stream(manifests, tmp_path / "aggregate")
+
+
+def test_continuous_oos_stream_publishes_governed_aggregate_snapshot(tmp_path: Path):
+    manifests = []
+    for number, date in enumerate(("2026-01-05", "2026-01-06"), start=1):
+        run_id = f"run-{number}"
+        output = tmp_path / run_id
+        output.mkdir()
+        index = pd.MultiIndex.from_product(
+            [pd.to_datetime([date]), ["A", "B"]], names=["datetime", "instrument"]
+        )
+        predictions = pd.DataFrame({"score": [0.2, 0.1]}, index=index)
+        labels = pd.DataFrame({"label": [0.02, -0.01]}, index=index)
+        pred_path = output / "oos_predictions.parquet"
+        label_path = output / "oos_labels.parquet"
+        snapshot = write_prediction_snapshot(
+            pred_path,
+            predictions,
+            labels=labels,
+            spec=PredictionSnapshotSpec(
+                data_release_id="ds_test",
+                alpha_pack_id="alpha158_pit_v1",
+                feature_snapshot_id="fs_test",
+                label_spec_id="return_5d_t1_v1",
+                split_spec_id=f"split-{number}",
+                model_id=f"model-{number}",
+                model_profile_id="ridge_golden_v1",
+                fold_id=f"rolling-{number}",
+            ),
+        )
+        labels.to_parquet(label_path)
+        manifests.append(
+            {
+                "externalRunId": run_id,
+                "predictionSnapshot": snapshot,
+                "artifacts": [
+                    {"name": pred_path.name, "localPath": str(pred_path)},
+                    {
+                        "name": prediction_snapshot_path(pred_path).name,
+                        "localPath": str(prediction_snapshot_path(pred_path)),
+                    },
+                    {"name": label_path.name, "localPath": str(label_path)},
+                ],
+            }
+        )
+
+    prediction_path, _, metadata = _write_continuous_oos_stream(manifests, tmp_path / "aggregate")
+    combined, aggregate_snapshot = load_prediction_snapshot(prediction_path)
+
+    assert len(combined) == 4
+    assert aggregate_snapshot["contract"]["fold_id"] == "rolling_oos_aggregate"
+    assert metadata["predictionSnapshot"] == aggregate_snapshot
 
 
 def test_fold_boundary_continuity_keeps_holding_age(tmp_path: Path):

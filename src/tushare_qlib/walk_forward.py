@@ -21,7 +21,7 @@ from .research_gate import (
     write_gate_report,
 )
 from .store import sha256_file
-from .lineage import dirty_research_override_enabled, git_revision, resolve_qlib_repo
+from .lineage import dirty_research_override_enabled, git_revision, resolve_qlib_repo, sha256_json
 from .universe import membership_fingerprint
 from .research_timing import effective_label_gap, label_timing_from_settings, shared_research_calendar
 from .train_select import _research_label_horizon_days, train_backtest_select
@@ -29,6 +29,11 @@ from .canonical_config import StrategySpec
 from .feature_store import feature_store_enabled, prepare_feature_data
 from .dataset_resolver import pin_dataset
 from .prediction_backtest import backtest_predictions
+from .prediction_snapshot import (
+    PredictionSnapshotSpec,
+    load_prediction_snapshot,
+    write_prediction_snapshot,
+)
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,7 @@ def _write_continuous_oos_stream(
     predictions: list[pd.DataFrame] = []
     labels: list[pd.DataFrame] = []
     components: list[dict[str, object]] = []
+    snapshot_contracts: list[dict[str, str]] = []
     previous_end: pd.Timestamp | None = None
     for manifest in manifests:
         pred = _read_oos_frame(manifest, "oos_predictions.parquet", "score")
@@ -101,6 +107,17 @@ def _write_continuous_oos_stream(
         previous_end = end
         predictions.append(pred)
         labels.append(label)
+        declared_snapshot = manifest.get("predictionSnapshot")
+        if isinstance(declared_snapshot, dict):
+            _, verified_snapshot = load_prediction_snapshot(
+                _artifact_path(manifest, "oos_predictions.snapshot.json")
+            )
+            if verified_snapshot.get("snapshotId") != declared_snapshot.get("snapshotId"):
+                raise ValueError("fold prediction snapshot does not match its run manifest")
+            contract = verified_snapshot.get("contract")
+            if not isinstance(contract, dict):
+                raise ValueError("fold prediction snapshot contract is missing")
+            snapshot_contracts.append({str(key): str(value) for key, value in contract.items()})
         components.append(
             {
                 "externalRunId": str(manifest.get("externalRunId", "")),
@@ -118,7 +135,42 @@ def _write_continuous_oos_stream(
         raise ValueError("continuous OOS labels contain duplicate datetime/instrument rows")
     prediction_path = output_dir / "oos_predictions.parquet"
     label_path = output_dir / "oos_labels.parquet"
-    combined_predictions.to_parquet(prediction_path)
+    aggregate_snapshot: dict[str, object] | None = None
+    if snapshot_contracts:
+        if len(snapshot_contracts) != len(manifests):
+            raise ValueError("rolling OOS components mix governed and legacy prediction artifacts")
+        stable_fields = (
+            "data_release_id",
+            "alpha_pack_id",
+            "feature_snapshot_id",
+            "label_spec_id",
+            "model_profile_id",
+        )
+        first = snapshot_contracts[0]
+        drift = [
+            field
+            for field in stable_fields
+            if any(contract[field] != first[field] for contract in snapshot_contracts[1:])
+        ]
+        if drift:
+            raise ValueError(f"rolling OOS prediction snapshot contract drift: {drift}")
+        aggregate_snapshot = write_prediction_snapshot(
+            prediction_path,
+            combined_predictions,
+            labels=combined_labels,
+            spec=PredictionSnapshotSpec(
+                data_release_id=first["data_release_id"],
+                alpha_pack_id=first["alpha_pack_id"],
+                feature_snapshot_id=first["feature_snapshot_id"],
+                label_spec_id=first["label_spec_id"],
+                split_spec_id="wf_" + sha256_json([item["split_spec_id"] for item in snapshot_contracts]),
+                model_id="wf_" + sha256_json([item["model_id"] for item in snapshot_contracts]),
+                model_profile_id=first["model_profile_id"],
+                fold_id="rolling_oos_aggregate",
+            ),
+        )
+    else:
+        combined_predictions.to_parquet(prediction_path)
     combined_labels.to_parquet(label_path)
     metadata: dict[str, object] = {
         "componentCount": len(components),
@@ -129,6 +181,7 @@ def _write_continuous_oos_stream(
         "labelRows": len(combined_labels),
         "predictionDates": int(combined_predictions.index.get_level_values("datetime").nunique()),
         "duplicateRows": 0,
+        "predictionSnapshot": aggregate_snapshot,
     }
     return prediction_path, label_path, metadata
 
@@ -476,6 +529,8 @@ def _evaluate_aggregate_oos_gate(
     if not manifests:
         raise ValueError("aggregate OOS gate requires rolling component evidence")
     predictions = pd.read_parquet(prediction_path)
+    if "score" in predictions:
+        predictions = predictions[["score"]]
     labels = pd.read_parquet(label_path)
     combined_report = pd.read_parquet(_artifact_path(portfolio_manifest, "portfolio_report.parquet"))
     lineage_complete = all(bool(manifest.get("lineage", {}).get("complete")) for manifest in manifests)
@@ -839,11 +894,7 @@ def run_walk_forward(
         "dataset": manifests[-1]["dataset"],
         "datasetVersionId": pinned_dataset.version_id,
         "model": {
-            "name": (
-                "Alpha158-LGBM-WalkForward"
-                if runtime.profile.family == "lightgbm"
-                else "Alpha158-DNN-WalkForward"
-            ),
+            "name": f"{runtime.profile.name}-WalkForward",
             "fingerprint": external_id,
             "artifactRole": "RESEARCH_EVIDENCE",
             "deployable": False,

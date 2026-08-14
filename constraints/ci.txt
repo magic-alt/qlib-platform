@@ -11,6 +11,7 @@ reportlab==4.5.1
 pypdf==6.15.0
 pyqlib==0.9.7
 lightgbm==4.6.0
+xgboost==2.1.4
 pytest==8.4.2
 pytest-cov==6.2.1
 ruff==0.12.0

@@ -32,6 +32,11 @@ from .model_runtime import (
     resolve_runtime,
     write_timings,
 )
+from .prediction_snapshot import (
+    PredictionSnapshotSpec,
+    prediction_snapshot_path,
+    write_prediction_snapshot,
+)
 from .research_gate import (
     ResearchPromotionError,
     ResearchThresholds,
@@ -699,13 +704,27 @@ def train_backtest_select(
             artifact_dir = settings.paths.output / "research" / model_id
             artifact_dir.mkdir(parents=True, exist_ok=True)
             pred_path = artifact_dir / "oos_predictions.parquet"
+            pred_snapshot_path = prediction_snapshot_path(pred_path)
             label_path = artifact_dir / "oos_labels.parquet"
             timings_path = artifact_dir / "timings.json"
             gate_path = artifact_dir / ("component_gate.json" if component_mode else "signal_gate.json")
             manifest_path = artifact_dir / "manifest.json"
             with timings.measure("artifact_export_seconds"):
-                pred.to_parquet(pred_path)
                 label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
+                prediction_snapshot = write_prediction_snapshot(
+                    pred_path,
+                    pred,
+                    labels=label_frame,
+                    spec=PredictionSnapshotSpec.from_experiment(
+                        experiment_spec,
+                        feature_snapshot_id=str(
+                            (feature_store_metadata or {}).get("featureSnapshotId")
+                            or f"inline_{alpha_pack.fingerprint}"
+                        ),
+                        model_id=model_id,
+                        fold_id=run_kind,
+                    ),
+                )
                 label_frame.to_parquet(label_path)
                 lineage = build_lineage(
                     settings,
@@ -762,7 +781,7 @@ def train_backtest_select(
                 },
                 "featureStore": feature_store_metadata,
                 "model": {
-                    "name": "Alpha158-LGBM" if runtime.profile.family == "lightgbm" else "Alpha158-DNN",
+                    "name": runtime.profile.name,
                     "fingerprint": model_id,
                     "parameters": model_parameters,
                     "bestIteration": int(best_iteration) if best_iteration is not None else None,
@@ -771,6 +790,7 @@ def train_backtest_select(
                 "canonicalConfig": canonical.to_manifest(),
                 "researchExperimentId": experiment_spec.experiment_id,
                 "researchExperiment": experiment_spec.to_manifest(),
+                "predictionSnapshot": prediction_snapshot,
                 "lineage": lineage,
                 "promotion": {
                     "status": (
@@ -789,6 +809,7 @@ def train_backtest_select(
                 "metrics": signal_metrics,
                 "artifacts": [
                     {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
+                    {"name": pred_snapshot_path.name, "localPath": str(pred_snapshot_path)},
                     {"name": label_path.name, "localPath": str(label_path), "rows": len(label_frame)},
                     {"name": timings_path.name, "localPath": str(timings_path)},
                     {"name": gate_path.name, "localPath": str(gate_path)},
@@ -848,6 +869,7 @@ def train_backtest_select(
         artifact_dir = settings.paths.output / "research" / model_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         pred_path = artifact_dir / "oos_predictions.parquet"
+        pred_snapshot_path = prediction_snapshot_path(pred_path)
         report_path = artifact_dir / "portfolio_report.parquet"
         audit_path = artifact_dir / "strategy_audit.parquet"
         holdings_path = artifact_dir / "holdings.parquet"
@@ -865,8 +887,21 @@ def train_backtest_select(
                 report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
                 positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
                 indicators = recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl")
-            pred.to_parquet(pred_path)
             label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
+            prediction_snapshot = write_prediction_snapshot(
+                pred_path,
+                pred,
+                labels=label_frame,
+                spec=PredictionSnapshotSpec.from_experiment(
+                    experiment_spec,
+                    feature_snapshot_id=str(
+                        (feature_store_metadata or {}).get("featureSnapshotId")
+                        or f"inline_{alpha_pack.fingerprint}"
+                    ),
+                    model_id=model_id,
+                    fold_id=run_kind,
+                ),
+            )
             label_frame.to_parquet(label_path)
             report.to_parquet(report_path)
             with timings.measure_diagnostic("holdings_build_seconds"):
@@ -989,7 +1024,7 @@ def train_backtest_select(
             "dataset": dataset_manifest,
             "featureStore": feature_store_metadata,
             "model": {
-                "name": "Alpha158-LGBM" if runtime.profile.family == "lightgbm" else "Alpha158-DNN",
+                "name": runtime.profile.name,
                 "fingerprint": model_id,
                 "parameters": model_parameters,
                 "labelHorizonDays": label_horizon_days,
@@ -998,6 +1033,7 @@ def train_backtest_select(
             "canonicalConfig": canonical.to_manifest(),
             "researchExperimentId": experiment_spec.experiment_id,
             "researchExperiment": experiment_spec.to_manifest(),
+            "predictionSnapshot": prediction_snapshot,
             "portfolioPolicySha256": sha256_json(canonical.to_manifest()["portfolio"]),
             "lineage": lineage,
             "promotion": {
@@ -1029,6 +1065,7 @@ def train_backtest_select(
             "metrics": {**metrics, **gate_metrics},
             "artifacts": [
                 {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
+                {"name": pred_snapshot_path.name, "localPath": str(pred_snapshot_path)},
                 {"name": label_path.name, "localPath": str(label_path), "rows": len(label_frame)},
                 {"name": report_path.name, "localPath": str(report_path), "rows": len(report)},
                 {"name": audit_path.name, "localPath": str(audit_path), "rows": len(audit)},

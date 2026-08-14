@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ import pandas as pd
 import yaml
 
 from .artifact_resolver import ArtifactResolver, sha256_path
+from .models.registry import get_model_adapter
 from .settings import Settings
 
 
@@ -22,7 +24,9 @@ MODEL_BUNDLE_SCHEMA_VERSION = "1.0"
 
 
 def _canonical_sha256(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str).encode()
+    encoded = json.dumps(
+        value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -46,36 +50,11 @@ def _normalizer_state(dataset: Any, feature_columns: Sequence[str]) -> tuple[np.
 
 
 def _save_model(model: Any, family: str, root: Path) -> str:
-    if family == "lightgbm":
-        if getattr(model, "model", None) is None:
-            raise ValueError("LightGBM model is not fitted")
-        name = "model.txt"
-        model.model.save_model(str(root / name))
-        return name
-    if family == "pytorch_dnn":
-        import torch
-
-        if not bool(getattr(model, "fitted", False)):
-            raise ValueError("DNN model is not fitted")
-        name = "model_state.pt"
-        state = {key: value.detach().cpu() for key, value in model.dnn_model.state_dict().items()}
-        torch.save(state, root / name)
-        return name
-    raise ValueError(f"unsupported production model family: {family}")
+    return get_model_adapter(family).save(model, root)
 
 
 def _model_scores(model: Any, family: str, features: pd.DataFrame) -> np.ndarray:
-    if family == "lightgbm":
-        return cast(np.ndarray, np.asarray(model.model.predict(features.to_numpy()), dtype=float).reshape(-1))
-    if family == "pytorch_dnn":
-        import torch
-
-        model.dnn_model.eval()
-        values = torch.from_numpy(features.to_numpy(dtype=np.float32)).to(model.device)
-        with torch.no_grad():
-            result = model.dnn_model(values).detach().cpu().numpy()
-        return cast(np.ndarray, np.asarray(result, dtype=float).reshape(-1))
-    raise ValueError(f"unsupported production model family: {family}")
+    return get_model_adapter(family).scores(model, features)
 
 
 def create_model_bundle(
@@ -148,10 +127,16 @@ def create_model_bundle(
         payload_files = sorted(path.name for path in building.iterdir() if path.is_file())
         payload_checksums = {name: sha256_path(building / name) for name in payload_files}
         runtime_manifest = dict(runtime or {})
+        adapter = get_model_adapter(family)
+        adapter_module = sys.modules[adapter.__class__.__module__]
+        adapter_source = Path(str(adapter_module.__file__)).resolve()
+        package_root = Path(__file__).resolve().parent
+        adapter_relative = adapter_source.relative_to(package_root).as_posix()
         implementation_checksums = {
             name: sha256_path(Path(__file__).with_name(name))
             for name in ("custom_handler.py", "processors.py")
         }
+        implementation_checksums[adapter_relative] = sha256_path(adapter_source)
         identity = {
             "researchRunId": research_run_id,
             "refitAsOf": refit_as_of,
@@ -187,14 +172,11 @@ def create_model_bundle(
             "runtime": runtime_manifest,
             "implementationSha256": implementation_checksums,
             "randomSeed": seed,
-            "referenceCrossSectionCount": int(
-                parity_features.index.get_level_values("instrument").nunique()
-            ),
+            "referenceCrossSectionCount": int(parity_features.index.get_level_values("instrument").nunique()),
             "referenceScoreMean": float(parity_scores["score"].mean()),
             "referenceScoreStd": float(parity_scores["score"].std(ddof=0)),
             "referenceScoreQuantiles": [
-                float(value)
-                for value in parity_scores["score"].quantile(np.linspace(0.0, 1.0, 11)).tolist()
+                float(value) for value in parity_scores["score"].quantile(np.linspace(0.0, 1.0, 11)).tolist()
             ],
             "createdAtUtc": _utc_now(),
         }
@@ -247,7 +229,7 @@ def verify_model_bundle(root: str | Path) -> dict[str, Any]:
     if not isinstance(implementation, Mapping):
         raise ValueError("model bundle implementation checksums are missing")
     for name, expected in implementation.items():
-        source = Path(__file__).with_name(str(name))
+        source = Path(__file__).resolve().parent / str(name)
         if not source.is_file() or sha256_path(source) != expected:
             raise ValueError(f"model bundle implementation mismatch: {name}")
     return cast(dict[str, Any], manifest)
@@ -266,43 +248,26 @@ class LoadedModelBundle:
         missing = set(self.feature_columns) - set(features.columns)
         extra = set(features.columns) - set(self.feature_columns)
         if missing or extra:
-            raise ValueError(f"live feature schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}")
+            raise ValueError(
+                f"live feature schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
+            )
         ordered = features.loc[:, self.feature_columns]
         family = str(self.manifest["modelFamily"])
-        if family == "lightgbm":
-            values = self.model.predict(ordered.to_numpy())
-        else:
-            import torch
-
-            self.model.eval()
-            tensor = torch.from_numpy(ordered.to_numpy(dtype=np.float32)).to(next(self.model.parameters()).device)
-            with torch.no_grad():
-                values = self.model(tensor).detach().cpu().numpy()
+        values = get_model_adapter(family).predict_loaded(self.model, ordered)
         return pd.Series(np.asarray(values).reshape(-1), index=ordered.index, name="score")
 
 
-def load_model_bundle(root: str | Path, *, device: str = "cpu", verify_parity: bool = True) -> LoadedModelBundle:
+def load_model_bundle(
+    root: str | Path, *, device: str = "cpu", verify_parity: bool = True
+) -> LoadedModelBundle:
     bundle = Path(root)
     manifest = verify_model_bundle(bundle)
     schema = json.loads((bundle / "feature_schema.json").read_text(encoding="utf-8"))
     preprocessing = np.load(bundle / "preprocessing.npz")
     family = str(manifest["modelFamily"])
-    if family == "lightgbm":
-        import lightgbm as lgb
-
-        model = lgb.Booster(model_file=str(bundle / str(manifest["modelFile"])))
-    elif family == "pytorch_dnn":
-        import torch
-        from qlib.contrib.model.pytorch_nn import Net
-
-        parameters = json.loads((bundle / "model_parameters.json").read_text(encoding="utf-8"))
-        kwargs = parameters.get("pt_model_kwargs", {})
-        model = Net(**kwargs)
-        state = torch.load(bundle / str(manifest["modelFile"]), map_location=device, weights_only=True)
-        model.load_state_dict(state)
-        model.to(torch.device(device))
-    else:
-        raise ValueError(f"unsupported model bundle family: {family}")
+    parameters = json.loads((bundle / "model_parameters.json").read_text(encoding="utf-8"))
+    adapter = get_model_adapter(family)
+    model = adapter.load(bundle, manifest, parameters, device=device)
     loaded = LoadedModelBundle(
         root=bundle,
         manifest=manifest,
@@ -315,7 +280,7 @@ def load_model_bundle(root: str | Path, *, device: str = "cpu", verify_parity: b
         features = pd.read_parquet(bundle / "parity_features.parquet")
         expected = pd.read_parquet(bundle / "parity_scores.parquet")["score"]
         actual = loaded.predict(features)
-        tolerance = 1e-6 if family == "lightgbm" else 1e-5
+        tolerance = adapter.parity_tolerance
         if not np.allclose(actual.to_numpy(), expected.to_numpy(), rtol=tolerance, atol=tolerance):
             raise ValueError("model bundle parity validation failed")
     return loaded
