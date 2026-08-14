@@ -883,6 +883,7 @@ def train_backtest_select(
                 gate_report["decision"] = "RESEARCH_ONLY"
             write_gate_report(gate_report, gate_path)
             gate_passed = bool(gate_report["passed"])
+            review_required = bool(gate_report.get("reviewRequired", False))
             promoted = gate_passed and promotion_mode == "release" and bool(lineage["complete"])
 
             path: Path | None = None
@@ -964,7 +965,7 @@ def train_backtest_select(
                     PromotionStatus.PROMOTED.value
                     if promoted
                     else PromotionStatus.CANDIDATE.value
-                    if gate_passed
+                    if gate_passed or review_required
                     else PromotionStatus.REJECTED.value
                 ),
                 "decision": gate_report["decision"],
@@ -1033,6 +1034,8 @@ def train_backtest_select(
         )
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         if not gate_passed:
+            if review_required:
+                return manifest_path
             raise ResearchPromotionError(manifest_path)
         if promotion_mode == "component" or not promoted:
             return manifest_path

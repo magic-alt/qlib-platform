@@ -123,6 +123,43 @@ def test_complete_positive_metrics_are_promoted():
     assert report["passed"]
 
 
+def _healthy_metrics(**overrides: object) -> dict[str, object]:
+    return {
+        "observations": 300,
+        "ic_mean": 0.03,
+        "rank_ic_mean": 0.04,
+        "icir": 0.8,
+        "rank_icir": 0.8,
+        "long_short_annualized": 0.10,
+        "excess_ir": 0.9,
+        "max_drawdown": -0.10,
+        "unique_artifact": True,
+        "lineage_complete": True,
+        **overrides,
+    }
+
+
+def test_rank_icir_can_satisfy_the_production_stability_gate():
+    report = evaluate_research_metrics(
+        _healthy_metrics(icir=0.283, rank_icir=0.51),
+        ResearchThresholds(),
+    )
+
+    assert report["decision"] == "PROMOTE"
+    assert report["passed"] is True
+
+
+def test_borderline_stability_is_routed_to_research_review_not_rejection():
+    report = evaluate_research_metrics(
+        _healthy_metrics(icir=0.283, rank_icir=0.42),
+        ResearchThresholds(),
+    )
+
+    assert report["decision"] == "RESEARCH_REVIEW"
+    assert report["passed"] is False
+    assert report["reviewRequired"] is True
+
+
 def test_missing_lineage_is_always_rejected():
     report = evaluate_research_metrics(
         {

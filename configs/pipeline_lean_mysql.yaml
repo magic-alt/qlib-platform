@@ -146,6 +146,10 @@ research:
     min_rank_ic_mean: 0.02
     min_icir: 0.50
     min_long_short_annualized: 0.05
+    # A strong ranking signal may satisfy the stability gate even if Pearson ICIR does not.
+    min_rank_icir: 0.50
+    review_min_icir: 0.30
+    review_min_rank_icir: 0.40
     min_excess_ir: 0.50
     max_drawdown: 0.20
     require_unique_artifact: true
