@@ -18,6 +18,7 @@ from tushare_qlib.feature_store import prepare_feature_data
 from tushare_qlib.model_bundle import create_model_bundle, load_model_bundle
 from tushare_qlib.models.registry import get_model_adapter
 from tushare_qlib.research_timing import label_spec_from_settings
+from tushare_qlib.runtime_safety import resolve_qlib_parallel_runtime
 from tushare_qlib.settings import Settings
 from tushare_qlib.train_select import build_dataset
 
@@ -148,6 +149,17 @@ def validate(
     repo_root: Path,
 ) -> dict[str, Any]:
     settings, _ = pin_dataset(settings)
+    import qlib
+    from qlib.constant import REG_CN
+
+    parallel = resolve_qlib_parallel_runtime(settings)
+    qlib.init(
+        provider_uri=str(settings.qlib_data_uri),
+        region=REG_CN,
+        expression_cache=None,
+        dataset_cache=None,
+        **parallel.qlib_init_kwargs(),
+    )
     run = _load_json(lightgbm_dir / "manifest.json")
     fold = run["folds"][0]
     prepared, feature_store = prepare_feature_data(settings, fold["train"][0], fold["test"][1])
