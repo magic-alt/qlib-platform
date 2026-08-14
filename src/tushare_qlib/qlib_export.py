@@ -87,7 +87,7 @@ def _run(
     subprocess.run(cmd, check=True, cwd=qlib_repo)
 
 
-def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
+def smoke_test_dataset(dataset_dir: Path, instruments_name: str = "all") -> dict[str, object]:
     """Open the produced dataset through Qlib and execute minimal calendar/instrument/feature queries."""
     try:
         import qlib
@@ -100,12 +100,18 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
     calendar = list(D.calendar(freq="day"))
     if not calendar:
         raise RuntimeError("Qlib smoke test failed: empty calendar")
-    instruments = D.list_instruments({"market": "all", "filter_pipe": []}, as_list=True)
-    if not instruments:
-        raise RuntimeError("Qlib smoke test failed: empty instrument universe")
-    sample = instruments[: min(3, len(instruments))]
     start = calendar[max(0, len(calendar) - 5)]
     end = calendar[-1]
+    instruments = D.list_instruments(
+        {"market": instruments_name, "filter_pipe": []},
+        start_time=start,
+        end_time=end,
+        freq="day",
+        as_list=True,
+    )
+    if not instruments:
+        raise RuntimeError("Qlib smoke test failed: no active instruments in the terminal window")
+    sample = instruments[: min(3, len(instruments))]
     queried_fields = ["$close", "$volume", "$factor", *(f"${field}" for field in PIT_FIELDS)]
     features = D.features(sample, queried_fields, start_time=start, end_time=end, freq="day")
     if features.empty:
@@ -113,6 +119,7 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
     return {
         "calendar_count": len(calendar),
         "instrument_count": len(instruments),
+        "instruments_name": instruments_name,
         "sample_instruments": sample,
         "sample_rows": len(features),
         "queried_fields": queried_fields,
@@ -120,15 +127,18 @@ def smoke_test_dataset(dataset_dir: Path) -> dict[str, object]:
     }
 
 
-def _smoke_test_dataset_subprocess(dataset_dir: Path) -> dict[str, object]:
+def _smoke_test_dataset_subprocess(dataset_dir: Path, instruments_name: str = "all") -> dict[str, object]:
     marker = "__TQ_SMOKE_RESULT__="
     script = (
         "import json, sys; from pathlib import Path; "
         "from tushare_qlib.qlib_export import smoke_test_dataset; "
-        f"print('{marker}' + json.dumps(smoke_test_dataset(Path(sys.argv[1]))))"
+        f"print('{marker}' + json.dumps(smoke_test_dataset(Path(sys.argv[1]), sys.argv[2])))"
     )
     completed = subprocess.run(
-        [sys.executable, "-c", script, str(dataset_dir)], check=False, capture_output=True, text=True
+        [sys.executable, "-c", script, str(dataset_dir), instruments_name],
+        check=False,
+        capture_output=True,
+        text=True,
     )
     if completed.returncode:
         raise RuntimeError(
@@ -275,7 +285,8 @@ def dump_full(
     try:
         _run(settings, "dump_all", settings.paths.staging_full, candidate, single_thread=single_thread)
         install_qlib_universe(settings, candidate)
-        smoke = _smoke_test_dataset_subprocess(candidate)
+        instruments_name = str(settings.data.get("universe", {}).get("instruments", "all"))
+        smoke = _smoke_test_dataset_subprocess(candidate, instruments_name)
         return _publish_candidate(settings, candidate, mode="full", smoke=smoke, sync_context=sync_context)
     except Exception:
         shutil.rmtree(candidate, ignore_errors=True)
@@ -309,7 +320,8 @@ def dump_update(
     try:
         _run(settings, "dump_update", settings.paths.staging_update, candidate, single_thread=single_thread)
         install_qlib_universe(settings, candidate)
-        smoke = _smoke_test_dataset_subprocess(candidate)
+        instruments_name = str(settings.data.get("universe", {}).get("instruments", "all"))
+        smoke = _smoke_test_dataset_subprocess(candidate, instruments_name)
         return _publish_candidate(
             settings,
             candidate,
@@ -352,7 +364,8 @@ def dump_update_and_fix(
         if repair:
             _run(settings, "dump_fix", settings.paths.staging_repair, candidate, single_thread=single_thread)
         install_qlib_universe(settings, candidate)
-        smoke = _smoke_test_dataset_subprocess(candidate)
+        instruments_name = str(settings.data.get("universe", {}).get("instruments", "all"))
+        smoke = _smoke_test_dataset_subprocess(candidate, instruments_name)
         mode = "update_fix" if append and repair else ("update" if append else "repair")
         return _publish_candidate(
             settings,

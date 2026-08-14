@@ -259,6 +259,9 @@ def backtest_predictions(
         )
         recorder.save_objects(**{"pred.pkl": pred})
         with timings.measure("portfolio_engine_seconds"):
+            from .topk_dropout import enforce_deterministic_qlib_position_order
+
+            enforce_deterministic_qlib_position_order()
             PredictionsPortAnaRecord(
                 recorder=recorder,
                 config=_portfolio_config(

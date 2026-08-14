@@ -113,14 +113,33 @@ def _default_splits_from_data(settings: Settings) -> tuple[tuple[str, str], tupl
 
 
 def _official_calendar(settings: Settings) -> pd.DatetimeIndex:
-    path = settings.paths.metadata / "trade_calendar.parquet"
-    if not path.exists():
-        raise FileNotFoundError(f"official trading calendar is required: {path}")
-    cal = pd.read_parquet(path)
+    if settings.uses_platform_release():
+        from .platform_release import load_platform_release
+
+        release = load_platform_release(settings)
+        cal = pd.concat(
+            (pd.read_parquet(path) for path in release.files("trading_calendar")),
+            ignore_index=True,
+        )
+        owner = f"DataRelease {release.data_release_id} trading_calendar component"
+    else:
+        path = settings.paths.metadata / "trade_calendar.parquet"
+        if not path.exists():
+            raise FileNotFoundError(f"official trading calendar is required: {path}")
+        cal = pd.read_parquet(path)
+        owner = str(path)
+    required = {"cal_date", "is_open"}
+    if not required.issubset(cal.columns):
+        raise ValueError(
+            f"official calendar missing columns in {owner}: {sorted(required - set(cal.columns))}"
+        )
     dates = pd.to_datetime(
         cal.loc[pd.to_numeric(cal["is_open"], errors="coerce") == 1, "cal_date"], errors="coerce"
     )
-    return pd.DatetimeIndex(dates.dropna().sort_values().unique())
+    result = pd.DatetimeIndex(dates.dropna().sort_values().unique()).normalize()
+    if result.empty:
+        raise ValueError(f"official calendar contains no open dates in {owner}")
+    return result
 
 
 def _next_trade_date(settings: Settings, signal_date: str | pd.Timestamp) -> str:
@@ -147,15 +166,30 @@ def _to_tushare_index_code(code: str) -> str | None:
 
 
 def _load_local_benchmark_series(settings: Settings, code: str, calendar: pd.DatetimeIndex) -> pd.Series:
-    path = settings.paths.metadata / "benchmarks" / f"{code.upper()}.parquet"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Local benchmark is required: {path}. Run `tq --config {settings.config_path} sync-benchmark`."
-        )
-    frame = pd.read_parquet(path)
+    if settings.uses_platform_release():
+        from .platform_release import load_platform_release
+
+        release = load_platform_release(settings)
+        paths = release.files("benchmark")
+        frame = pd.concat((pd.read_parquet(path) for path in paths), ignore_index=True)
+        tushare_code = _to_tushare_index_code(code)
+        if "ts_code" in frame.columns and tushare_code:
+            frame = frame.loc[frame["ts_code"].astype(str).str.upper() == tushare_code]
+        owner = f"DataRelease {release.data_release_id} benchmark component"
+    else:
+        path = settings.paths.metadata / "benchmarks" / f"{code.upper()}.parquet"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Local benchmark is required: {path}. "
+                f"Run `tq --config {settings.config_path} sync-benchmark`."
+            )
+        frame = pd.read_parquet(path)
+        owner = str(path)
     required = {"trade_date", "close"}
     if not required.issubset(frame.columns):
         raise ValueError(f"benchmark file missing columns: {sorted(required - set(frame.columns))}")
+    if frame.empty:
+        raise ValueError(f"benchmark {code} contains no rows in {owner}")
     dates = pd.to_datetime(frame["trade_date"], errors="coerce")
     close = (
         pd.Series(pd.to_numeric(frame["close"], errors="coerce").to_numpy(), index=dates)
@@ -163,7 +197,7 @@ def _load_local_benchmark_series(settings: Settings, code: str, calendar: pd.Dat
         .sort_index()
     )
     if close.index.duplicated().any():
-        raise ValueError(f"duplicate benchmark dates in {path}")
+        raise ValueError(f"duplicate benchmark dates in {owner}")
     selected = close.reindex(calendar)
     if selected.isna().any():
         missing = selected[selected.isna()].index[:5].strftime("%Y-%m-%d").tolist()
@@ -823,6 +857,9 @@ def train_backtest_select(
         with timings.measure("benchmark_load_seconds"):
             benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
         with timings.measure("portfolio_engine_seconds"):
+            from .topk_dropout import enforce_deterministic_qlib_position_order
+
+            enforce_deterministic_qlib_position_order()
             PortAnaRecord(
                 recorder=recorder,
                 config={

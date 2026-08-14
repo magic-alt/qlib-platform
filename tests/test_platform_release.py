@@ -35,7 +35,10 @@ def _write_release(root: Path, *, profile: str = "cn-equity-daily-research-v2") 
         path = source / f"{role}.parquet"
         if role == "qlib_staging":
             pd.DataFrame(
-                [{"date": "2026-08-13", "symbol": "SH600000", "open": 10.0, "close": 10.1}]
+                [
+                    {"date": "2019-12-31", "symbol": "SH600000", "open": 9.0, "close": 9.1},
+                    {"date": "2026-08-13", "symbol": "SH600000", "open": 10.0, "close": 10.1},
+                ]
             ).to_parquet(path, index=False)
         elif role == "industry_classification_pit":
             pd.DataFrame(
@@ -163,7 +166,11 @@ def test_release_preflight_and_materialization_are_hash_bound(tmp_path: Path):
     assert materialized.data_release_id == release_id
     staging = json.loads((settings.paths.staging_full / "staging_manifest.json").read_text())
     assert staging["data_release_id"] == release_id
+    assert staging["coverage"] == {"start": "2020-01-01", "end": "2026-08-13"}
     assert list(settings.paths.staging_full.glob("*.parquet"))
+    assert (settings.paths.staging_full / "SH600000.parquet").is_file()
+    staged = pd.read_parquet(settings.paths.staging_full / "SH600000.parquet")
+    assert staged["date"].tolist() == ["2026-08-13"]
     assert Path(settings.data["universe"]["membership_file"]).is_file()
 
 

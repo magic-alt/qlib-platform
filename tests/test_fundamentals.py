@@ -121,7 +121,14 @@ def test_qlib_smoke_queries_all_pit_fields(tmp_path: Path, monkeypatch: pytest.M
             return [pd.Timestamp("2026-03-30")]
 
         @staticmethod
-        def list_instruments(config: object, as_list: bool):
+        def list_instruments(
+            config: object,
+            start_time: object,
+            end_time: object,
+            freq: str,
+            as_list: bool,
+        ):
+            captured["instrument_window"] = (start_time, end_time, freq)
             return ["SZ000001"]
 
         @staticmethod
@@ -143,3 +150,8 @@ def test_qlib_smoke_queries_all_pit_fields(tmp_path: Path, monkeypatch: pytest.M
 
     assert set(PIT_FEATURE_EXPRESSIONS).issubset(captured["fields"])
     assert set(PIT_FEATURE_EXPRESSIONS).issubset(smoke["queried_fields"])
+    assert captured["instrument_window"] == (
+        pd.Timestamp("2026-03-30"),
+        pd.Timestamp("2026-03-30"),
+        "day",
+    )

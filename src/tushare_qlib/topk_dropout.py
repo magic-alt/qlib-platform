@@ -7,6 +7,30 @@ import numpy as np
 import pandas as pd
 
 
+def enforce_deterministic_qlib_position_order() -> None:
+    """Replace Qlib's set-backed position iteration with a stable stock order.
+
+    Qlib's ``Position.get_stock_list`` currently constructs ``list(set(...))``.
+    Hash randomization therefore changes order execution and floating-point
+    aggregation between otherwise identical Python processes.  Sorting the same
+    keys is semantically neutral and makes portfolio replay content-addressable.
+    """
+
+    from qlib.backtest.position import Position
+
+    current = Position.get_stock_list
+    if bool(getattr(current, "_tushare_qlib_deterministic", False)):
+        return
+
+    def get_stock_list(position: object) -> list[str]:
+        excluded = {"cash", "now_account_value", "cash_delay"}
+        raw = getattr(position, "position")
+        return sorted(str(key) for key in raw if key not in excluded)
+
+    get_stock_list._tushare_qlib_deterministic = True  # type: ignore[attr-defined]
+    Position.get_stock_list = get_stock_list  # type: ignore[method-assign]
+
+
 @dataclass(frozen=True)
 class TopkDropoutPolicy:
     """The long-only decision parameters used by Qlib's TopkDropoutStrategy.
