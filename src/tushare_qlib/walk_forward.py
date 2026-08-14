@@ -14,6 +14,7 @@ from .settings import Settings
 from .model_runtime import load_model_profile, resolve_runtime, write_timings
 from .research_gate import (
     ResearchPromotionError,
+    derive_daily_signal_diagnostics,
     ResearchThresholds,
     derive_research_metrics,
     evaluate_research_metrics,
@@ -494,6 +495,9 @@ def _evaluate_aggregate_oos_gate(
         label_horizon_days=_research_label_horizon_days(settings),
     )
     research = settings.data.get("research", {})
+    diagnostics_path = gate_path.with_suffix(".daily_ic.csv")
+    daily_diagnostics = derive_daily_signal_diagnostics(predictions, labels)
+    daily_diagnostics.reset_index().to_csv(diagnostics_path, index=False)
     thresholds = ResearchThresholds.from_mapping(
         research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
     )
@@ -511,6 +515,26 @@ def _evaluate_aggregate_oos_gate(
         ),
         "predictionSha256": sha256_file(prediction_path),
         "reportSha256": sha256_file(_artifact_path(portfolio_manifest, "portfolio_report.parquet")),
+    }
+    fold_metric_keys = (
+        "observations",
+        "ic_mean",
+        "rank_ic_mean",
+        "icir",
+        "rank_icir",
+        "positive_ic_ratio",
+        "positive_rank_ic_ratio",
+    )
+    report["signal_diagnostics"] = {
+        "dailyArtifactPath": str(diagnostics_path),
+        "dailyObservationCount": len(daily_diagnostics),
+        "folds": [
+            {
+                "runId": str(manifest.get("externalRunId", "")),
+                "metrics": {key: manifest.get("metrics", {}).get(key) for key in fold_metric_keys},
+            }
+            for manifest in manifests
+        ],
     }
     write_gate_report(report, gate_path)
     return report
@@ -701,7 +725,7 @@ def run_walk_forward(
         portfolio_manifest,
         aggregate_gate_path,
     )
-    if not aggregate_gate["passed"]:
+    if not aggregate_gate["passed"] and aggregate_gate["decision"] == "REJECT":
         rejection_manifest = run_root / f"aggregate_oos_{aggregate_key}.manifest.json"
         rejection_manifest.write_text(
             json.dumps(

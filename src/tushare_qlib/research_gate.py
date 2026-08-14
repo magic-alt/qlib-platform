@@ -16,7 +16,12 @@ class ResearchThresholds:
     min_observations: int = 252
     min_ic_mean: float = 0.01
     min_rank_ic_mean: float = 0.02
+    # A release needs stable alpha through either the raw-score or ranking
+    # channel. Top-k strategies primarily consume the latter.
     min_icir: float = 0.50
+    min_rank_icir: float = 0.50
+    review_min_icir: float = 0.30
+    review_min_rank_icir: float = 0.40
     min_long_short_annualized: float = 0.05
     min_excess_ir: float = 0.50
     max_drawdown: float = 0.20
@@ -30,6 +35,9 @@ class ResearchThresholds:
             min_ic_mean=float(str(data.get("min_ic_mean", cls.min_ic_mean))),
             min_rank_ic_mean=float(str(data.get("min_rank_ic_mean", cls.min_rank_ic_mean))),
             min_icir=float(str(data.get("min_icir", cls.min_icir))),
+            min_rank_icir=float(str(data.get("min_rank_icir", cls.min_rank_icir))),
+            review_min_icir=float(str(data.get("review_min_icir", cls.review_min_icir))),
+            review_min_rank_icir=float(str(data.get("review_min_rank_icir", cls.review_min_rank_icir))),
             min_long_short_annualized=float(
                 str(data.get("min_long_short_annualized", cls.min_long_short_annualized))
             ),
@@ -69,6 +77,49 @@ def _as_series(value: pd.Series | pd.DataFrame, name: str) -> pd.Series:
     return value
 
 
+def derive_daily_signal_diagnostics(
+    predictions: pd.Series | pd.DataFrame, labels: pd.Series | pd.DataFrame
+) -> pd.DataFrame:
+    """Return the daily IC / Rank IC series used by the research gate."""
+
+    score = pd.to_numeric(_as_series(predictions, "predictions"), errors="coerce").rename("score")
+    label = pd.to_numeric(_as_series(labels, "labels"), errors="coerce").rename("label")
+    paired = pd.concat([score, label], axis=1, join="inner").dropna()
+    if not isinstance(paired.index, pd.MultiIndex) or "datetime" not in paired.index.names:
+        raise ValueError("predictions and labels must use a MultiIndex containing datetime")
+    by_date = paired.groupby(level="datetime", sort=True)
+    diagnostics = pd.DataFrame(
+        {
+            "ic": by_date.apply(lambda frame: frame["score"].corr(frame["label"])),
+            "rank_ic": by_date.apply(lambda frame: frame["score"].corr(frame["label"], method="spearman")),
+            "cross_section_size": by_date.size(),
+        }
+    ).dropna(subset=["ic", "rank_ic"])
+    diagnostics.index.name = "datetime"
+    return diagnostics
+
+
+def _signal_metric_summary(diagnostics: pd.DataFrame) -> dict[str, object]:
+    def ratio(values: pd.Series) -> float:
+        std = float(values.std(ddof=1))
+        return float(values.mean()) / std if np.isfinite(std) and std > 0 else float("-inf")
+
+    ic = diagnostics["ic"]
+    rank_ic = diagnostics["rank_ic"]
+    return {
+        "observations": int(len(diagnostics)),
+        "ic_mean": float(ic.mean()) if len(ic) else float("-inf"),
+        "rank_ic_mean": float(rank_ic.mean()) if len(rank_ic) else float("-inf"),
+        "ic_std": float(ic.std(ddof=1)) if len(ic) > 1 else float("nan"),
+        "rank_ic_std": float(rank_ic.std(ddof=1)) if len(rank_ic) > 1 else float("nan"),
+        # As in Qlib SigAnaRecord, these daily ratios are not annualized.
+        "icir": ratio(ic),
+        "rank_icir": ratio(rank_ic),
+        "positive_ic_ratio": float((ic > 0).mean()) if len(ic) else 0.0,
+        "positive_rank_ic_ratio": float((rank_ic > 0).mean()) if len(rank_ic) else 0.0,
+    }
+
+
 def derive_signal_metrics(
     predictions: pd.Series | pd.DataFrame,
     labels: pd.Series | pd.DataFrame,
@@ -87,8 +138,6 @@ def derive_signal_metrics(
     if not isinstance(paired.index, pd.MultiIndex) or "datetime" not in paired.index.names:
         raise ValueError("predictions and labels must use a MultiIndex containing datetime")
     by_date = paired.groupby(level="datetime", sort=True)
-    ic = by_date.apply(lambda frame: frame["score"].corr(frame["label"])).dropna()
-    rank_ic = by_date.apply(lambda frame: frame["score"].corr(frame["label"], method="spearman")).dropna()
 
     def long_short(frame: pd.DataFrame) -> float:
         count = max(1, len(frame) // 5)
@@ -96,13 +145,9 @@ def derive_signal_metrics(
         return float(ranked.head(count)["label"].mean() - ranked.tail(count)["label"].mean())
 
     long_short_daily = by_date.apply(long_short).dropna()
-    std = float(ic.std(ddof=1))
-    icir = float(ic.mean()) / std if np.isfinite(std) and std > 0 else float("-inf")
+    signal_summary = _signal_metric_summary(derive_daily_signal_diagnostics(predictions, labels))
     return {
-        "observations": int(min(len(ic), len(rank_ic))),
-        "ic_mean": float(ic.mean()) if len(ic) else float("-inf"),
-        "rank_ic_mean": float(rank_ic.mean()) if len(rank_ic) else float("-inf"),
-        "icir": icir,
+        **signal_summary,
         "long_short_annualized": float(long_short_daily.mean() * 252.0 / label_horizon_days)
         if len(long_short_daily)
         else float("-inf"),
@@ -131,8 +176,6 @@ def derive_research_metrics(
         raise ValueError("predictions and labels must use a MultiIndex containing datetime")
 
     by_date = paired.groupby(level="datetime", sort=True)
-    ic = by_date.apply(lambda frame: frame["score"].corr(frame["label"])).dropna()
-    rank_ic = by_date.apply(lambda frame: frame["score"].corr(frame["label"], method="spearman")).dropna()
 
     def long_short(frame: pd.DataFrame) -> float:
         count = max(1, len(frame) // 5)
@@ -162,10 +205,7 @@ def derive_research_metrics(
         return result * np.sqrt(252.0) if annualize else result
 
     return {
-        "observations": int(min(len(ic), len(rank_ic))),
-        "ic_mean": float(ic.mean()) if len(ic) else float("-inf"),
-        "rank_ic_mean": float(rank_ic.mean()) if len(rank_ic) else float("-inf"),
-        "icir": ratio(ic),
+        **_signal_metric_summary(derive_daily_signal_diagnostics(predictions, labels)),
         "long_short_annualized": float(long_short_daily.mean() * 252.0 / label_horizon_days)
         if len(long_short_daily)
         else float("-inf"),
@@ -191,6 +231,7 @@ def evaluate_signal_metrics(
         "rank_ic_mean": float(str(metrics.get("rank_ic_mean", float("-inf")))),
         "icir": float(str(metrics.get("icir", float("-inf")))),
         "long_short_annualized": float(str(metrics.get("long_short_annualized", float("-inf")))),
+        "rank_icir": float(str(metrics.get("rank_icir", float("-inf")))),
     }
     checks = [
         GateCheck(
@@ -208,7 +249,12 @@ def evaluate_signal_metrics(
             thresholds.min_rank_ic_mean,
             values["rank_ic_mean"] >= thresholds.min_rank_ic_mean,
         ),
-        GateCheck("icir", values["icir"], thresholds.min_icir, values["icir"] >= thresholds.min_icir),
+        GateCheck(
+            "stability_icir_or_rank_icir",
+            {"icir": values["icir"], "rank_icir": values["rank_icir"]},
+            f"ICIR >= {thresholds.min_icir} or Rank ICIR >= {thresholds.min_rank_icir}",
+            values["icir"] >= thresholds.min_icir or values["rank_icir"] >= thresholds.min_rank_icir,
+        ),
         GateCheck(
             "long_short_annualized",
             values["long_short_annualized"],
@@ -229,12 +275,22 @@ def evaluate_signal_metrics(
         ),
     ]
     passed = all(check.passed for check in checks)
+    hard_checks_passed = all(check.passed for check in checks if check.name != "stability_icir_or_rank_icir")
+    review_required = (
+        hard_checks_passed
+        and not passed
+        and (
+            values["icir"] >= thresholds.review_min_icir
+            or values["rank_icir"] >= thresholds.review_min_rank_icir
+        )
+    )
     return {
         "schema_version": "1.0",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "decision": "SIGNAL_SCREEN_PASS" if passed else "REJECT",
+        "decision": "SIGNAL_SCREEN_PASS" if passed else "SIGNAL_REVIEW" if review_required else "REJECT",
         "passed": passed,
         "promotionAuthorized": False,
+        "reviewRequired": review_required,
         "metrics": dict(metrics),
         "thresholds": asdict(thresholds),
         "checks": [asdict(check) for check in checks],
@@ -253,6 +309,7 @@ def evaluate_research_metrics(
     rank_ic_mean = float(str(metrics.get("rank_ic_mean", float("-inf"))))
     icir = float(str(metrics.get("icir", float("-inf"))))
     long_short = float(str(metrics.get("long_short_annualized", float("-inf"))))
+    rank_icir = float(str(metrics.get("rank_icir", float("-inf"))))
     excess_ir = float(str(metrics.get("excess_ir", float("-inf"))))
     max_drawdown = abs(float(str(metrics.get("max_drawdown", float("inf")))))
     checks = [
@@ -275,10 +332,10 @@ def evaluate_research_metrics(
             rank_ic_mean >= thresholds.min_rank_ic_mean,
         ),
         GateCheck(
-            "icir",
-            icir,
-            thresholds.min_icir,
-            icir >= thresholds.min_icir,
+            "stability_icir_or_rank_icir",
+            {"icir": icir, "rank_icir": rank_icir},
+            f"ICIR >= {thresholds.min_icir} or Rank ICIR >= {thresholds.min_rank_icir}",
+            icir >= thresholds.min_icir or rank_icir >= thresholds.min_rank_icir,
         ),
         GateCheck(
             "long_short_annualized",
@@ -312,13 +369,20 @@ def evaluate_research_metrics(
         ),
     ]
     passed = all(check.passed for check in checks)
+    hard_checks_passed = all(check.passed for check in checks if check.name != "stability_icir_or_rank_icir")
+    review_required = (
+        hard_checks_passed
+        and not passed
+        and (icir >= thresholds.review_min_icir or rank_icir >= thresholds.review_min_rank_icir)
+    )
     return {
         "schema_version": "1.0",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "decision": "PROMOTE" if passed else "REJECT",
+        "decision": "PROMOTE" if passed else "RESEARCH_REVIEW" if review_required else "REJECT",
         "passed": passed,
         "metrics": dict(metrics),
         "thresholds": asdict(thresholds),
+        "reviewRequired": review_required,
         "checks": [asdict(c) for c in checks],
     }
 

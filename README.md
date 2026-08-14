@@ -193,6 +193,15 @@ prediction/label；Portfolio 指标只来自同一信号流驱动的单账户连
 `data/output/signals/signal_scores_YYYYMMDD.parquet`；未通过的运行保留 manifest、回测产物和
 `research_gate.json` 后失败退出，不会生成执行候选。
 
+
+Research Gate 不再把 Pearson `ICIR` 当作唯一的一票否决项。对于 TopkDropout，稳定性检查满足
+`ICIR >= 0.50` **或** `Rank ICIR >= 0.50` 即可；两者均未达到生产线、但满足
+`ICIR >= 0.30` 或 `Rank ICIR >= 0.40`，且其余硬性研究/组合/lineage 条件均通过时，运行会标记为
+`RESEARCH_REVIEW`。该状态保留完整研究证据和最终 holdout，但不会发布执行候选。只有未满足复核下限或
+其他硬条件失败时才是 `REJECTED`。
+
+聚合 rolling OOS 的 gate 报告还会写出 `*.daily_ic.csv`（逐日 IC、Rank IC 和截面样本数），并在
+`signal_diagnostics.folds` 中列出每个 rolling fold 的 IC / Rank IC / ICIR / Rank ICIR，供排查 regime dependence 和 sampling luck。
 研究标签会与策略持有期对齐：默认 `hold_thresh=5` 时使用从 T+1 到 T+6 的 5 日前瞻收益
 `Ref($close, -6) / Ref($close, -1) - 1`。固定切分会从原始数据与 Qlib 日历的交集取样，预留
 Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测下一交易日；日历过旧时会在训练前直接报错，
