@@ -1,18 +1,19 @@
-# Tushare Pro 接入 Qlib：A股日频回测与选股示例工程
+# Qlib Research / Alpha Factory
 
-本工程把 Tushare Pro 作为数据源，把 Qlib 作为因子、模型、组合和回测框架。核心原则是：
+本工程是机构级量化平台的 Research Plane：Qlib 负责特征、模型、walk-forward、信号分析和研究组合；
+正式组合验证、订单、风控、账本和券商接入由 `platform` / LEAN 负责。核心原则是：
 
-1. Tushare 只负责采集；训练和回测不直接访问远端 API。
-2. Parquet 是事实层，Qlib Bin 是带版本的派生数据；研究运行固定到不可变版本。
+1. 生产环境只消费 `platform` 发布的不可变 `DataRelease`；本仓库的 Tushare 采集仅用于开发和独立测试。
+2. Canonical Parquet 是事实层，Qlib Bin 是带版本的派生数据；研究运行固定到不可变 release。
 3. Bronze、Silver、Gold 和 Qlib 版本分层，所有阶段均可重跑、校验和审计。
 4. 复权价格、成交量和 `factor` 使用同一套可逆公式。
 5. 财务数据必须按公告日做 point-in-time 展开，不能按报告期直接回填。
 6. 元数据 working view 使用原子替换，保证已发布版本所硬链接的快照不会被后续同步改写。
 
-当前 Qlib 数据平台采用 `Bronze → Silver → Gold → Qlib versions`，通过 SQLite Registry 管理
-dataset alias、lineage 和 research run。完整的布局、PIT 口径、迁移与命令说明见
+开发模式仍支持 `Bronze → Silver → Gold → Qlib versions`，并通过 SQLite Registry 管理
+dataset alias、lineage 和 research run；生产模式以 `DataRelease → Qlib materialization` 为唯一入口。完整的布局、PIT 口径、迁移与命令说明见
 [`docs/qlib_data_platform.md`](docs/qlib_data_platform.md)。LEAN、OMS、交易风控和券商写接口不属于
-本次 Qlib 数据平台边界。
+本仓库边界，详见 [`docs/architecture_boundary.md`](docs/architecture_boundary.md)。
 
 ## 1. 安装
 
@@ -42,67 +43,49 @@ cd qlib
 git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 ```
 
-在 `.env` 配置 `TUSHARE_TOKEN`、`QLIB_REPO` 和 `QLIB_DATA_URI`。
-
-如果你已有 lean-platform 的 MySQL 数据库，可切换为数据库模式：
+生产运行不再配置 Tushare 凭据，而是固定到 `platform` 发布的 DataRelease：
 
 ```powershell
-# 配置 LEAN_MYSQL_*（或 LEAN_MYSQL_DSN）
-Copy-Item .env.example .env
-# 编辑 .env 后先做只读覆盖检查；不完整区间会列出具体缺口并阻止 backfill。
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml source-preflight --start <START> --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml init-metadata
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml sync-universe --start <START> --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml backfill --start <START> --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml sync-benchmark --symbol SH000300 `
-  --start <START> --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml backfill-extended --start <START> --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml dataset-build `
-  --start <START> --end <END> --single-thread
-& $RepoPython -m tushare_qlib --config configs/pipeline_lean_mysql.yaml dataset-verify research-current
+$env:QUANT_DATA_ROOT = '<SHARED_DATA_ROOT>'
+$env:DATASET_RELEASE_ID = 'ds_<64_HEX_CHARS>'
+$env:QLIB_REPO = '<PINNED_QLIB_CHECKOUT>'
 ```
 
-数据库模式下，`dataset-build` 仍复用同一套本地标准化、PIT 物化和版本化 Qlib 打包流程，不需要重新从 Tushare 下载。`curate`、`stage-*` 和 `dump-*` 只保留作低层恢复工具。
-`lean_canonical_v1` 会直接使用 lean-platform 的 PIT 成分有效期、派生交易状态来源以及 CNY/股数单位，
-并按区间批量读取，避免逐交易日重复扫描 MySQL 大表。正式训练仍必须满足 `research.min_history_days`
-和研究准入门槛；短窗口只能通过显式 `--train/--valid/--test` 用作 smoke 回测。
+`TUSHARE_TOKEN` 仅供 `configs/pipeline_tushare_dev.yaml` 的开发/独立测试模式使用。
 
-## 2. 先做一次增量验证（推荐）
+`configs/pipeline_lean_mysql.yaml` 是迁移期兼容配置，不是最终生产数据契约；新的生产研究运行不得直接从 MySQL 读取历史行情。
 
-先在显式、已验证的日期窗口内做冒烟验证。下例使用当前配置的初始窗口；请按本地数据实际覆盖范围替换 `<END>`：
+## 2. 使用 DataRelease 做生产研究验证
+
+Qlib 会校验 release ID、canonical manifest/component SHA-256、覆盖区间和显式 `qlib_staging` 组件；不会猜测 canonical 表结构。
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml init-metadata
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml sync-universe --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml backfill --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml backfill-extended --start 20000101 --end <END> --workers 8
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build --start 20160104 --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml source-preflight `
+  --start <START> --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
+  --start <START> --end <END> --single-thread
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml feature-store --dataset-ref research-current --start 20160104 --end <END>
 ```
 
-完成首次构建后，可将 TuShare 下载和 Qlib 数据发布作为独立后台任务。先运行
-`sync-dividends --bootstrap --resume` 补齐公司行为，再用 `daily-sync --check-only`
-验证每日检查。Windows 任务注册、恢复和数据口径见 docs/daily_sync.md。
+同一正式验证中，Qlib 与 LEAN 必须引用完全相同的 `dataset_release_id`。
 
-主 Qlib 使用稳定总回报价格；如需查看以指定结束日为锚点的最新前复权 K 线，
-使用本地 export-kline --adjust qfq。
+## 3. 开发/独立测试模式
 
-若上述步骤通过，再执行全量构建（与日常首次一致）：
-
-## 3. 首次全量构建
+生产 TuShare ingestion 已归属 `platform`。只有开发和独立测试可以使用本仓库保留的采集链：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml init-metadata
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml backfill --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml backfill-extended --start 20000101 --end <END> --workers 8
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml sync-universe --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml sync-benchmark --symbol SH000300 --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml init-metadata
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml backfill --start 20160104 --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml backfill-extended --start 20000101 --end <END> --workers 8
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml sync-universe --start 20160104 --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml sync-benchmark --symbol SH000300 --start 20160104 --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-build `
   --start 20160104 --end <END> --single-thread
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
+& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-verify research-current
 ```
+
+该配置不得用于生产数据发布；生产调度、daily sync 和 DataRelease publication 由 `platform` 执行。
 
 ## 4. 训练、回测和选股
 
@@ -206,6 +189,20 @@ Research Gate 不再把 Pearson `ICIR` 当作唯一的一票否决项。对于 T
 `Ref($close, -6) / Ref($close, -1) - 1`。固定切分会从原始数据与 Qlib 日历的交集取样，预留
 Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测下一交易日；日历过旧时会在训练前直接报错，
 避免训练完成后才因日历越界失败。
+
+研究运行完成后，可将已有 manifest 导出为双方共享的 Artifact Contract v2 bundle：
+
+```powershell
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml artifact-v2-export `
+  data/output/research/<RUN_ID>/manifest.json `
+  --output-dir data/output/research/<RUN_ID>/artifact-v2 `
+  --git-commit <GIT_COMMIT> `
+  --container-digest <CONTAINER_DIGEST>
+```
+
+命令会生成不含本机路径的 `qlib_research_bundle.v2.json`，以及仅供受控上传器读取的本地
+`qlib_research_bundle.v2.uploads.json` sidecar。Qlib 只能发布到 `RESEARCH_PROMOTED`；
+`LEAN_VALIDATED`、Paper 和 Production 状态只能由 `platform` 推进。
 
 所有可进入执行链路的文件使用 schema `2.0`，并携带 `artifact_type / promotion_status / run_id / model_id` 与
 `dataset_id / lineage_id / manifest_path`。`selection_*.csv` 的类型是 `MODEL_TOPK`，仍只表示模型 TopN；完整分数

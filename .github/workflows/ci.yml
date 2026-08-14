@@ -24,8 +24,11 @@ jobs:
         run: |
           "QLIB_REPO=$env:RUNNER_TEMP/qlib-repo" | Out-File -FilePath $env:GITHUB_ENV -Append
           "QLIB_DATA_URI=$env:RUNNER_TEMP/qlib-data" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "QUANT_DATA_ROOT=$env:RUNNER_TEMP/quant-data" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DATASET_RELEASE_ID=ds_0000000000000000000000000000000000000000000000000000000000000000" | Out-File -FilePath $env:GITHUB_ENV -Append
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-repo" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-data" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/quant-data" | Out-Null
       - run: pip install -c constraints/ci.txt -e ".[dev]"
       - run: pytest
 
@@ -41,7 +44,9 @@ jobs:
         run: |
           echo "QLIB_REPO=$RUNNER_TEMP/qlib-repo" >> "$GITHUB_ENV"
           echo "QLIB_DATA_URI=$RUNNER_TEMP/qlib-data" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data"
+          echo "QUANT_DATA_ROOT=$RUNNER_TEMP/quant-data" >> "$GITHUB_ENV"
+          echo "DATASET_RELEASE_ID=ds_0000000000000000000000000000000000000000000000000000000000000000" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data" "$RUNNER_TEMP/quant-data"
       - run: pip install -c constraints/ci.txt -e '.[dev]'
       - run: ruff check src tests
       - run: mypy src

@@ -27,13 +27,27 @@ class DatasetSpec:
         qlib = _mapping(settings.data.get("qlib"))
         source_cfg = _mapping(settings.data.get("data_source"))
         mysql = _mapping(source_cfg.get("mysql"))
+        platform_release = _mapping(source_cfg.get("platform_release"))
         universe = dict(_mapping(settings.data.get("universe")))
-        source = "tushare" if settings.uses_tushare_source() else "lean_mysql"
-        configured = mysql.get("universe") if source == "lean_mysql" else universe.get("instruments")
+        source = (
+            "platform_release"
+            if settings.uses_platform_release()
+            else "tushare"
+            if settings.uses_tushare_source()
+            else "lean_mysql"
+        )
+        configured = (
+            platform_release.get("universe")
+            if source == "platform_release"
+            else mysql.get("universe")
+            if source == "lean_mysql"
+            else universe.get("instruments")
+        )
+        dataset_id = platform_release.get("id") if source == "platform_release" else None
         name = str(universe.get("label") or configured or "all")
         membership_type = "point_in_time" if configured and str(configured).lower() != "all" else "filtered"
         return cls(
-            dataset_id=str(qlib.get("dataset_version", settings.qlib_data_uri.name)),
+            dataset_id=str(dataset_id or qlib.get("dataset_version", settings.qlib_data_uri.name)),
             source=source,
             universe_name=name,
             membership_type=membership_type,
