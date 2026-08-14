@@ -73,7 +73,7 @@ def test_manifest_version_is_timestamp_and_row_order_independent(tmp_path: Path)
     )
 
     assert one["version_id"] == two["version_id"]
-    assert one["build_id"] != two["build_id"] or one["created_at_utc"] != two["created_at_utc"]
+    assert one["build_id"] != two["build_id"]
 
 
 def test_manifest_verification_detects_partition_tampering(tmp_path: Path):
