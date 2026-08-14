@@ -1,4 +1,4 @@
-execution:
+target_portfolio:
   selection_dir: ./data/output
   output_dir: ./data/output
   calendar_path: ./data/metadata/trade_calendar.parquet

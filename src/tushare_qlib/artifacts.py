@@ -17,9 +17,6 @@ class ArtifactType(str, Enum):
     MODEL_TOPK = "MODEL_TOPK"
     STRATEGY_DECISION = "STRATEGY_DECISION"
     TARGET_PORTFOLIO = "TARGET_PORTFOLIO"
-    ORDER_INTENT = "ORDER_INTENT"
-    BROKER_ORDER = "BROKER_ORDER"
-    FILL = "FILL"
 
 
 class PromotionStatus(str, Enum):
@@ -170,7 +167,7 @@ def validate_artifact(
     missing = required_metadata - set(frame.columns)
     if missing:
         raise ArtifactContractError(
-            f"legacy or incomplete artifact is not executable; missing metadata: {sorted(missing)}"
+            f"legacy or incomplete research artifact is invalid; missing metadata: {sorted(missing)}"
         )
     metadata = {column: _single_value(frame, column) for column in sorted(required_metadata)}
     if metadata["schema_version"] != ARTIFACT_SCHEMA_VERSION:
@@ -182,7 +179,7 @@ def validate_artifact(
             f"artifact type {metadata['artifact_type']} cannot be used as {expected_type.value}"
         )
     if require_promoted and metadata["promotion_status"] != PromotionStatus.PROMOTED.value:
-        raise ArtifactContractError("only PROMOTED model artifacts may enter the execution path")
+        raise ArtifactContractError("only PROMOTED model artifacts may enter target-portfolio export")
     if metadata["payload_sha256"] != _payload_sha256(frame):
         raise ArtifactContractError("artifact payload checksum mismatch")
 

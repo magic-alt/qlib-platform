@@ -11,7 +11,7 @@ from .settings import Settings
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Auditable Tushare Pro -> Qlib -> execution pipeline")
+    p = argparse.ArgumentParser(description="Auditable platform DataRelease -> Qlib research pipeline")
     p.add_argument("--config", default="configs/pipeline.yaml")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init-metadata")
@@ -120,8 +120,8 @@ def parser() -> argparse.ArgumentParser:
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
 
-    tp = sub.add_parser("build-trade-plan")
-    tp.add_argument("--execution-config", default="configs/trading_execution_template.yaml")
+    tp = sub.add_parser("build-target-portfolio")
+    tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
     tp.add_argument("--selection-file")
     tp.add_argument("--selection-date")
     tp.add_argument("--current-portfolio")
@@ -157,50 +157,10 @@ def parser() -> argparse.ArgumentParser:
     wc = sub.add_parser("validate-qrun-contract")
     wc.add_argument("--workflow", default="configs/workflow_lightgbm.yaml")
 
-    eo = sub.add_parser("build-orders")
-    eo.add_argument("targets")
-    eo.add_argument("positions")
-    eo.add_argument("quotes")
-    eo.add_argument("--trade-date", required=True)
-    eo.add_argument("--portfolio-value", type=float, required=True)
-    eo.add_argument("--cash", type=float, required=True)
-    eo.add_argument("--daily-pnl-pct", type=float, required=True)
-    eo.add_argument("--output-dir", default="./data/output")
-
-    pr = sub.add_parser("pretrade-risk")
-    pr.add_argument("targets")
-    pr.add_argument("--daily-pnl-pct", type=float, required=True)
-
-    be = sub.add_parser("record-broker-event")
-    be.add_argument("ledger")
-    be.add_argument("order_id")
-    be.add_argument("state")
-    be.add_argument("--event-at-utc", required=True)
-    be.add_argument("--event-id")
-    be.add_argument("--broker-order-id")
-    be.add_argument("--fill-qty", type=float)
-    be.add_argument("--fill-price", type=float)
     fi = sub.add_parser("ingest-pit-fundamentals")
     fi.add_argument("reports")
     fi.add_argument("--calendar")
     fi.add_argument("--output")
-
-    rh = sub.add_parser("reconcile-holdings")
-    rh.add_argument("positions")
-    rh.add_argument("--fills")
-    rh.add_argument("--as-of-date", required=True)
-    rh.add_argument("--initial-holdings")
-    rh.add_argument("--ledger-path")
-    rh.add_argument("--output-dir", default="./data/output")
-
-    to = sub.add_parser("build-topk-orders")
-    to.add_argument("signal_file")
-    to.add_argument("positions")
-    to.add_argument("quotes")
-    to.add_argument("--trade-date")
-    to.add_argument("--cash", type=float, required=True)
-    to.add_argument("--daily-pnl-pct", type=float, required=True)
-    to.add_argument("--output-dir", default="./data/output")
 
     model_refit = sub.add_parser("model-refit")
     model_refit.add_argument("--research-run", required=True)
@@ -226,23 +186,6 @@ def parser() -> argparse.ArgumentParser:
     daily_signal.add_argument("--no-notify", action="store_true")
     daily_signal.add_argument("--skip-sync", action="store_true")
     daily_signal.add_argument("--supersede", action="store_true")
-    daily_action = sub.add_parser("daily-action-run")
-    daily_action.add_argument("--trade-date", required=True)
-    daily_action.add_argument("--no-notify", action="store_true")
-    production_run = sub.add_parser("production-run")
-    production_run.add_argument("--phase", choices=["close", "pretrade"], required=True)
-    production_run.add_argument("--business-date", required=True)
-    production_run.add_argument("--no-notify", action="store_true")
-    production_run.add_argument("--skip-sync", action="store_true")
-    replay = sub.add_parser("production-replay")
-    replay.add_argument("--start", required=True)
-    replay.add_argument("--end", required=True)
-    replay.add_argument("--snapshot-root", required=True)
-    replay.add_argument("--deployment-id")
-    replay.add_argument("--with-pretrade", action="store_true")
-    shadow = sub.add_parser("shadow-run")
-    shadow.add_argument("--trade-date", required=True)
-    shadow.add_argument("--shadow-config", default="configs/shadow.yaml")
     ops_query = sub.add_parser("ops-query", help="query production state")
     ops_query.add_argument("--entity", choices=["runs", "deliveries"], required=True)
     ops_query.add_argument("--business-date")
@@ -366,11 +309,11 @@ def main() -> None:
         print(json.dumps({"manifest": str(path)}, ensure_ascii=False))
         return
 
-    if args.command == "build-trade-plan":
+    if args.command == "build-target-portfolio":
         from .trade_plan import build_trade_plan
 
         path, plan = build_trade_plan(
-            config_path=args.execution_config,
+            config_path=args.portfolio_config,
             selection_file=args.selection_file,
             selection_date=args.selection_date,
             prev_selection_file=args.current_portfolio,
@@ -415,66 +358,6 @@ def main() -> None:
                 dataset_id=dataset_id,
             )
         )
-        return
-
-    if args.command == "build-orders":
-        from dataclasses import asdict
-
-        from .canonical_config import ExecutionSpec
-        from .execution import ExecutionPolicy, build_orders
-
-        execution_settings = Settings.load(args.config, create_dirs=False)
-        policy = ExecutionPolicy.from_mapping(asdict(ExecutionSpec.from_settings(execution_settings)))
-        orders, blocked = build_orders(
-            pd.read_csv(args.targets),
-            pd.read_csv(args.positions),
-            pd.read_csv(args.quotes),
-            trade_date=args.trade_date,
-            portfolio_value=args.portfolio_value,
-            cash=args.cash,
-            policy=policy,
-            daily_pnl_pct=args.daily_pnl_pct,
-        )
-        out = Path(args.output_dir)
-        out.mkdir(parents=True, exist_ok=True)
-        orders.to_csv(out / f"orders_{args.trade_date.replace('-', '')}.csv", index=False)
-        blocked.to_csv(out / f"blocked_orders_{args.trade_date.replace('-', '')}.csv", index=False)
-        return
-
-    if args.command == "pretrade-risk":
-        from .risk_engine import HardRiskPolicy, pretrade_risk_check
-
-        artifact = pd.read_csv(args.targets)
-        # The target artifact's manifest is the release's policy authority.
-        from .artifacts import ArtifactType, load_artifact_manifest, validate_artifact
-
-        metadata = validate_artifact(artifact, ArtifactType.TARGET_PORTFOLIO)
-        manifest = load_artifact_manifest(metadata)
-        canonical = manifest.get("canonicalConfig", {})
-        risk = canonical.get("risk", {}) if isinstance(canonical, dict) else {}
-        print(
-            json.dumps(
-                pretrade_risk_check(
-                    artifact, HardRiskPolicy.from_mapping(risk), daily_pnl_pct=args.daily_pnl_pct
-                )
-            )
-        )
-        return
-
-    if args.command == "record-broker-event":
-        from .broker_state import record_broker_event
-
-        events = record_broker_event(
-            args.ledger,
-            args.order_id,
-            args.state,
-            event_at_utc=args.event_at_utc,
-            event_id=args.event_id,
-            broker_order_id=args.broker_order_id,
-            fill_qty=args.fill_qty,
-            fill_price=args.fill_price,
-        )
-        print(json.dumps({"ledger": str(args.ledger), "events": len(events)}))
         return
 
     if args.command == "ingest-pit-fundamentals":
@@ -739,59 +622,6 @@ def main() -> None:
         )
         print(json.dumps({"signalId": daily_result.signal_id, "manifest": str(daily_result.manifest_path)}))
         return
-    if args.command == "daily-action-run":
-        from .pretrade_runner import run_pretrade_actions
-
-        action_result = run_pretrade_actions(settings, trade_date=args.trade_date, notify=not args.no_notify)
-        print(
-            json.dumps(
-                {
-                    "signalId": action_result.signal_id,
-                    "decision": str(action_result.decision_path),
-                    "orders": str(action_result.orders_path),
-                    "blocked": str(action_result.blocked_path),
-                },
-                ensure_ascii=False,
-            )
-        )
-        return
-    if args.command == "production-run":
-        from .production_orchestrator import run_production_day
-
-        production_result = run_production_day(
-            settings,
-            phase=args.phase,
-            business_date=args.business_date,
-            notify=not args.no_notify,
-            skip_sync=args.skip_sync,
-        )
-        print(json.dumps(production_result.__dict__, ensure_ascii=False, default=str))
-        return
-    if args.command == "production-replay":
-        from .production_replay import run_production_replay
-
-        replay_path = run_production_replay(
-            settings,
-            start=args.start,
-            end=args.end,
-            snapshot_root=args.snapshot_root,
-            deployment_id=args.deployment_id,
-            with_pretrade=args.with_pretrade,
-        )
-        replay_payload = json.loads(replay_path.read_text(encoding="utf-8"))
-        print(
-            json.dumps({"report": str(replay_path), "passed": replay_payload["passed"]}, ensure_ascii=False)
-        )
-        if not replay_payload["passed"]:
-            raise SystemExit(2)
-        return
-    if args.command == "shadow-run":
-        from .shadow_runner import run_shadow
-
-        shadow_result = run_shadow(settings, trade_date=args.trade_date, config_path=args.shadow_config)
-        print(json.dumps(shadow_result.__dict__, ensure_ascii=False, default=str))
-        return
-
     if args.command == "daily-sync":
         from .daily_sync import run_daily_sync
 
@@ -875,95 +705,6 @@ def main() -> None:
             artifact_level=args.artifact_level,
         )
         print(json.dumps(_report_payload(manifest_path), ensure_ascii=False))
-        return
-
-    if args.command == "reconcile-holdings":
-        from .holdings_ledger import reconcile_holdings
-
-        ledger = (
-            Path(args.ledger_path).expanduser().resolve()
-            if args.ledger_path
-            else settings.paths.root / "state" / "topk_holdings.parquet"
-        )
-        state = reconcile_holdings(
-            pd.read_csv(args.positions),
-            pd.read_csv(args.fills) if args.fills else None,
-            as_of_date=args.as_of_date,
-            calendar_path=settings.paths.metadata / "trade_calendar.parquet",
-            ledger_path=ledger,
-            initial_holdings=pd.read_csv(args.initial_holdings) if args.initial_holdings else None,
-        )
-        out = Path(args.output_dir).expanduser().resolve()
-        out.mkdir(parents=True, exist_ok=True)
-        key = pd.Timestamp(args.as_of_date).strftime("%Y%m%d")
-        state.to_csv(out / f"holdings_state_{key}.csv", index=False)
-        print(
-            json.dumps(
-                {"rows": len(state), "ledger": str(ledger), "state": str(out / f"holdings_state_{key}.csv")},
-                ensure_ascii=False,
-            )
-        )
-        return
-
-    if args.command == "build-topk-orders":
-        from dataclasses import asdict
-
-        from .canonical_config import ExecutionSpec, StrategySpec
-        from .execution import ExecutionPolicy, build_topk_orders
-
-        signal = pd.read_parquet(args.signal_file)
-        required = {"signal_date", "trade_date", "instrument", "score"}
-        missing = required - set(signal.columns)
-        if missing:
-            raise ValueError(f"signal_file missing columns: {sorted(missing)}")
-        signal_dates = pd.to_datetime(signal["signal_date"], errors="raise").dt.normalize().unique()
-        trade_dates = pd.to_datetime(signal["trade_date"], errors="raise").dt.normalize().unique()
-        if len(signal_dates) != 1 or len(trade_dates) != 1:
-            raise ValueError("signal_file must contain exactly one signal_date and trade_date")
-        signal_date = pd.Timestamp(signal_dates[0]).strftime("%Y-%m-%d")
-        implied_trade_date = pd.Timestamp(trade_dates[0]).strftime("%Y-%m-%d")
-        trade_date = args.trade_date or implied_trade_date
-        if pd.Timestamp(trade_date).normalize() != pd.Timestamp(implied_trade_date).normalize():
-            raise ValueError("--trade-date must match the signal artifact's trade_date")
-        strategy_policy = StrategySpec.from_settings(settings).to_policy()
-        artifact_policy_columns = {
-            "topk": "strategy_topk",
-            "n_drop": "strategy_n_drop",
-            "hold_thresh": "strategy_hold_thresh",
-            "risk_degree": "strategy_risk_degree",
-            "only_tradable": "strategy_only_tradable",
-            "forbid_all_trade_at_limit": "strategy_forbid_all_trade_at_limit",
-        }
-        if set(artifact_policy_columns.values()).issubset(signal.columns):
-            artifact_policy = {
-                key: signal[column].dropna().iloc[0] for key, column in artifact_policy_columns.items()
-            }
-            if artifact_policy != strategy_policy.__dict__:
-                raise ValueError("signal artifact strategy does not match the canonical strategy config")
-        execution_policy = ExecutionPolicy.from_mapping(asdict(ExecutionSpec.from_settings(settings)))
-        decision, orders, blocked = build_topk_orders(
-            signal,
-            pd.read_csv(args.positions),
-            pd.read_csv(args.quotes),
-            signal_date=signal_date,
-            trade_date=trade_date,
-            cash=args.cash,
-            strategy_policy=strategy_policy,
-            execution_policy=execution_policy,
-            daily_pnl_pct=args.daily_pnl_pct,
-        )
-        out = Path(args.output_dir).expanduser().resolve()
-        out.mkdir(parents=True, exist_ok=True)
-        key = pd.Timestamp(trade_date).strftime("%Y%m%d")
-        decision.to_csv(out / f"strategy_decision_{key}.csv", index=False)
-        orders.to_csv(out / f"orders_{key}.csv", index=False)
-        blocked.to_csv(out / f"blocked_orders_{key}.csv", index=False)
-        print(
-            json.dumps(
-                {"decision_rows": len(decision), "orders": len(orders), "blocked": len(blocked)},
-                ensure_ascii=False,
-            )
-        )
         return
 
     if args.command in {

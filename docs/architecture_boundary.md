@@ -19,7 +19,8 @@ Owned by `platform`:
 - hard risk, paper/shadow trading, OMS, broker/QMT, orders, fills and ledger;
 - `LEAN_VALIDATED`, `PAPER`, `PRODUCTION`, and `RETIRED` transitions.
 
-The existing execution, broker, ledger and pretrade modules are frozen legacy
-surface pending P3 migration. New research code must not import or extend them.
+P3 has physically removed the legacy execution, hard-risk, broker/QMT, ledger,
+pretrade and shadow implementations from this repository. The QMT query gateway
+now lives in `platform`; Qlib has no order-producing or broker-state code path.
 The sole integration boundary is a content-addressed `TARGET_PORTFOLIO` within
 an Artifact Contract v2 bundle bound to one `DataRelease`.

@@ -368,7 +368,7 @@ def _export_daily_selections(
     """Export the top-ranked instruments for every OOS signal date.
 
     The latest file remains the command result for compatibility with downstream
-    execution, while preceding dates make the complete backtest signal history
+    target-portfolio export, while preceding dates make the complete backtest signal history
     directly consumable from ``data/output``.
     """
     if not isinstance(score.index, pd.MultiIndex) or "datetime" not in score.index.names:
@@ -432,7 +432,7 @@ def _export_daily_signal_scores(
 
     ``selection_*.csv`` intentionally remains a compact TopN artifact.  The
     matching parquet files are the authoritative score inputs for the exact
-    strategy path because current broker holdings may rank outside the TopN.
+    strategy path because current research holdings may rank outside the TopN.
     """
 
     if not isinstance(score.index, pd.MultiIndex) or "datetime" not in score.index.names:

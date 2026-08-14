@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from tushare_qlib.daily_signal_runner import run_daily_signal
-from tushare_qlib.pretrade_runner import run_pretrade_actions
 from tushare_qlib.settings import Paths, Settings
 
 
@@ -46,9 +45,7 @@ def test_close_failures_do_not_release_signal_and_emit_domain_alert(
 ):
     settings = _settings(tmp_path)
     notifier = _Notifier()
-    monkeypatch.setattr(
-        "tushare_qlib.daily_signal_runner.feishu_notifier_from_environment", lambda: notifier
-    )
+    monkeypatch.setattr("tushare_qlib.daily_signal_runner.feishu_notifier_from_environment", lambda: notifier)
     monkeypatch.setattr(
         "tushare_qlib.daily_signal_runner.run_live_inference",
         lambda *args, **kwargs: (_ for _ in ()).throw(error),
@@ -64,23 +61,3 @@ def test_close_failures_do_not_release_signal_and_emit_domain_alert(
     assert code in run[1]
     assert signal_count == 0
     assert [item.message_kind for item in notifier.messages] == [f"FAILURE_{code}"]
-
-
-def test_pretrade_missing_pass_signal_fails_closed_and_alerts(tmp_path: Path, monkeypatch):
-    settings = _settings(tmp_path)
-    notifier = _Notifier()
-    monkeypatch.setattr(
-        "tushare_qlib.pretrade_runner.feishu_notifier_from_environment", lambda: notifier
-    )
-    monkeypatch.setattr(
-        "tushare_qlib.pretrade_runner._load_signal",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            RuntimeError("expected exactly one PASS signal for 2026-08-11, found 0")
-        ),
-    )
-
-    with pytest.raises(RuntimeError):
-        run_pretrade_actions(settings, trade_date="2026-08-11")
-
-    assert [item.message_kind for item in notifier.messages] == ["FAILURE_STALE_SIGNAL"]
-    assert not list((settings.paths.output / "live").glob("*/pretrade/order_intent.parquet"))

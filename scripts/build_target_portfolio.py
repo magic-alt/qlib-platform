@@ -7,8 +7,8 @@ from tushare_qlib.trade_plan import build_trade_plan
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build a T+1 trade plan from a Qlib selection artifact")
-    parser.add_argument("--config", default="configs/trading_execution_template.yaml")
+    parser = argparse.ArgumentParser(description="Build a TargetPortfolio from a Qlib selection artifact")
+    parser.add_argument("--config", default="configs/target_portfolio.yaml")
     parser.add_argument("--selection-file")
     parser.add_argument("--selection-date")
     parser.add_argument("--current-portfolio")
@@ -25,7 +25,7 @@ def main() -> None:
         prev_selection_file=args.current_portfolio,
         trade_date=args.trade_date,
     )
-    print(f"Build plan complete: rows={len(plan)}, file={Path(path)}")
+    print(f"Target portfolio complete: decision_rows={len(plan)}, file={Path(path)}")
 
 
 if __name__ == "__main__":

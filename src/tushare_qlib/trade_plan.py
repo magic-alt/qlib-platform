@@ -31,7 +31,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fp:
         loaded = yaml.safe_load(fp) or {}
     if not isinstance(loaded, dict):
-        raise ValueError("execution config must be a mapping")
+        raise ValueError("target-portfolio config must be a mapping")
     return loaded
 
 
@@ -125,27 +125,27 @@ def build_trade_plan(
     config_path = Path(config_path).expanduser().resolve()
     config = _load_yaml(config_path)
     project_dir = config_path.parent.parent
-    execution = config.get("execution", config)
-    if not isinstance(execution, dict):
-        raise ValueError("execution section must be a mapping")
+    target_portfolio = config.get("target_portfolio", config)
+    if not isinstance(target_portfolio, dict):
+        raise ValueError("target_portfolio section must be a mapping")
     portfolio_fields = set(PortfolioPolicy.__dataclass_fields__)
-    forbidden = portfolio_fields.intersection(execution)
-    if "portfolio" in config or "portfolio" in execution or forbidden:
+    forbidden = portfolio_fields.intersection(target_portfolio)
+    if "portfolio" in config or "portfolio" in target_portfolio or forbidden:
         names = sorted(
-            forbidden | ({"portfolio"} if "portfolio" in config or "portfolio" in execution else set())
+            forbidden | ({"portfolio"} if "portfolio" in config or "portfolio" in target_portfolio else set())
         )
         raise ArtifactContractError(
-            "execution template cannot define portfolio semantics; "
+            "target-portfolio template cannot define portfolio semantics; "
             f"move these fields to pipeline.yaml: {names}"
         )
 
-    selection_dir = _resolve_path(str(execution.get("selection_dir", "./data/output")), project_dir)
-    output_dir = _resolve_path(str(execution.get("output_dir", "./data/output")), project_dir)
+    selection_dir = _resolve_path(str(target_portfolio.get("selection_dir", "./data/output")), project_dir)
+    output_dir = _resolve_path(str(target_portfolio.get("output_dir", "./data/output")), project_dir)
     selection_path = (
         Path(selection_file).expanduser().resolve()
         if selection_file
         else _find_selection(
-            selection_dir, str(execution.get("selection_glob", "selection_*.csv")), selection_date
+            selection_dir, str(target_portfolio.get("selection_glob", "selection_*.csv")), selection_date
         )
     )
     selection = pd.read_csv(selection_path)
@@ -154,7 +154,7 @@ def build_trade_plan(
     portfolio_data, portfolio_policy_sha256 = validate_manifest_portfolio_policy(manifest)
     signal_ts = _selection_signal_date(selection, selection_path, selection_date)
     calendar_path = _resolve_path(
-        str(execution.get("calendar_path", "./data/metadata/trade_calendar.parquet")), project_dir
+        str(target_portfolio.get("calendar_path", "./data/metadata/trade_calendar.parquet")), project_dir
     )
     trade_ts = _next_trade_date(signal_ts, calendar_path, trade_date)
 
@@ -171,10 +171,10 @@ def build_trade_plan(
         targets.set_index("instrument")["target_weight"] if not targets.empty else pd.Series(dtype=float)
     )
     universe = current_weights.index.union(target_weights.index)
-    threshold = float(execution.get("rebalance_threshold", 0.005))
-    force_sell_removed = bool(execution.get("force_sell_removed", True))
+    threshold = float(target_portfolio.get("rebalance_threshold", 0.005))
+    force_sell_removed = bool(target_portfolio.get("force_sell_removed", True))
     emit_weight = (
-        bool(execution.get("allow_weight_update", True))
+        bool(target_portfolio.get("allow_weight_update", True))
         if allow_weight_update is None
         else allow_weight_update
     )

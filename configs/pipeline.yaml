@@ -152,21 +152,6 @@ portfolio:
   min_position: 0.002
   volatility_floor: 0.01
 
-# Research-only approximations. Platform/LEAN remains authoritative for
-# execution, hard risk, costs, paper and live promotion.
-execution:
-  board_lot: 100
-  max_participation_rate: 0.05
-  commission_rate: 0.00025
-  min_commission: 5
-  stamp_duty_sell: 0.0005
-  transfer_fee_rate: 0.00001
-  price_buffer_buy: 0.002
-  price_buffer_sell: 0.002
-  block_limit_up_buy: true
-  block_limit_down_sell: true
-  max_quote_age_seconds: 120
-  max_position_age_seconds: 300
 
 risk:
   max_gross_exposure: 0.95

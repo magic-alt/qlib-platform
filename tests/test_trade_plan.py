@@ -33,17 +33,17 @@ def test_trade_plan_uses_next_official_open_day(tmp_path: Path, monkeypatch, gov
     )
     selection_path = output / "selection_20260807.csv"
     selection.to_csv(selection_path, index=False)
-    config = tmp_path / "configs" / "execution.yaml"
+    config = tmp_path / "configs" / "target_portfolio.yaml"
     config.parent.mkdir()
     config.write_text(
-        """execution:\n  selection_dir: ./data/output\n  output_dir: ./data/output\n  calendar_path: ./data/metadata/trade_calendar.parquet\n""",
+        """target_portfolio:\n  selection_dir: ./data/output\n  output_dir: ./data/output\n  calendar_path: ./data/metadata/trade_calendar.parquet\n""",
         encoding="utf-8",
     )
     path, plan = build_trade_plan(config_path=config, selection_file=selection_path)
     assert path.exists()
     assert set(plan["trade_date"]) == {"2026-08-10"}
     assert set(plan["artifact_type"]) == {ArtifactType.STRATEGY_DECISION.value}
-    assert ArtifactType.ORDER_INTENT.value not in set(plan["artifact_type"])
+    assert "ORDER_INTENT" not in set(plan["artifact_type"])
     targets = pd.read_csv(output / "target_portfolio_20260810.csv")
     assert set(targets["artifact_type"]) == {ArtifactType.TARGET_PORTFOLIO.value}
     assert targets["portfolio_policy_sha256"].nunique() == 1
@@ -63,9 +63,9 @@ def test_trade_plan_rejects_portfolio_semantics_in_local_template(tmp_path: Path
     )
     selection_path = tmp_path / "selection_20260807.csv"
     selection.to_csv(selection_path, index=False)
-    config = tmp_path / "configs" / "execution.yaml"
+    config = tmp_path / "configs" / "target_portfolio.yaml"
     config.parent.mkdir()
-    config.write_text("execution:\n  portfolio:\n    top_n: 99\n", encoding="utf-8")
+    config.write_text("target_portfolio:\n  portfolio:\n    top_n: 99\n", encoding="utf-8")
 
     with pytest.raises(ArtifactContractError, match="cannot define portfolio semantics"):
         build_trade_plan(config_path=config, selection_file=selection_path)
