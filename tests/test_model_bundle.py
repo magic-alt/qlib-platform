@@ -43,9 +43,7 @@ def test_lightgbm_bundle_round_trip_and_checksum(tmp_path: Path):
         [[pd.Timestamp("2026-08-10")], ["SH600000", "SZ000001", "SH600519"]],
         names=["datetime", "instrument"],
     )
-    features = pd.DataFrame(
-        [[0.0, 1.0], [1.0, 0.0], [0.5, 0.5]], index=index, columns=["F0", "F1"]
-    )
+    features = pd.DataFrame([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5]], index=index, columns=["F0", "F1"])
     training = lgb.Dataset(features.to_numpy(), label=np.array([0.1, 0.9, 0.4]))
     booster = lgb.train(
         {"objective": "regression", "verbosity": -1, "min_data_in_leaf": 1},
@@ -84,6 +82,95 @@ def test_lightgbm_bundle_round_trip_and_checksum(tmp_path: Path):
     assert manifest["modelFamily"] == "lightgbm"
     np.testing.assert_allclose(
         loaded.predict(features).to_numpy(), booster.predict(features.to_numpy()), rtol=1e-6
+    )
+
+
+def test_ridge_bundle_round_trip_is_deterministic(tmp_path: Path):
+    index = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-08-10")], ["SH600000", "SZ000001", "SH600519"]],
+        names=["datetime", "instrument"],
+    )
+    features = pd.DataFrame([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5]], index=index, columns=["F0", "F1"])
+    model = SimpleNamespace(coef_=np.asarray([0.25, -0.5]), intercept_=0.1)
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={},
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    settings.paths.mkdirs()
+    path = create_model_bundle(
+        settings,
+        model=model,
+        dataset=_Dataset(features),
+        family="ridge",
+        model_parameters={"estimator": "ridge", "alpha": 1.0},
+        canonical_config={"dataset": {}, "strategy": {}},
+        research_run_id="research-ridge-1",
+        refit_as_of="2026-08-10",
+        train_window=("2020-01-01", "2025-01-01"),
+        valid_window=("2025-02-01", "2026-01-01"),
+        dataset_id="dataset-1",
+        dataset_sha256="dataset-sha",
+        feature_store=None,
+        lineage={"complete": True},
+        seed=42,
+    )
+
+    loaded = load_model_bundle(path.parent)
+    expected = features.to_numpy() @ model.coef_ + model.intercept_
+    assert loaded.manifest["modelFamily"] == "ridge"
+    np.testing.assert_array_equal(loaded.predict(features).to_numpy(), expected)
+
+
+def test_xgboost_bundle_round_trip_when_dependency_is_available(tmp_path: Path):
+    import pytest
+
+    xgb = pytest.importorskip("xgboost")
+    index = pd.MultiIndex.from_product(
+        [[pd.Timestamp("2026-08-10")], ["SH600000", "SZ000001", "SH600519"]],
+        names=["datetime", "instrument"],
+    )
+    features = pd.DataFrame([[0.0, 1.0], [1.0, 0.0], [0.5, 0.5]], index=index, columns=["F0", "F1"])
+    booster = xgb.train(
+        {"objective": "reg:squarederror", "seed": 42},
+        xgb.DMatrix(features, label=np.asarray([0.1, 0.9, 0.4])),
+        num_boost_round=3,
+    )
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={},
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    settings.paths.mkdirs()
+    path = create_model_bundle(
+        settings,
+        model=SimpleNamespace(model=booster),
+        dataset=_Dataset(features),
+        family="xgboost",
+        model_parameters={"objective": "reg:squarederror"},
+        canonical_config={"dataset": {}, "strategy": {}},
+        research_run_id="research-xgboost-1",
+        refit_as_of="2026-08-10",
+        train_window=("2020-01-01", "2025-01-01"),
+        valid_window=("2025-02-01", "2026-01-01"),
+        dataset_id="dataset-1",
+        dataset_sha256="dataset-sha",
+        feature_store=None,
+        lineage={"complete": True},
+        seed=42,
+    )
+
+    loaded = load_model_bundle(path.parent)
+    np.testing.assert_allclose(
+        loaded.predict(features).to_numpy(),
+        booster.predict(xgb.DMatrix(features)),
+        rtol=1e-6,
     )
 
 

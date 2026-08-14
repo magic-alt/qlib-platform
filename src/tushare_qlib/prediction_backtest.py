@@ -12,6 +12,7 @@ from .canonical_config import StrategySpec
 from .dataset_resolver import pin_dataset
 from .lineage import sha256_json
 from .model_runtime import StageTimings
+from .prediction_snapshot import load_prediction_snapshot, prediction_snapshot_path
 from .runtime_safety import resolve_qlib_parallel_runtime
 from .settings import Settings
 from .store import sha256_file
@@ -136,8 +137,21 @@ def backtest_predictions(
     settings, pinned_dataset = pin_dataset(settings)
     if artifact_level not in {"minimal", "full"}:
         raise ValueError("artifact_level must be 'minimal' or 'full'")
-    source_path = Path(predictions).expanduser().resolve()
-    pred = _load_predictions(source_path)
+    source_reference = Path(predictions).expanduser().resolve()
+    source_snapshot: dict[str, Any] | None = None
+    if source_reference.suffix == ".json" or prediction_snapshot_path(source_reference).is_file():
+        pred, source_snapshot = load_prediction_snapshot(source_reference)
+        pred = pred[["score"]]
+        payload = source_snapshot["payload"]
+        snapshot_manifest = (
+            source_reference
+            if source_reference.suffix == ".json"
+            else prediction_snapshot_path(source_reference)
+        )
+        source_path = (snapshot_manifest.parent / str(payload["path"])).resolve()
+    else:
+        source_path = source_reference
+        pred = _load_predictions(source_path)
     source_sha = sha256_file(source_path)
     timings = StageTimings()
 
@@ -283,6 +297,8 @@ def backtest_predictions(
             "sourcePrediction": {
                 "localPath": str(source_path),
                 "sha256": source_sha,
+                "snapshotId": source_snapshot.get("snapshotId") if source_snapshot else None,
+                "snapshotContract": source_snapshot.get("contract") if source_snapshot else None,
             },
             "strategy": asdict(strategy),
             "strategyFingerprint": sha256_json(asdict(strategy))[:24],

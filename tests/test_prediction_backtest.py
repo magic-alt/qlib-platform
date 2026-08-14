@@ -4,6 +4,11 @@ import pandas as pd
 import pytest
 
 from tushare_qlib.prediction_backtest import _load_predictions, _portfolio_config
+from tushare_qlib.prediction_snapshot import (
+    PredictionSnapshotSpec,
+    load_prediction_snapshot,
+    write_prediction_snapshot,
+)
 from tushare_qlib.settings import Paths, Settings
 from tushare_qlib.topk_dropout import TopkDropoutPolicy
 
@@ -28,6 +33,33 @@ def test_load_predictions_rejects_non_qlib_index(tmp_path):
 
     with pytest.raises(ValueError, match="datetime/instrument MultiIndex"):
         _load_predictions(source)
+
+
+def test_predictions_backtest_input_can_be_checksum_verified_snapshot(tmp_path):
+    index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp("2026-01-05"), "SH600000")],
+        names=["datetime", "instrument"],
+    )
+    source = tmp_path / "pred.parquet"
+    write_prediction_snapshot(
+        source,
+        pd.DataFrame({"score": [0.25]}, index=index),
+        spec=PredictionSnapshotSpec(
+            data_release_id="ds_test",
+            alpha_pack_id="alpha158_pit_v1",
+            feature_snapshot_id="fs_test",
+            label_spec_id="return_5d_t1_v1",
+            split_spec_id="split_test",
+            model_id="model_test",
+            model_profile_id="ridge_golden_v1",
+            fold_id="fold_1",
+        ),
+    )
+
+    loaded, manifest = load_prediction_snapshot(source)
+
+    assert loaded.iloc[0]["score"] == pytest.approx(0.25)
+    assert manifest["artifactType"] == "PREDICTION_SNAPSHOT"
 
 
 def test_portfolio_config_uses_strategy_and_execution_settings(tmp_path):

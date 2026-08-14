@@ -33,16 +33,21 @@ qlib = [
 pytorch = [
   "torch>=2.2,<3.0",
 ]
+xgboost = [
+  "xgboost>=2.0,<4.0",
+]
 all = [
   "tushare>=1.4.0,<2.0",
   "tenacity>=8.2,<10",
   "pymysql>=1.1,<2.0",
   "pyqlib==0.9.7",
   "lightgbm==4.6.0",
+  "xgboost>=2.0,<4.0",
 ]
 dev = [
   "pyqlib==0.9.7",
   "lightgbm==4.6.0",
+  "xgboost>=2.0,<4.0",
   "pytest>=8,<9",
   "pytest-cov>=5,<7",
   "ruff>=0.8,<1",

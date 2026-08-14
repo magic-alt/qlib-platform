@@ -134,6 +134,11 @@ Windows 多进程研究任务必须通过 `& $RepoPython -m tushare_qlib` 或带
   --model-profile configs/model_profiles/pytorch_mps_m5.yaml
 ```
 
+模型的运行时解析、构建、保存、加载与 parity check 统一由 ModelAdapter Registry 管理。可用的 CPU
+golden baseline 是 `configs/model_profiles/ridge_golden_v1.yaml`；XGBoost profile 是
+`configs/model_profiles/xgboost_cpu_v1.yaml`（通过 `.[xgboost]` 或 `.[all,dev]` 安装）。切换模型只需修改
+`experiment.model.profile`，DataRelease、AlphaPack、Label、Split 与 Portfolio contract 保持不变。
+
 CPU/CUDA/OpenCL LightGBM profiles 都使用 `max_bin=63`，因此可以在相同模型参数下比较耗时与指标。DNN 的输入
 维度由 `TushareAlpha158Daily` 的实际字段数动态注入，不能按标准 Alpha158 固定写成 158。
 
@@ -159,6 +164,13 @@ Signal Screen 生成的 immutable OOS prediction 可以独立测试策略参数�
   data/output/research/<run_id>/oos_predictions.parquet `
   --topn 30 --artifact-level minimal
 ```
+
+每个 `oos_predictions.parquet` 同时发布 `oos_predictions.snapshot.json`，以
+`data_release_id / alpha_pack_id / feature_snapshot_id / label_spec_id / split_spec_id /
+model_id / model_profile_id / fold_id` 和 payload SHA-256 固定身份。文件包含
+`datetime / instrument / score / label`；重复键、非有限 score、契约漂移或 payload 篡改都会在组合回测前失败。
+`backtest-predictions` 接受 parquet 或 snapshot JSON，并在 sidecar 存在时自动做完整验证。rolling folds 的
+snapshot 只有在稳定字段完全一致时才允许拼接，并产生新的 aggregate snapshot。
 
 `minimal` 保存 prediction、组合日表、持仓摘要、策略 audit 和 timings；`full` 额外渲染 Markdown/PDF。
 walk-forward 的 rolling folds 只训练并保存 OOS prediction/label，不运行各自独立的组合回测。系统将所有 rolling

@@ -13,6 +13,7 @@ from tushare_qlib.model_runtime import (
     resolved_model_parameters,
     resolve_runtime,
 )
+from tushare_qlib.models.registry import model_families
 from tushare_qlib.settings import Paths, Settings
 
 
@@ -69,6 +70,8 @@ def test_profile_rejects_unknown_keys(tmp_path):
         "lightgbm_cuda_nvidia",
         "lightgbm_gpu_windows",
         "pytorch_mps_m5",
+        "ridge_golden_v1",
+        "xgboost_cpu_v1",
     ],
 )
 def test_bundled_model_profiles_are_valid(tmp_path, name):
@@ -79,9 +82,9 @@ def test_bundled_model_profiles_are_valid(tmp_path, name):
 
 
 def test_lightgbm_auto_falls_back_but_explicit_cuda_fails(monkeypatch):
-    monkeypatch.setattr("tushare_qlib.model_runtime.sys.platform", "linux")
+    monkeypatch.setattr("tushare_qlib.models.adapters.lightgbm.sys.platform", "linux")
     monkeypatch.setattr(
-        "tushare_qlib.model_runtime._probe_lightgbm_cuda",
+        "tushare_qlib.models.adapters.lightgbm.probe_cuda",
         lambda device_index: (False, "CUDA build missing", "4.7.0"),
     )
     auto = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test")
@@ -96,9 +99,9 @@ def test_lightgbm_auto_falls_back_but_explicit_cuda_fails(monkeypatch):
 
 
 def test_lightgbm_windows_auto_uses_opencl_gpu(monkeypatch):
-    monkeypatch.setattr("tushare_qlib.model_runtime.sys.platform", "win32")
+    monkeypatch.setattr("tushare_qlib.models.adapters.lightgbm.sys.platform", "win32")
     monkeypatch.setattr(
-        "tushare_qlib.model_runtime._probe_lightgbm_opencl",
+        "tushare_qlib.models.adapters.lightgbm.probe_opencl",
         lambda platform_id, device_index: (True, None, "4.7"),
     )
     profile = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test", 2)
@@ -155,3 +158,34 @@ def test_dnn_rejects_stale_configured_input_dimension_before_importing_torch():
 
     with pytest.raises(ValueError, match="does not match dataset feature count 175"):
         build_model(runtime, feature_count=175, seed=42, num_threads=8)
+
+
+def test_model_registry_exposes_complete_initial_family_set():
+    assert model_families() == ("lightgbm", "pytorch_dnn", "ridge", "xgboost")
+
+
+def test_ridge_is_a_deterministic_cpu_baseline():
+    profile = ModelProfile("ridge", "ridge", "auto", 0, {"alpha": 2.0}, "test")
+
+    runtime = resolve_runtime(profile)
+    parameters = resolved_model_parameters(runtime, feature_count=10, seed=42, num_threads=8)
+    model = build_model(runtime, feature_count=10, seed=42, num_threads=8)
+
+    assert runtime.resolved_device == "cpu"
+    assert parameters["estimator"] == "ridge"
+    assert parameters["alpha"] == 2.0
+    assert model.estimator == "ridge"
+
+
+def test_xgboost_profile_builds_through_registered_adapter():
+    pytest.importorskip("xgboost")
+    profile = ModelProfile("xgb", "xgboost", "cpu", 0, {"num_boost_round": 17}, "test")
+
+    runtime = resolve_runtime(profile)
+    parameters = resolved_model_parameters(runtime, feature_count=10, seed=42, num_threads=3)
+    model = build_model(runtime, feature_count=10, seed=42, num_threads=3)
+
+    assert runtime.resolved_device == "cpu"
+    assert parameters["device"] == "cpu"
+    assert parameters["nthread"] == 3
+    assert model.num_boost_round == 17
