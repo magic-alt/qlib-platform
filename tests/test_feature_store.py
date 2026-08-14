@@ -44,7 +44,7 @@ def test_feature_store_partitions_and_reuses_raw_features(tmp_path, monkeypatch)
         "year=2023.parquet",
         "year=2024.parquet",
     ]
-    pd.testing.assert_frame_equal(loaded, source, check_freq=False)
+    pd.testing.assert_frame_equal(loaded, source.drop(columns="label", level=0), check_freq=False)
 
 
 def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatch):

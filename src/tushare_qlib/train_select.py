@@ -10,6 +10,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .alpha.base import AlphaPackSpec
+from .alpha.registry import (
+    alpha_pack_from_settings,
+    assert_alpha_pack_compatible,
+    handler_class,
+)
 from .artifacts import ArtifactType, PromotionStatus, stamp_artifact
 from .canonical_config import CanonicalConfig
 from .lineage import build_lineage, dirty_research_override_enabled, sha256_json
@@ -36,7 +42,13 @@ from .research_gate import (
     evaluate_signal_metrics,
     write_gate_report,
 )
-from .research_timing import label_timing_from_settings, shared_research_calendar
+from .research_timing import (
+    LabelSpec,
+    label_spec_from_settings,
+    label_timing_from_settings,
+    shared_research_calendar,
+)
+from .research_experiment import ResearchExperimentSpec
 from .feature_store import feature_store_enabled, prepare_feature_data
 from .dataset_resolver import pin_dataset
 from .runtime_safety import resolve_qlib_parallel_runtime
@@ -174,23 +186,18 @@ def build_dataset(
     valid: tuple[str, str],
     test: tuple[str, str],
     universe: dict[str, object] | None = None,
-    label_horizon_days: int = 1,
+    label_spec: LabelSpec,
+    alpha_pack: AlphaPackSpec,
     prepared_feature_data: pd.DataFrame | None = None,
 ) -> Any:
     from qlib.contrib.data.handler import check_transform_proc
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
-    from qlib.data.dataset.loader import StaticDataLoader
+    from qlib.data.dataset.loader import QlibDataLoader, StaticDataLoader
 
-    from .custom_handler import TushareAlpha158Fundamental
-
-    if label_horizon_days < 1:
-        raise ValueError("label_horizon_days must be at least 1")
     universe = universe or {}
-    label = (
-        [f"Ref($close, -{label_horizon_days + 1})/Ref($close, -1) - 1"],
-        ["LABEL0"],
-    )
+    handler_type = handler_class(alpha_pack)
+    label = label_spec.qlib_config()
     shared_processors = [
         {
             "class": "AshareUniverseFilter",
@@ -205,20 +212,27 @@ def build_dataset(
         }
     ]
     infer_processors = [
-        {
-            "class": "ProcessInfSingleThread",
-            "module_path": "tushare_qlib.processors",
-            "kwargs": {},
-        },
-        {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}},
-        {"class": "Fillna", "kwargs": {"fields_group": "feature"}},
+        {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}},
     ]
+    if alpha_pack.processor_recipe == "multifactor_cross_section_v1":
+        infer_processors.append(
+            {
+                "class": "CrossSectionalFactorProcessor",
+                "module_path": "tushare_qlib.processors",
+                "kwargs": {"minimum_industry_members": 5},
+            }
+        )
+    else:
+        infer_processors.append(
+            {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}}
+        )
+    infer_processors.append({"class": "Fillna", "kwargs": {"fields_group": "feature"}})
     learn_processors = [
         {"class": "DropnaLabel"},
         {"class": "CSRankNorm", "kwargs": {"fields_group": "label"}},
     ]
     if prepared_feature_data is None:
-        handler = TushareAlpha158Fundamental(
+        handler = handler_type(
             instruments=universe.get("instruments", "all"),
             start_time=train[0],
             end_time=test[1],
@@ -233,6 +247,12 @@ def build_dataset(
         # StaticDataLoader contains raw expressions only. Every fold receives
         # fresh processors whose learnable state is fitted on that fold's train span.
         infer_processors = check_transform_proc(infer_processors, train[0], train[1])
+        label_frame = QlibDataLoader({"label": label}).load(
+            instruments=universe.get("instruments", "all"),
+            start_time=train[0],
+            end_time=test[1],
+        )
+        prepared_feature_data = prepared_feature_data.join(label_frame, how="left")
         learn_processors = check_transform_proc(learn_processors, train[0], train[1])
         handler = DataHandlerLP(
             instruments=None,
@@ -569,9 +589,12 @@ def train_backtest_select(
     research = (
         settings.data.get("research", {}) if isinstance(settings.data.get("research", {}), dict) else {}
     )
-    label_horizon_days = _research_label_horizon_days(settings)
+    label_spec = label_spec_from_settings(settings)
+    label_horizon_days = label_spec.horizon_days
     universe = dict(settings.data.get("universe", {}))
     seed = int(research.get("random_seed", 42))
+    alpha_pack = alpha_pack_from_settings(settings)
+    assert_alpha_pack_compatible(settings, alpha_pack)
     np.random.seed(seed)
     _configure_mlflow_tracking(settings)
     parallel = resolve_qlib_parallel_runtime(settings)
@@ -599,7 +622,8 @@ def train_backtest_select(
             valid=valid,
             test=test,
             universe=universe,
-            label_horizon_days=label_horizon_days,
+            label_spec=label_spec,
+            alpha_pack=alpha_pack,
             prepared_feature_data=prepared_feature_data,
         )
     feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
@@ -615,6 +639,18 @@ def train_backtest_select(
         runtime,
         topk_override=topn,
         model_parameters=model_parameters,
+    )
+    experiment_spec = ResearchExperimentSpec.resolve(
+        settings,
+        runtime=runtime,
+        canonical=canonical,
+        alpha_pack=alpha_pack,
+        label_spec=label_spec,
+        train=train,
+        valid=valid,
+        test=test,
+        run_kind=run_kind,
+        benchmark=str(benchmark or research.get("benchmark") or _DEFAULT_BENCHMARK),
     )
     topk_policy = canonical.strategy.to_policy()
     model = build_model(
@@ -733,6 +769,8 @@ def train_backtest_select(
                     "labelHorizonDays": label_horizon_days,
                 },
                 "canonicalConfig": canonical.to_manifest(),
+                "researchExperimentId": experiment_spec.experiment_id,
+                "researchExperiment": experiment_spec.to_manifest(),
                 "lineage": lineage,
                 "promotion": {
                     "status": (
@@ -958,6 +996,8 @@ def train_backtest_select(
                 "bestIteration": int(best_iteration) if best_iteration is not None else None,
             },
             "canonicalConfig": canonical.to_manifest(),
+            "researchExperimentId": experiment_spec.experiment_id,
+            "researchExperiment": experiment_spec.to_manifest(),
             "portfolioPolicySha256": sha256_json(canonical.to_manifest()["portfolio"]),
             "lineage": lineage,
             "promotion": {

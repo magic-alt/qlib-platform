@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
+from .alpha.registry import alpha_pack_from_settings, assert_alpha_pack_compatible
 
 from .canonical_config import CanonicalConfig
 from .feature_store import feature_store_enabled, prepare_feature_data
@@ -15,7 +16,12 @@ from .lineage import git_revision, resolve_qlib_repo, sha256_json
 from .model_bundle import create_model_bundle
 from .model_registry import ModelRegistry
 from .model_runtime import build_model, load_model_profile, resolve_runtime, resolved_model_parameters
-from .research_timing import effective_label_gap, label_timing_from_settings, shared_research_calendar
+from .research_timing import (
+    effective_label_gap,
+    label_spec_from_settings,
+    label_timing_from_settings,
+    shared_research_calendar,
+)
 from .runtime_safety import resolve_qlib_parallel_runtime
 from .settings import Settings
 from .store import sha256_file
@@ -145,6 +151,8 @@ def _assert_recipe(settings: Settings, release: Mapping[str, Any], canonical: Ma
 
 def refit_production_model(settings: Settings, research_run: str | Path, *, as_of: str) -> Path:
     settings, _ = pin_dataset(settings)
+    alpha_pack = alpha_pack_from_settings(settings)
+    assert_alpha_pack_compatible(settings, alpha_pack)
     _, release = _research_manifest(settings, research_run)
     profile = load_model_profile(settings)
     runtime = resolve_runtime(profile)
@@ -181,8 +189,9 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
         valid=plan.selection_valid,
         test=(as_of, as_of),
         universe=dict(settings.data.get("universe", {})),
-        label_horizon_days=label_timing_from_settings(settings).horizon_days,
+        label_spec=label_spec_from_settings(settings),
         prepared_feature_data=prepared,
+        alpha_pack=alpha_pack,
     )
     feature_columns = [str(column) for column in selection_dataset.handler.get_cols(col_set="feature")]
     parameters = resolved_model_parameters(
@@ -208,8 +217,9 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
             valid=plan.selection_valid,
             test=(as_of, as_of),
             universe=dict(settings.data.get("universe", {})),
-            label_horizon_days=label_timing_from_settings(settings).horizon_days,
+            label_spec=label_spec_from_settings(settings),
             prepared_feature_data=prepared,
+            alpha_pack=alpha_pack,
         )
         final_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
         if final_columns != feature_columns:
