@@ -1,3 +1,5 @@
+# Migration-only compatibility profile. Production research must consume an
+# immutable platform DataRelease through configs/pipeline.yaml.
 project_root: ./data/lean_mysql
 storage:
   registry_path: ./data/lean_mysql/registry/qlib.sqlite

@@ -148,15 +148,61 @@ class Settings:
         return self.tushare_token
 
     def uses_tushare_source(self) -> bool:
-        source_cfg = self.data.get("data_source", {})
-        if not isinstance(source_cfg, dict):
-            return True
-        kind = str(source_cfg.get("kind", "tushare")).strip().lower()
+        kind = self.source_kind
         if kind == "auto":
-            return "mysql" not in source_cfg
+            return "mysql" not in self.data.get("data_source", {})
         if kind in {"mysql", "lean_mysql", "lean-platform", "lean_platform"}:
             return False
+        if kind in {"platform_release", "data_release"}:
+            return False
         return True
+
+    @property
+    def source_kind(self) -> str:
+        source_cfg = self.data.get("data_source", {})
+        if not isinstance(source_cfg, dict):
+            return "tushare"
+        return str(source_cfg.get("kind", "tushare")).strip().lower()
+
+    def uses_platform_release(self) -> bool:
+        return self.source_kind in {"platform_release", "data_release"}
+
+    @property
+    def platform_release_config(self) -> dict[str, Any]:
+        if not self.uses_platform_release():
+            raise ValueError("data_source.kind must be platform_release")
+        source_cfg = _require_mapping(self.data.get("data_source", {}), "data_source")
+        return _require_mapping(source_cfg.get("platform_release", {}), "data_source.platform_release")
+
+    @property
+    def platform_data_root(self) -> Path:
+        raw = str(self.platform_release_config.get("data_root") or "").strip()
+        if not raw:
+            raise ValueError("data_source.platform_release.data_root is required")
+        path = Path(raw).expanduser()
+        return path.resolve() if path.is_absolute() else (self.config_path.parent.parent / path).resolve()
+
+    @property
+    def platform_release_manifest(self) -> Path:
+        raw = str(self.platform_release_config.get("manifest") or "").strip()
+        if not raw:
+            raise ValueError("data_source.platform_release.manifest is required")
+        path = Path(raw).expanduser()
+        path = path if path.is_absolute() else self.config_path.parent.parent / path
+        if path.is_symlink():
+            raise FileNotFoundError(f"DataRelease manifest must not be a symlink: {path}")
+        path = path.resolve()
+        try:
+            path.relative_to(self.platform_data_root)
+        except ValueError as exc:
+            raise ValueError("DataRelease manifest must remain under the configured data_root") from exc
+        if not path.is_file():
+            raise FileNotFoundError(f"DataRelease manifest is missing: {path}")
+        return path
+
+    @property
+    def platform_qlib_staging_role(self) -> str:
+        return str(self.platform_release_config.get("qlib_staging_role") or "qlib_staging").strip()
 
     def require_qlib_repo(self) -> Path:
         if self.qlib_repo is None or not self.qlib_repo.exists():

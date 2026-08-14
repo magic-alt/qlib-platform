@@ -417,6 +417,11 @@ def write_fingerprint(
         "package_versions": _package_versions(),
         "smoke_test": smoke,
     }
+    if settings.uses_platform_release():
+        release_cfg = settings.platform_release_config
+        content["data_release_id"] = str(release_cfg.get("id") or "")
+        if isinstance(sync_context, dict) and sync_context.get("data_release_manifest_sha256"):
+            content["data_release_manifest_sha256"] = str(sync_context["data_release_manifest_sha256"])
     target = dataset_dir or settings.qlib_data_uri
     calendar = target / "calendars" / "day.txt"
     dates = (

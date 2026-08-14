@@ -144,6 +144,12 @@ def parser() -> argparse.ArgumentParser:
     lr = sub.add_parser("lean-register")
     lr.add_argument("manifest")
     lr.add_argument("--base-url")
+    v2 = sub.add_parser("artifact-v2-export")
+    v2.add_argument("manifest")
+    v2.add_argument("--output-dir", required=True)
+    v2.add_argument("--git-commit", required=True)
+    v2.add_argument("--container-digest", required=True)
+    v2.add_argument("--data-release-id")
 
     pa = sub.add_parser("project-audit")
     pa.add_argument("--root", default=".")
@@ -345,6 +351,19 @@ def main() -> None:
         from .lean_integration import register_manifest
 
         print(json.dumps(register_manifest(args.manifest, base_url=args.base_url), ensure_ascii=False))
+        return
+
+    if args.command == "artifact-v2-export":
+        from .research_bundle_export import export_manifest_as_v2_bundle
+
+        path = export_manifest_as_v2_bundle(
+            args.manifest,
+            args.output_dir,
+            git_commit=args.git_commit,
+            container_digest=args.container_digest,
+            data_release_id=args.data_release_id,
+        )
+        print(json.dumps({"manifest": str(path)}, ensure_ascii=False))
         return
 
     if args.command == "build-trade-plan":
@@ -557,23 +576,42 @@ def main() -> None:
         run_registry = DatasetRegistry(settings.registry_path)
         run_registry.start_pipeline_run(run_id, "dataset_build")
         try:
-            build_pit_from_extended(settings)
-            build_all_curated(settings, args.start, args.end)
-            export_full_staging(settings, force=True)
-            snapshots = freeze_pipeline_layers(
-                settings,
-                mode="full",
-                gold_sources=(("qlib_input", settings.paths.staging_full),),
-            )
-            path = dump_full(
-                settings,
-                single_thread=args.single_thread,
-                sync_context={
-                    "dataset_parents": [
-                        {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
-                    ]
-                },
-            )
+            if settings.uses_platform_release():
+                from .platform_release import materialize_platform_release
+
+                release = materialize_platform_release(settings)
+                path = dump_full(
+                    settings,
+                    single_thread=args.single_thread,
+                    sync_context={
+                        "data_release_id": release.data_release_id,
+                        "data_release_manifest_sha256": release.manifest_sha256,
+                        "dataset_parents": [
+                            {
+                                "version_id": release.data_release_id,
+                                "relation": "converted_from",
+                            }
+                        ],
+                    },
+                )
+            else:
+                build_pit_from_extended(settings)
+                build_all_curated(settings, args.start, args.end)
+                export_full_staging(settings, force=True)
+                snapshots = freeze_pipeline_layers(
+                    settings,
+                    mode="full",
+                    gold_sources=(("qlib_input", settings.paths.staging_full),),
+                )
+                path = dump_full(
+                    settings,
+                    single_thread=args.single_thread,
+                    sync_context={
+                        "dataset_parents": [
+                            {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
+                        ]
+                    },
+                )
         except Exception as exc:
             run_registry.finish_pipeline_run(run_id, status="FAILED", error_code=type(exc).__name__)
             raise
@@ -936,6 +974,23 @@ def main() -> None:
         "sync-universe",
     }:
         from .extract import Extractor
+
+        if settings.uses_platform_release():
+            if args.command != "source-preflight":
+                raise ValueError(
+                    f"{args.command} is disabled for platform_release; platform owns production ingestion"
+                )
+            from .platform_release import platform_release_preflight
+
+            result = platform_release_preflight(
+                settings,
+                args.start or settings.data["start_date"],
+                args.end or settings.data["end_date"],
+            )
+            print(json.dumps(result, ensure_ascii=False, default=str))
+            if not result.get("passed"):
+                raise SystemExit(2)
+            return
 
         ext = Extractor(settings)
         if args.command == "init-metadata":
