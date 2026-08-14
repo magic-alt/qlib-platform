@@ -17,6 +17,7 @@ ARTIFACT_SORT_KEYS = {
     "holdings.parquet": ["trade_date", "instrument"],
     "strategy_audit.parquet": ["signal_date", "trade_date", "instrument"],
 }
+AUDIT_STATE_METRICS = {"lineage_complete", "dirty_research_override"}
 
 
 def _content_hash(frame: pd.DataFrame) -> str:
@@ -41,7 +42,10 @@ def _load_artifact(run_dir: Path, name: str, sort_keys: list[str] | None) -> pd.
 
 
 def compare(
-    run_dirs: list[Path], feature_cold_seconds: float, feature_warm_seconds: float
+    run_dirs: list[Path],
+    feature_cold_seconds: float,
+    feature_warm_seconds: float,
+    promotion_run_dir: Path | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if len(run_dirs) != 3:
         raise ValueError("exactly three independent Ridge run directories are required")
@@ -99,6 +103,71 @@ def compare(
     )
     gates = [json.loads((path / "research_gate.json").read_text(encoding="utf-8")) for path in run_dirs]
     failed_research_checks = [item["name"] for item in gates[0]["checks"] if not item["passed"]]
+    immutable_golden: dict[str, Any] | None = None
+    promotion_passed = False
+    if promotion_run_dir is not None:
+        promotion_manifest = json.loads((promotion_run_dir / "manifest.json").read_text(encoding="utf-8"))
+        promotion_contracts = {
+            "dataReleaseId": promotion_manifest["researchExperiment"]["data_release_id"],
+            "alphaPackId": promotion_manifest["researchExperiment"]["alpha_pack_id"],
+            "alphaPackSha256": promotion_manifest["researchExperiment"]["alpha_pack_sha256"],
+            "featureSnapshotId": promotion_manifest["featureStore"]["featureSnapshotId"],
+            "labelSpecId": promotion_manifest["researchExperiment"]["label_spec_id"],
+            "splitSpecId": promotion_manifest["researchExperiment"]["split_sha256"],
+            "experimentId": promotion_manifest["researchExperimentId"],
+            "modelProfileId": promotion_manifest["researchExperiment"]["model_profile_id"],
+            "portfolioPolicyId": promotion_manifest["researchExperiment"]["portfolio_policy_id"],
+        }
+        promotion_artifacts: dict[str, dict[str, Any]] = {}
+        for name, sort_keys in ARTIFACT_SORT_KEYS.items():
+            reference_frame = _load_artifact(run_dirs[0], name, sort_keys)
+            promotion_frame = _load_artifact(promotion_run_dir, name, sort_keys)
+            promotion_artifacts[name] = {
+                "exactlyEqual": reference_frame.equals(promotion_frame),
+                "goldenContentSha256": _content_hash(reference_frame),
+                "promotionContentSha256": _content_hash(promotion_frame),
+                "rows": len(promotion_frame),
+            }
+        reference_metrics = {
+            key: value for key, value in reference["metrics"].items() if key not in AUDIT_STATE_METRICS
+        }
+        promotion_metrics = {
+            key: value
+            for key, value in promotion_manifest["metrics"].items()
+            if key not in AUDIT_STATE_METRICS
+        }
+        lineage = promotion_manifest["lineage"]
+        promotion_checks = {
+            "contractsExactlyEqual": promotion_contracts == contracts,
+            "predictionPayloadExactlyEqual": (
+                promotion_manifest["predictionSnapshot"]["payload"]["sha256"]
+                == reference["predictionSnapshot"]["payload"]["sha256"]
+            ),
+            "researchMetricsExactlyEqual": promotion_metrics == reference_metrics,
+            "artifactsExactlyEqual": all(item["exactlyEqual"] for item in promotion_artifacts.values()),
+            "featureSnapshotReused": (
+                promotion_manifest["featureStore"].get("cacheStatus") == "REUSED"
+                and promotion_manifest["featureStore"].get("rawMaterializationCalls") == 0
+            ),
+            "committedLineageClean": (
+                not bool(lineage.get("qlibPlatformDirty")) and bool(lineage.get("complete"))
+            ),
+        }
+        promotion_passed = system_passed and all(promotion_checks.values())
+        immutable_golden = {
+            "status": "PASS" if promotion_passed else "FAIL",
+            "runId": promotion_manifest["externalRunId"],
+            "manifestPath": str(promotion_run_dir / "manifest.json"),
+            "qlibPlatformCommit": lineage.get("qlibPlatformCommit"),
+            "predictionSnapshotId": promotion_manifest["predictionSnapshot"]["snapshotId"],
+            "predictionPayloadSha256": promotion_manifest["predictionSnapshot"]["payload"]["sha256"],
+            "checks": promotion_checks,
+            "artifacts": promotion_artifacts,
+            "auditStateTransition": {
+                "lineageComplete": promotion_manifest["metrics"].get("lineage_complete"),
+                "dirtyResearchOverride": promotion_manifest["metrics"].get("dirty_research_override"),
+            },
+        }
     acceptance = {
         "schemaVersion": "full_research_acceptance_v1",
         "generatedAtUtc": datetime.now(timezone.utc).isoformat(),
@@ -106,9 +175,13 @@ def compare(
         "researchQuality": gates[0]["decision"],
         "performanceAcceptance": "BASELINE_RECORDED",
         "baselinePromotion": (
-            "PENDING_CLEAN_COMMIT"
-            if any(bool(manifest["lineage"].get("qlibPlatformDirty")) for manifest in manifests)
-            else "ELIGIBLE"
+            "IMMUTABLE_GOLDEN"
+            if promotion_passed
+            else (
+                "PENDING_CLEAN_COMMIT"
+                if any(bool(manifest["lineage"].get("qlibPlatformDirty")) for manifest in manifests)
+                else "ELIGIBLE"
+            )
         ),
         "contracts": contracts,
         "contractChecks": contract_checks,
@@ -127,6 +200,7 @@ def compare(
             "metrics": gates[0]["metrics"],
             "thresholds": gates[0]["thresholds"],
         },
+        "immutableGolden": immutable_golden,
         "runs": [
             {
                 "runId": manifest["externalRunId"],
@@ -168,11 +242,13 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--feature-cold-seconds", type=float, required=True)
     parser.add_argument("--feature-warm-seconds", type=float, required=True)
+    parser.add_argument("--promotion-run-dir", type=Path)
     args = parser.parse_args()
     acceptance, performance = compare(
         [path.expanduser().resolve() for path in args.run_dirs],
         args.feature_cold_seconds,
         args.feature_warm_seconds,
+        args.promotion_run_dir.expanduser().resolve() if args.promotion_run_dir else None,
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     acceptance_path = args.output_dir / "research_acceptance.json"
