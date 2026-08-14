@@ -23,12 +23,12 @@ _CACHE_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache"}
 _NON_SOURCE_ROOTS = {".git", "data"}
 _SECRET_PATTERNS = [
     re.compile(
-        r'''(?i)TUSHARE_TOKEN\s*[:=]\s*(?!None\b|null\b|changeme|replace_me|your_|fake_|dummy_|\$\{|<REDACTED>)'''
-        r'''["']?[A-Za-z0-9_-]{16,}["']?'''
+        r"""(?i)TUSHARE_TOKEN\s*[:=]\s*(?!None\b|null\b|changeme|replace_me|your_|fake_|dummy_|\$\{|<REDACTED>)"""
+        r"""["']?[A-Za-z0-9_-]{16,}["']?"""
     ),
     re.compile(
-        r'''(?i)(api[_-]?key|secret|password)\s*[:=]\s*["']'''
-        r'''(?!changeme|replace_me|your_|fake_|dummy_|<REDACTED>|\$\{)[^"']{8,}["']'''
+        r"""(?i)(api[_-]?key|secret|password)\s*[:=]\s*["']"""
+        r"""(?!changeme|replace_me|your_|fake_|dummy_|<REDACTED>|\$\{)[^"']{8,}["']"""
     ),
 ]
 
@@ -67,9 +67,7 @@ def audit_project(root: str | Path) -> dict[str, object]:
 
     findings: list[AuditFinding] = []
     forbidden = sorted(
-        str(path)
-        for path in relative_files
-        if any(part in _FORBIDDEN_DIRS for part in path.parts)
+        str(path) for path in relative_files if any(part in _FORBIDDEN_DIRS for part in path.parts)
     )
     findings.append(
         AuditFinding(
@@ -80,11 +78,7 @@ def audit_project(root: str | Path) -> dict[str, object]:
             "Exclude virtual environments and experiment artifacts from release packages.",
         )
     )
-    caches = sorted(
-        str(path)
-        for path in relative_files
-        if any(part in _CACHE_DIRS for part in path.parts)
-    )
+    caches = sorted(str(path) for path in relative_files if any(part in _CACHE_DIRS for part in path.parts))
     findings.append(
         AuditFinding(
             "PKG-002",
@@ -96,9 +90,7 @@ def audit_project(root: str | Path) -> dict[str, object]:
     )
     secret_hits: list[str] = []
     for path in files:
-        if (
-            path.suffix.lower() in {".parquet", ".pkl", ".zip", ".png", ".jpg"}
-        ):
+        if path.suffix.lower() in {".parquet", ".pkl", ".zip", ".png", ".jpg"}:
             continue
         if path.name == ".env.example":
             continue

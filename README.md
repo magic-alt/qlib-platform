@@ -70,6 +70,19 @@ Qlib 会校验 release ID、canonical manifest/component SHA-256、覆盖区间�
 
 同一正式验证中，Qlib 与 LEAN 必须引用完全相同的 `dataset_release_id`。
 
+跨仓库 Mini Golden Acceptance 使用两个仓库各自的本地解释器，并调用真实 Docker LEAN；它在指定目录内创建
+隔离的 SQLite 控制平面、确定性市场数据和不可变 DataRelease，不调用外部数据源：
+
+```bash
+.venv/bin/python scripts/run_cross_repo_golden_acceptance.py \
+  --platform-repo ../lean-platform \
+  --work-dir /tmp/qlib-lean-golden
+```
+
+只有平台发布 ID、PredictionSnapshot contract、Artifact v2、导入后的 TargetPortfolio、LEAN backtest
+绑定和 target payload SHA 全部一致，且 execution validation 通过后，命令才输出 `status: PASS` 与
+`promotionStatus: LEAN_VALIDATED`。完整证据保存在 `<work-dir>/cross-repo-golden-result.json`。
+
 ## 3. 开发/独立测试模式
 
 生产 TuShare ingestion 已归属 `platform`。只有开发和独立测试可以使用本仓库保留的采集链：

@@ -66,9 +66,10 @@ def test_live_score_requires_matching_attestation(tmp_path: Path):
         manifest_sha256=sha256_path(attestation),
     )
     resolver = ArtifactResolver(roots={"signal": root})
-    assert validate_live_artifact(governed, ArtifactType.MODEL_SCORE, resolver=resolver)[
-        "deployment_id"
-    ] == "model-1"
+    assert (
+        validate_live_artifact(governed, ArtifactType.MODEL_SCORE, resolver=resolver)["deployment_id"]
+        == "model-1"
+    )
     governed.loc[0, "score"] = 0.9
     with pytest.raises(ValueError, match="checksum"):
         validate_live_artifact(governed, ArtifactType.MODEL_SCORE, resolver=resolver)

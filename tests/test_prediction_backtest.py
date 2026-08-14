@@ -3,7 +3,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tushare_qlib.prediction_backtest import _load_predictions, _portfolio_config
+from tushare_qlib.prediction_backtest import (
+    _load_predictions,
+    _portfolio_config,
+    backtest_predictions,
+)
 from tushare_qlib.prediction_snapshot import (
     PredictionSnapshotSpec,
     load_prediction_snapshot,
@@ -60,6 +64,78 @@ def test_predictions_backtest_input_can_be_checksum_verified_snapshot(tmp_path):
 
     assert loaded.iloc[0]["score"] == pytest.approx(0.25)
     assert manifest["artifactType"] == "PREDICTION_SNAPSHOT"
+
+
+@pytest.mark.parametrize(
+    ("configured_release", "snapshot_release", "materialized_release"),
+    [
+        ("ds_B", "ds_A", "ds_B"),
+        ("ds_A", "ds_A", "ds_B"),
+    ],
+)
+def test_prediction_snapshot_rejects_wrong_pinned_data_release_before_side_effects(
+    tmp_path,
+    monkeypatch,
+    configured_release,
+    snapshot_release,
+    materialized_release,
+):
+    qlib_data = tmp_path / "qlib"
+    qlib_data.mkdir()
+    (qlib_data / "dataset_manifest.json").write_text(
+        f"""{{
+          "schema_version": "3.0",
+          "version_id": "qlib_content_b",
+          "dataset_name": "test",
+          "semantic_contract": {{"data_release_id": "{materialized_release}"}}
+        }}""",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={
+            "data_source": {
+                "kind": "platform_release",
+                "platform_release": {"id": configured_release},
+            },
+            "qlib": {"dataset_version": configured_release},
+        },
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=qlib_data,
+    )
+    index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp("2026-01-05"), "SH600000")],
+        names=["datetime", "instrument"],
+    )
+    source = tmp_path / "pred.parquet"
+    write_prediction_snapshot(
+        source,
+        pd.DataFrame({"score": [0.25]}, index=index),
+        spec=PredictionSnapshotSpec(
+            data_release_id=snapshot_release,
+            alpha_pack_id="alpha158_pit_v1",
+            feature_snapshot_id="fs_test",
+            label_spec_id="return_5d_t1_v1",
+            split_spec_id="split_test",
+            model_id="model_test",
+            model_profile_id="ridge_golden_v1",
+            fold_id="fold_1",
+        ),
+    )
+    qlib_init_calls: list[object] = []
+    monkeypatch.setattr("qlib.init", lambda *args, **kwargs: qlib_init_calls.append((args, kwargs)))
+
+    with pytest.raises(
+        ValueError,
+        match="PredictionSnapshot DataRelease does not match pinned DataRelease",
+    ):
+        backtest_predictions(settings, source)
+
+    assert qlib_init_calls == []
+    assert not settings.paths.output.exists()
+    assert not (tmp_path / "mlruns").exists()
 
 
 def test_portfolio_config_uses_strategy_and_execution_settings(tmp_path):

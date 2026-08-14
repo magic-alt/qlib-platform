@@ -23,7 +23,9 @@ class NotificationEnvelope:
     @property
     def payload_sha256(self) -> str:
         payload = asdict(self)
-        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str).encode()
+        encoded = json.dumps(
+            payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
+        ).encode()
         return hashlib.sha256(encoded).hexdigest()
 
     @property
@@ -40,9 +42,7 @@ class NotificationEnvelope:
         return hashlib.sha256(stable.encode()).hexdigest()
 
     def to_feishu_card(self) -> dict[str, Any]:
-        elements: list[dict[str, Any]] = [
-            {"tag": "div", "text": {"tag": "lark_md", "content": self.summary}}
-        ]
+        elements: list[dict[str, Any]] = [{"tag": "div", "text": {"tag": "lark_md", "content": self.summary}}]
         for heading, value in self.sections.items():
             if isinstance(value, list):
                 content = "\n".join(f"- {item}" for item in value) or "- 无"

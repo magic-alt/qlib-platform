@@ -39,12 +39,16 @@ def _expected_next_open_date(settings: Settings, signal_date: str) -> str | None
     calendar = pd.read_parquet(path)
     if not {"cal_date", "is_open"}.issubset(calendar.columns):
         return None
-    open_dates = pd.DatetimeIndex(
-        pd.to_datetime(
-            calendar.loc[pd.to_numeric(calendar["is_open"], errors="coerce") == 1, "cal_date"],
-            errors="coerce",
-        ).dropna()
-    ).normalize().sort_values()
+    open_dates = (
+        pd.DatetimeIndex(
+            pd.to_datetime(
+                calendar.loc[pd.to_numeric(calendar["is_open"], errors="coerce") == 1, "cal_date"],
+                errors="coerce",
+            ).dropna()
+        )
+        .normalize()
+        .sort_values()
+    )
     signal = pd.Timestamp(signal_date).normalize()
     if signal not in open_dates:
         return None
@@ -146,7 +150,9 @@ def evaluate_signal_health(
         feature_values = features.to_numpy(dtype=float)
         metrics["featureRows"] = int(len(features))
         metrics["featureColumns"] = int(features.shape[1])
-        metrics["finiteFeatureRatio"] = float(np.isfinite(feature_values).mean()) if feature_values.size else 0.0
+        metrics["finiteFeatureRatio"] = (
+            float(np.isfinite(feature_values).mean()) if feature_values.size else 0.0
+        )
         if len(features) != len(values) or not feature_values.size or not np.isfinite(feature_values).all():
             reasons.append("FEATURE_COVERAGE_INVALID")
     reference_std = float(bundle_manifest.get("referenceScoreStd", float("nan")))

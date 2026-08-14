@@ -37,7 +37,10 @@ def _delivery_service(settings: Settings, state: OpsState) -> DeliveryService:
 
 def _preview_envelope(result: LiveInferenceResult) -> NotificationEnvelope:
     topk = pd.read_csv(result.topk_path)
-    names = [f"{row.instrument}  rank={int(row.score_rank)}  score={float(row.score):.6f}" for row in topk.itertuples()]
+    names = [
+        f"{row.instrument}  rank={int(row.score_rank)}  score={float(row.score):.6f}"
+        for row in topk.itertuples()
+    ]
     status = "PASS" if result.health.passed else "REJECTED"
     return NotificationEnvelope(
         message_id=f"close-{result.signal_id}",
@@ -135,7 +138,5 @@ def run_daily_signal(
     except Exception as exc:
         code = classify_failure(exc, phase)
         state.finish_run(run_id, RunStatus.FAILED, {"errorCode": code.value, "phase": phase})
-        _deliver_failure_best_effort(
-            delivery, notifier, business_date=as_of, phase=phase, code=code
-        )
+        _deliver_failure_best_effort(delivery, notifier, business_date=as_of, phase=phase, code=code)
         raise

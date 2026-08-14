@@ -172,9 +172,7 @@ class OpsState:
                 );
                 """
             )
-            columns = {
-                str(row[1]) for row in connection.execute("PRAGMA table_info(deliveries)").fetchall()
-            }
+            columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(deliveries)").fetchall()}
             for name, declaration in {
                 "signal_date": "TEXT",
                 "trade_date": "TEXT",
@@ -308,7 +306,9 @@ class OpsState:
                 (deployment_id, str(target["status"]), now, reason),
             )
 
-    def start_run(self, run_id: str, phase: str, business_date: str, details: Mapping[str, Any] | None = None) -> None:
+    def start_run(
+        self, run_id: str, phase: str, business_date: str, details: Mapping[str, Any] | None = None
+    ) -> None:
         with self.transaction() as connection:
             connection.execute(
                 "INSERT INTO pipeline_runs(run_id, phase, business_date, status, started_at_utc, details_json) VALUES(?, ?, ?, 'RUNNING', ?, ?)",
@@ -355,9 +355,15 @@ class OpsState:
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    record["signal_id"], record["signal_date"], record["trade_date"],
-                    record["deployment_id"], record["dataset_sha256"], record["signal_sha256"],
-                    record["manifest_uri"], record["status"], _utc_now(),
+                    record["signal_id"],
+                    record["signal_date"],
+                    record["trade_date"],
+                    record["deployment_id"],
+                    record["dataset_sha256"],
+                    record["signal_sha256"],
+                    record["manifest_uri"],
+                    record["status"],
+                    _utc_now(),
                 ),
             )
         return True
@@ -417,10 +423,19 @@ class OpsState:
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
                 """,
                 (
-                    record["idempotency_key"], record["message_id"], record["channel"],
-                    record["message_kind"], record["business_date"], record.get("signal_date"),
-                    record.get("trade_date"), record.get("deployment_id"), record.get("signal_sha256"),
-                    record["payload_sha256"], now_text, owner, lease_expires,
+                    record["idempotency_key"],
+                    record["message_id"],
+                    record["channel"],
+                    record["message_kind"],
+                    record["business_date"],
+                    record.get("signal_date"),
+                    record.get("trade_date"),
+                    record.get("deployment_id"),
+                    record.get("signal_sha256"),
+                    record["payload_sha256"],
+                    now_text,
+                    owner,
+                    lease_expires,
                 ),
             )
         return True
@@ -521,22 +536,16 @@ class OpsState:
                 (idempotency_key,),
             )
 
-    def acknowledge(
-        self, entity_kind: str, entity_id: str, *, operator: str, reason: str
-    ) -> None:
+    def acknowledge(self, entity_kind: str, entity_id: str, *, operator: str, reason: str) -> None:
         if entity_kind not in {"run", "delivery"}:
             raise ValueError("entity_kind must be run or delivery")
         if not operator.strip() or not reason.strip():
             raise ValueError("operator and reason are required")
         table, key = (
-            ("pipeline_runs", "run_id")
-            if entity_kind == "run"
-            else ("deliveries", "idempotency_key")
+            ("pipeline_runs", "run_id") if entity_kind == "run" else ("deliveries", "idempotency_key")
         )
         with self.transaction() as connection:
-            exists = connection.execute(
-                f"SELECT 1 FROM {table} WHERE {key} = ?", (entity_id,)
-            ).fetchone()
+            exists = connection.execute(f"SELECT 1 FROM {table} WHERE {key} = ?", (entity_id,)).fetchone()
             if exists is None:
                 raise KeyError(f"unknown {entity_kind}: {entity_id}")
             connection.execute(
@@ -552,9 +561,7 @@ class OpsState:
                 (entity_kind, entity_id, _utc_now(), operator.strip(), reason.strip()),
             )
 
-    def previous_pass_signal(
-        self, *, signal_date: str, deployment_id: str
-    ) -> dict[str, Any] | None:
+    def previous_pass_signal(self, *, signal_date: str, deployment_id: str) -> dict[str, Any] | None:
         with self.reading() as connection:
             row = connection.execute(
                 """

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, cast
@@ -89,7 +90,7 @@ def write_dataset_manifest(
         "dataset_name": dataset_name,
         "layer": layer,
         "version_id": version_id,
-        "build_id": f"{now:%Y%m%dT%H%M%SZ}-{version_id[:12]}",
+        "build_id": f"{now:%Y%m%dT%H%M%SZ}-{version_id[:12]}-{uuid.uuid4().hex[:12]}",
         "status": "VALIDATED",
         "created_at_utc": now.isoformat(),
         "data_path": str((final_data_path or root).resolve()),

@@ -37,9 +37,7 @@ def export_daily_ops(settings: Settings, business_date: str, output: str | Path)
     os.close(fd)
     temporary = Path(temporary_name)
     try:
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-        )
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         os.replace(temporary, target)
     finally:
         if temporary.exists():

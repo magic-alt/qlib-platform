@@ -31,9 +31,7 @@ def test_missing_notifier_config_records_failed_run(tmp_path: Path, monkeypatch)
         run_daily_signal(settings, as_of="2026-08-10", skip_sync=True)
 
     with sqlite3.connect(settings.paths.state / "ops.sqlite3") as connection:
-        status, details = connection.execute(
-            "SELECT status, details_json FROM pipeline_runs"
-        ).fetchone()
+        status, details = connection.execute("SELECT status, details_json FROM pipeline_runs").fetchone()
     assert status == "FAILED"
     assert "PIPELINE_FAILED" in details
 
@@ -43,9 +41,7 @@ def _live_result(tmp_path: Path) -> LiveInferenceResult:
     topk = tmp_path / "model_topk.csv"
     manifest = tmp_path / "manifest.json"
     pd.DataFrame({"payload_sha256": ["score-sha"]}).to_parquet(score, index=False)
-    pd.DataFrame(
-        {"instrument": ["SH600000"], "score_rank": [1], "score": [0.3]}
-    ).to_csv(topk, index=False)
+    pd.DataFrame({"instrument": ["SH600000"], "score_rank": [1], "score": [0.3]}).to_csv(topk, index=False)
     manifest.write_text("{}", encoding="utf-8")
     return LiveInferenceResult(
         signal_id="signal-1",
@@ -103,7 +99,9 @@ def test_daily_signal_full_call_path_is_idempotent(tmp_path: Path, monkeypatch):
     assert len(sent) == 1
     assert sent[0].message_kind == "SIGNAL_PREVIEW"
     with sqlite3.connect(settings.paths.state / "ops.sqlite3") as connection:
-        assert connection.execute("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'PASS'").fetchone()[0] == 2
+        assert (
+            connection.execute("SELECT COUNT(*) FROM pipeline_runs WHERE status = 'PASS'").fetchone()[0] == 2
+        )
         assert connection.execute("SELECT COUNT(*) FROM deliveries WHERE status = 'SENT'").fetchone()[0] == 1
 
 

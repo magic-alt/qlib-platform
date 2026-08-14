@@ -43,7 +43,9 @@ class FastExtendedDataBackfill(ExtendedDataBackfill):
             self.store.write(endpoint.name, partition, result.data, metadata, status=result.status)
         else:
             self.store.write_status(endpoint.name, partition, status=result.status, metadata=metadata)
-        logger.info("Extended {} {}: status={}, rows={}", endpoint.name, partition, result.status, len(result.data))
+        logger.info(
+            "Extended {} {}: status={}, rows={}", endpoint.name, partition, result.status, len(result.data)
+        )
         return result.status
 
     def _pending_tasks(
@@ -93,8 +95,13 @@ class FastExtendedDataBackfill(ExtendedDataBackfill):
                         status = self._fetch_one(endpoint, partition, params)
                         counters[status] = counters.get(status, 0) + 1
                     continue
-                with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix=endpoint.name) as pool:
-                    futures = [pool.submit(self._fetch_one, endpoint, partition, params) for partition, params in pending]
+                with ThreadPoolExecutor(
+                    max_workers=self.max_workers, thread_name_prefix=endpoint.name
+                ) as pool:
+                    futures = [
+                        pool.submit(self._fetch_one, endpoint, partition, params)
+                        for partition, params in pending
+                    ]
                     for future in as_completed(futures):
                         status = future.result()
                         counters[status] = counters.get(status, 0) + 1
