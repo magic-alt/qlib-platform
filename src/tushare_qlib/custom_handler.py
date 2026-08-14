@@ -69,3 +69,81 @@ class TushareAlpha158Fundamental(TushareAlpha158Daily):
     def get_feature_config(self):
         fields, names = super().get_feature_config()
         return list(fields) + list(PIT_FEATURE_EXPRESSIONS), list(names) + list(PIT_FEATURE_NAMES)
+
+
+class TushareMultiFactorCore(Alpha158):
+    """Causal style-factor panel migrated from the retired platform ML recipe."""
+
+    def get_feature_config(self):
+        daily_return = "$close/Ref($close, 1)-1"
+        fields = [
+            "$close/Ref($close, 1)-1",
+            "$close/Ref($close, 5)-1",
+            "$close/Ref($close, 10)-1",
+            "$close/Ref($close, 20)-1",
+            "$close/Ref($close, 60)-1",
+            "$close/Mean($close, 5)-1",
+            "$close/Mean($close, 20)-1",
+            "$close/Mean($close, 60)-1",
+            "Mean($close, 5)/Mean($close, 20)-1",
+            "Mean($close, 20)/Mean($close, 60)-1",
+            f"Std({daily_return}, 5)",
+            f"Std({daily_return}, 20)",
+            f"Std({daily_return}, 60)",
+            "Mean($high-$low, 14)",
+            "$close/Max($close, 20)-1",
+            f"Std(If({daily_return}<0, {daily_return}, 0), 20)",
+            "Log(Mean($money, 20)+1)",
+            "$money/(Mean($money, 20)+1)",
+            "Mean($turnover_rate_f, 5)",
+            f"Mean(Abs({daily_return})/($money+1), 20)",
+            "$turnover_rate_f",
+            "$volume_ratio",
+            "If($pe_ttm>0, 1/$pe_ttm, 0)",
+            "If($pb>0, 1/$pb, 0)",
+            "If($ps_ttm>0, 1/$ps_ttm, 0)",
+            "Log($circ_mv+1)",
+            *PIT_FEATURE_EXPRESSIONS,
+            "$industry_l1_code",
+            "$paused",
+            "$is_st",
+            "$listed_days",
+            "$circ_mv",
+            "Mean($money, 20)",
+        ]
+        names = [
+            "RET_1",
+            "RET_5",
+            "RET_10",
+            "RET_20",
+            "RET_60",
+            "CLOSE_TO_MA_5",
+            "CLOSE_TO_MA_20",
+            "CLOSE_TO_MA_60",
+            "MA5_TO_MA20",
+            "MA20_TO_MA60",
+            "VOL_5",
+            "VOL_20",
+            "VOL_60",
+            "ATR_14",
+            "DRAWDOWN_20",
+            "DOWNSIDE_VOL_20",
+            "LOG_MONEY_20",
+            "MONEY_RATIO_20",
+            "TURNOVER_MEAN_5",
+            "AMIHUD_20",
+            "TURNOVER_F",
+            "VOLUME_RATIO",
+            "EARNINGS_YIELD_TTM",
+            "BOOK_TO_PRICE",
+            "SALES_TO_PRICE_TTM",
+            "LOG_CIRC_MV",
+            *PIT_FEATURE_NAMES,
+            "INDUSTRY_L1_CODE",
+            "PAUSED",
+            "IS_ST",
+            "LISTED_DAYS",
+            "CIRC_MV",
+            "MONEY20",
+        ]
+        return fields, names

@@ -177,7 +177,13 @@ def _profile_path(settings: Settings, override: str | Path | None) -> Path | Non
     if override is not None:
         return Path(override).expanduser().resolve()
     research = settings.data.get("research", {})
-    configured = research.get("model_profile") if isinstance(research, Mapping) else None
+    legacy = research.get("model_profile") if isinstance(research, Mapping) else None
+    experiment = settings.data.get("experiment", {})
+    model = experiment.get("model", {}) if isinstance(experiment, Mapping) else {}
+    configured = model.get("profile") if isinstance(model, Mapping) else None
+    if configured and legacy and str(configured) != str(legacy):
+        raise ValueError("experiment.model.profile conflicts with research.model_profile")
+    configured = configured or legacy
     if not configured:
         return None
     path = Path(str(configured)).expanduser()

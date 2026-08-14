@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import re
 from typing import Mapping
 
 import pandas as pd
@@ -11,7 +12,7 @@ from .store import PartitionStore
 
 
 @dataclass(frozen=True)
-class LabelTiming:
+class LabelSpec:
     """Canonical relationship between a signal date and its forward-return label."""
 
     horizon_days: int
@@ -21,26 +22,69 @@ class LabelTiming:
     def lookahead_days(self) -> int:
         return self.horizon_days + self.signal_lag_days
 
-    def to_manifest(self) -> dict[str, int]:
-        return {**asdict(self), "lookahead_days": self.lookahead_days}
+    @property
+    def spec_id(self) -> str:
+        return f"return_{self.horizon_days}d_t{self.signal_lag_days}_v1"
+
+    @property
+    def expression(self) -> str:
+        return f"Ref($close, -{self.lookahead_days})/Ref($close, -1) - 1"
+
+    def qlib_config(self) -> tuple[list[str], list[str]]:
+        return [self.expression], ["LABEL0"]
+
+    def to_manifest(self) -> dict[str, object]:
+        return {
+            **asdict(self),
+            "label_spec_id": self.spec_id,
+            "lookahead_days": self.lookahead_days,
+            "expression": self.expression,
+        }
 
 
-def label_timing_from_settings(settings: Settings) -> LabelTiming:
+# Compatibility name for callers that only consume timing fields.
+LabelTiming = LabelSpec
+
+
+def label_spec_from_settings(settings: Settings) -> LabelSpec:
     research = settings.data.get("research", {})
     strategy = settings.data.get("strategy", {})
     topk = strategy.get("topk_dropout", {}) if isinstance(strategy, Mapping) else {}
     default_horizon = int(topk.get("hold_thresh", 1)) if isinstance(topk, Mapping) else 1
+    experiment = settings.data.get("experiment", {})
+    label_config = experiment.get("label", {}) if isinstance(experiment, Mapping) else {}
+    configured_spec = str(label_config.get("spec") or "") if isinstance(label_config, Mapping) else ""
+    match = re.fullmatch(r"return_(\d+)d_t(\d+)_v1", configured_spec) if configured_spec else None
+    if configured_spec and match is None:
+        raise ValueError(f"unknown label spec: {configured_spec}")
     horizon = (
-        int(research.get("label_horizon_days", default_horizon))
+        int(match.group(1))
+        if match
+        else int(research.get("label_horizon_days", default_horizon))
         if isinstance(research, Mapping)
         else default_horizon
     )
-    lag = int(research.get("signal_lag_days", 1)) if isinstance(research, Mapping) else 1
+    lag = (
+        int(match.group(2))
+        if match
+        else int(research.get("signal_lag_days", 1))
+        if isinstance(research, Mapping)
+        else 1
+    )
+    if match and isinstance(research, Mapping):
+        if "label_horizon_days" in research and int(research["label_horizon_days"]) != horizon:
+            raise ValueError("experiment label conflicts with research.label_horizon_days")
+        if "signal_lag_days" in research and int(research["signal_lag_days"]) != lag:
+            raise ValueError("experiment label conflicts with research.signal_lag_days")
     if horizon < 1:
         raise ValueError("research.label_horizon_days must be at least 1")
     if lag < 1:
         raise ValueError("research.signal_lag_days must be at least 1")
-    return LabelTiming(horizon_days=horizon, signal_lag_days=lag)
+    return LabelSpec(horizon_days=horizon, signal_lag_days=lag)
+
+
+def label_timing_from_settings(settings: Settings) -> LabelSpec:
+    return label_spec_from_settings(settings)
 
 
 def effective_label_gap(configured: object, timing: LabelTiming) -> tuple[int, int]:

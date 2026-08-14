@@ -10,6 +10,7 @@ import pytest
 
 from tushare_qlib.platform_release import (
     REQUIRED_RESEARCH_COMPONENTS,
+    QLIB_RESEARCH_PROFILE,
     load_platform_release,
     materialize_platform_release,
     platform_release_preflight,
@@ -21,17 +22,34 @@ def _canonical_bytes(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
 
 
-def _write_release(root: Path) -> tuple[Path, str]:
+def _write_release(root: Path, *, profile: str = "cn-equity-daily-research-v2") -> tuple[Path, str]:
     source = root / "canonical"
     source.mkdir(parents=True)
     components = []
-    roles = sorted(REQUIRED_RESEARCH_COMPONENTS | {"qlib_staging"})
+    profile_required = REQUIRED_RESEARCH_COMPONENTS
+    if profile == QLIB_RESEARCH_PROFILE:
+        profile_required |= {"qlib_staging", "industry_classification_pit"}
+    roles = sorted(profile_required | {"qlib_staging"})
     sources: dict[Path, Path] = {}
     for role in roles:
         path = source / f"{role}.parquet"
         if role == "qlib_staging":
             pd.DataFrame(
                 [{"date": "2026-08-13", "symbol": "SH600000", "open": 10.0, "close": 10.1}]
+            ).to_parquet(path, index=False)
+        elif role == "industry_classification_pit":
+            pd.DataFrame(
+                [
+                    {
+                        "instrument": "SH600000",
+                        "effective_from": "2026-01-01",
+                        "effective_to": "2026-12-31",
+                        "industry_code": "801010",
+                        "industry_name": "Agriculture",
+                        "taxonomy": "SW2021",
+                        "level_no": 1,
+                    }
+                ]
             ).to_parquet(path, index=False)
         elif role == "pit_universe":
             pd.DataFrame(
@@ -72,14 +90,14 @@ def _write_release(root: Path) -> tuple[Path, str]:
         )
     identity = {
         "schemaVersion": "2.0",
-        "profile": "cn-equity-daily-research-v2",
+        "profile": profile,
         "assetClass": "equity",
         "market": "china",
         "universe": "CSI300",
         "benchmark": "SH000300",
         "coverage": {"start": "2020-01-01", "end": "2026-08-13"},
         "asOfTime": "2026-08-14T00:00:00+08:00",
-        "requiredComponents": sorted(REQUIRED_RESEARCH_COMPONENTS),
+        "requiredComponents": sorted(profile_required),
         "components": components,
         "policies": {"pit": "announce_date"},
         "lineage": {"parentIngestionBatches": ["batch-1"]},
@@ -147,6 +165,18 @@ def test_release_preflight_and_materialization_are_hash_bound(tmp_path: Path):
     assert staging["data_release_id"] == release_id
     assert list(settings.paths.staging_full.glob("*.parquet"))
     assert Path(settings.data["universe"]["membership_file"]).is_file()
+
+
+def test_qlib_profile_materializes_pit_industry_codes(tmp_path: Path):
+    manifest, release_id = _write_release(tmp_path, profile=QLIB_RESEARCH_PROFILE)
+    settings = _settings(tmp_path, manifest, release_id)
+
+    release = materialize_platform_release(settings)
+    staged = pd.read_parquet(next(settings.paths.staging_full.glob("*.parquet")))
+
+    assert release.profile == QLIB_RESEARCH_PROFILE
+    assert staged.loc[0, "industry_l1_code"] == 801010.0
+    assert json.loads((settings.paths.staging_full / "staging_manifest.json").read_text())["files"]
 
 
 def test_release_rejects_corrupt_component_and_wrong_configured_id(tmp_path: Path):

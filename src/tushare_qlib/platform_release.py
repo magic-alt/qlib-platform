@@ -16,7 +16,7 @@ from .settings import Settings
 
 
 SCHEMA_VERSION = "2.0"
-REQUIRED_RESEARCH_COMPONENTS = frozenset(
+CORE_RESEARCH_COMPONENTS = frozenset(
     {
         "bars",
         "daily_basic",
@@ -32,6 +32,12 @@ REQUIRED_RESEARCH_COMPONENTS = frozenset(
         "benchmark",
     }
 )
+REQUIRED_RESEARCH_COMPONENTS = CORE_RESEARCH_COMPONENTS
+QLIB_RESEARCH_PROFILE = "ashare_qlib_research_v1"
+DATA_RELEASE_PROFILES = {
+    "cn-equity-daily-research-v2": CORE_RESEARCH_COMPONENTS,
+    QLIB_RESEARCH_PROFILE: CORE_RESEARCH_COMPONENTS | {"qlib_staging", "industry_classification_pit"},
+}
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -75,6 +81,10 @@ class PlatformRelease:
     @property
     def manifest_sha256(self) -> str:
         return str(self.manifest["manifestSha256"])
+
+    @property
+    def profile(self) -> str:
+        return str(self.manifest["profile"])
 
     @property
     def coverage(self) -> Mapping[str, Any]:
@@ -127,9 +137,13 @@ def load_platform_release(settings: Settings) -> PlatformRelease:
     if configured_id and configured_id != release_id:
         raise ValueError("Configured DataRelease ID does not match the manifest")
 
-    declared_required = set(manifest.get("requiredComponents") or [])
-    if declared_required != REQUIRED_RESEARCH_COMPONENTS:
-        raise ValueError("DataRelease requiredComponents does not match the research profile")
+    profile = str(manifest.get("profile") or "")
+    if profile not in DATA_RELEASE_PROFILES:
+        raise ValueError(f"Unknown DataRelease profile: {profile}")
+    expected_required = frozenset(DATA_RELEASE_PROFILES[profile])
+    declared_required = frozenset(manifest.get("requiredComponents") or [])
+    if declared_required != expected_required:
+        raise ValueError("DataRelease requiredComponents does not match its profile")
 
     raw_components = manifest.get("components")
     if not isinstance(raw_components, list):
@@ -175,7 +189,7 @@ def load_platform_release(settings: Settings) -> PlatformRelease:
         ):
             raise ValueError(f"DataRelease component checksum mismatch: {role}")
         components[role] = component
-    missing = sorted(REQUIRED_RESEARCH_COMPONENTS - set(components))
+    missing = sorted(expected_required - set(components))
     if missing:
         raise ValueError(f"DataRelease is missing required research components: {missing}")
     return PlatformRelease(data_root, manifest_path, manifest, components)
@@ -218,6 +232,55 @@ def _replace_directory(candidate: Path, target: Path) -> None:
         shutil.rmtree(backup, ignore_errors=True)
 
 
+def _attach_industry_component(release: PlatformRelease, candidate: Path) -> None:
+    if "industry_classification_pit" not in release.components:
+        return
+    intervals = pd.concat(
+        (pd.read_parquet(path) for path in release.files("industry_classification_pit")),
+        ignore_index=True,
+    )
+    required = {
+        "instrument",
+        "effective_from",
+        "effective_to",
+        "industry_code",
+        "taxonomy",
+        "level_no",
+    }
+    missing = required - set(intervals.columns)
+    if missing:
+        raise ValueError(f"industry_classification_pit schema is incomplete: {sorted(missing)}")
+    if (
+        not intervals["taxonomy"].eq("SW2021").all()
+        or not pd.to_numeric(intervals["level_no"], errors="raise").eq(1).all()
+    ):
+        raise ValueError("industry_classification_pit requires SW2021 level 1")
+    intervals = intervals.copy()
+    intervals["effective_from"] = pd.to_datetime(intervals["effective_from"], errors="raise").dt.normalize()
+    intervals["effective_to"] = pd.to_datetime(intervals["effective_to"], errors="raise").dt.normalize()
+    intervals["industry_l1_code"] = pd.to_numeric(intervals["industry_code"], errors="raise")
+    intervals = intervals.sort_values(["instrument", "effective_from", "industry_l1_code"])
+    for instrument, group in intervals.groupby("instrument", sort=False):
+        if (group["effective_from"].iloc[1:].to_numpy() <= group["effective_to"].iloc[:-1].to_numpy()).any():
+            raise ValueError(f"Overlapping PIT industry intervals: {instrument}")
+    for path in sorted(candidate.glob("*.parquet")):
+        frame = pd.read_parquet(path)
+        dates = pd.to_datetime(frame["date"], errors="raise").dt.normalize()
+        codes = pd.Series(float("nan"), index=frame.index, dtype="float64")
+        symbols = frame["symbol"].astype(str).str.upper()
+        for row in intervals.itertuples(index=False):
+            mask = (
+                symbols.eq(str(row.instrument).upper())
+                & dates.ge(row.effective_from)
+                & dates.le(row.effective_to)
+            )
+            codes.loc[mask] = float(row.industry_l1_code)
+        frame["industry_l1_code"] = codes
+        temporary = path.with_suffix(".parquet.tmp")
+        frame.to_parquet(temporary, index=False)
+        os.replace(temporary, path)
+
+
 def materialize_platform_release(settings: Settings) -> PlatformRelease:
     release = load_platform_release(settings)
     role = settings.platform_qlib_staging_role
@@ -249,7 +312,9 @@ def materialize_platform_release(settings: Settings) -> PlatformRelease:
             digest = _sha256_file(target)
             if digest != str(item["sha256"]):
                 raise ValueError(f"Materialized staging checksum mismatch: {source.name}")
-            files[target.name] = digest
+        _attach_industry_component(release, candidate)
+        for materialized in sorted(candidate.glob("*.parquet")):
+            files[materialized.name] = _sha256_file(materialized)
         (candidate / "staging_manifest.json").write_text(
             json.dumps(
                 {

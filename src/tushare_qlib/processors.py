@@ -77,3 +77,64 @@ class ProcessInfSingleThread(Processor):
 
     def readonly(self) -> bool:
         return False
+
+
+class CrossSectionalFactorProcessor(Processor):
+    """Winsorize, industry-demean, size-residualize and z-score each date."""
+
+    _SUPPORT = {"INDUSTRY_L1_CODE", "PAUSED", "IS_ST", "LISTED_DAYS", "CIRC_MV", "MONEY20"}
+
+    def __init__(self, minimum_industry_members: int = 5) -> None:
+        self.minimum_industry_members = minimum_industry_members
+
+    def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(df.columns, pd.MultiIndex) or "feature" not in df.columns.get_level_values(0):
+            raise ValueError("multifactor processor requires grouped feature columns")
+        features = df["feature"]
+        required = {"INDUSTRY_L1_CODE", "LOG_CIRC_MV"}
+        missing = required - set(features.columns)
+        if missing:
+            raise ValueError(f"multifactor support fields are missing: {sorted(missing)}")
+        factor_names = [name for name in features.columns if name not in self._SUPPORT]
+        processed = features.copy()
+        for _, positions in features.groupby(level="datetime", sort=False).indices.items():
+            block = features.iloc[positions]
+            industry = block["INDUSTRY_L1_CODE"]
+            size = pd.to_numeric(block["LOG_CIRC_MV"], errors="coerce")
+            for name in factor_names:
+                values = pd.to_numeric(block[name], errors="coerce")
+                finite = values.replace([np.inf, -np.inf], np.nan)
+                if finite.notna().any():
+                    lower, upper = finite.quantile([0.01, 0.99])
+                    finite = finite.clip(lower, upper)
+                if name != "LOG_CIRC_MV":
+                    counts = industry.groupby(industry).transform("count")
+                    eligible = industry.notna() & counts.ge(self.minimum_industry_members)
+                    if eligible.any():
+                        means = finite.where(eligible).groupby(industry).transform("mean")
+                        finite = finite.where(~eligible, finite - means)
+                    regression = pd.DataFrame({"y": finite, "x": size}).dropna()
+                    if len(regression) >= 3 and regression["x"].std(ddof=0) > 1e-12:
+                        design = np.column_stack(
+                            [np.ones(len(regression)), regression["x"].to_numpy(dtype=float)]
+                        )
+                        coefficients = np.linalg.lstsq(
+                            design, regression["y"].to_numpy(dtype=float), rcond=None
+                        )[0]
+                        residual = regression["y"] - design @ coefficients
+                        finite.loc[regression.index] = residual
+                center = finite.mean()
+                scale = finite.std(ddof=0)
+                normalized = (
+                    finite - center if not np.isfinite(scale) or scale <= 1e-12 else (finite - center) / scale
+                )
+                processed.iloc[positions, processed.columns.get_loc(name)] = normalized.to_numpy()
+        result = df.copy()
+        for name in processed.columns:
+            result[("feature", name)] = processed[name]
+        result = result.drop(columns=[("feature", "INDUSTRY_L1_CODE")])
+        result.sort_index(inplace=True)
+        return result
+
+    def readonly(self) -> bool:
+        return False

@@ -8,15 +8,15 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
+from .alpha.registry import alpha_pack_from_settings, assert_alpha_pack_compatible, handler_class
 
 from .dataset_resolver import pin_dataset
 from .lineage import git_revision, resolve_qlib_repo, sha256_json
-from .research_timing import label_timing_from_settings
 from .runtime_safety import resolve_qlib_parallel_runtime
 from .settings import Settings
 from .store import sha256_file
 
-FEATURE_STORE_SCHEMA = "research_features_v3"
+FEATURE_STORE_SCHEMA = "feature_snapshot_v1"
 
 
 def _feature_store_config(settings: Settings) -> Mapping[str, Any]:
@@ -50,6 +50,7 @@ def _dataset_snapshot(settings: Settings) -> dict[str, object]:
 def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, object]:
     project_root = Path(__file__).resolve().parents[2]
     snapshot = _dataset_snapshot(settings)
+    pack = alpha_pack_from_settings(settings)
     implementation = [
         project_root / "src" / "tushare_qlib" / "custom_handler.py",
         project_root / "src" / "tushare_qlib" / "processors.py",
@@ -60,10 +61,10 @@ def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, o
         "datasetId": snapshot.get("datasetId") or settings.qlib_data_uri.name,
         "datasetVersionId": snapshot.get("versionId") or snapshot.get("sha256"),
         "datasetManifestSha256": snapshot.get("manifestSha256"),
-        "requestedCoverage": {"startTime": start_time, "endTime": end_time},
         "datasetFields": snapshot.get("fields"),
-        "labelTiming": label_timing_from_settings(settings).to_manifest(),
         "universe": settings.data.get("universe", {}),
+        "alphaPack": pack.to_manifest(),
+        "processorRecipeId": pack.processor_recipe,
         "implementationSha256": {path.name: sha256_file(path) for path in implementation if path.is_file()},
         "qlibCommit": git_revision(resolve_qlib_repo(settings.qlib_repo)).get("commit"),
     }
@@ -84,17 +85,16 @@ def _raw_features(
     *,
     instruments: object | None = None,
 ) -> pd.DataFrame:
-    from .custom_handler import TushareAlpha158Fundamental
-
     universe = settings.data.get("universe", {})
-    timing = label_timing_from_settings(settings)
-    handler = TushareAlpha158Fundamental(
+    pack = alpha_pack_from_settings(settings)
+    assert_alpha_pack_compatible(settings, pack)
+    handler = handler_class(pack)(
         instruments=instruments or universe.get("instruments", "all"),
         start_time=start_time,
         end_time=end_time,
         fit_start_time=start_time,
         fit_end_time=start_time,
-        label=([f"Ref($close, -{timing.lookahead_days})/Ref($close, -1) - 1"], ["LABEL0"]),
+        label=([], []),
         shared_processors=[],
         infer_processors=[],
         learn_processors=[],
@@ -125,16 +125,18 @@ def _merge_recomputed(base: pd.DataFrame, replacement: pd.DataFrame) -> pd.DataF
     return pd.concat([retained, replacement]).sort_index()
 
 
-def _write_feature_store(
-    root: Path,
-    target: Path,
-    store_id: str,
+def _write_feature_snapshot(
+    snapshots_root: Path,
+    recipe_id: str,
     contract: Mapping[str, object],
     snapshot: Mapping[str, object],
     frame: pd.DataFrame,
 ) -> Path:
-    building = Path(tempfile.mkdtemp(prefix=f".{store_id}.building.", dir=root))
+    snapshots_root.mkdir(parents=True, exist_ok=True)
+    building = Path(tempfile.mkdtemp(prefix=".building.", dir=snapshots_root))
     try:
+        if isinstance(frame.columns, pd.MultiIndex) and "label" in frame.columns.get_level_values(0):
+            frame = frame.drop(columns="label", level=0)
         files: list[dict[str, object]] = []
         datetimes = pd.DatetimeIndex(frame.index.get_level_values("datetime"))
         for year in sorted(datetimes.year.unique()):
@@ -142,41 +144,63 @@ def _write_feature_store(
             path = building / f"year={int(year)}.parquet"
             partition.to_parquet(path)
             files.append({"name": path.name, "rows": len(partition), "sha256": sha256_file(path)})
+        coverage = {
+            "startTime": str(pd.Timestamp(datetimes.min()).date()),
+            "endTime": str(pd.Timestamp(datetimes.max()).date()),
+        }
+        snapshot_id = "fs_" + sha256_json(
+            {"featureRecipeId": recipe_id, "coverage": coverage, "files": files}
+        )
         manifest = {
             "schemaVersion": FEATURE_STORE_SCHEMA,
-            "featureStoreId": store_id,
+            "featureRecipeId": recipe_id,
+            "featureSnapshotId": snapshot_id,
             "contract": dict(contract),
             "datasetSnapshot": dict(snapshot),
-            "coverage": {
-                "startTime": str(pd.Timestamp(datetimes.min()).date()),
-                "endTime": str(pd.Timestamp(datetimes.max()).date()),
-            },
+            "coverage": coverage,
             "rows": len(frame),
             "columns": [str(column) for column in frame.columns],
             "files": files,
         }
         (building / "manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8"
         )
-        replaced: Path | None = None
+        target = snapshots_root / snapshot_id
         if target.exists():
-            replaced = root / f".{store_id}.replaced.{os.getpid()}"
-            if replaced.exists():
-                shutil.rmtree(replaced)
-            os.replace(target, replaced)
-        try:
-            os.replace(building, target)
-        except Exception:
-            if replaced is not None and replaced.exists() and not target.exists():
-                os.replace(replaced, target)
-            raise
-        else:
-            if replaced is not None:
-                shutil.rmtree(replaced, ignore_errors=True)
+            load_feature_store(target, coverage["startTime"], coverage["endTime"], verify_checksums=True)
+            return target
+        os.replace(building, target)
+        return target
     finally:
         if building.exists():
             shutil.rmtree(building, ignore_errors=True)
-    return target
+
+
+def _reusable_snapshot(
+    snapshots_root: Path,
+    recipe_id: str,
+    start_time: str,
+    end_time: str,
+    dataset_snapshot: Mapping[str, object],
+) -> Path | None:
+    matches: list[tuple[pd.Timedelta, Path]] = []
+    manifests = snapshots_root.glob("*/manifest.json") if snapshots_root.is_dir() else ()
+    for manifest_path in manifests:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        coverage = manifest.get("coverage", {})
+        recorded_dataset = manifest.get("datasetSnapshot", {})
+        if (
+            manifest.get("schemaVersion") == FEATURE_STORE_SCHEMA
+            and manifest.get("featureRecipeId") == recipe_id
+            and isinstance(coverage, Mapping)
+            and isinstance(recorded_dataset, Mapping)
+            and recorded_dataset.get("sha256") == dataset_snapshot.get("sha256")
+            and pd.Timestamp(coverage.get("startTime")) <= pd.Timestamp(start_time)
+            and pd.Timestamp(coverage.get("endTime")) >= pd.Timestamp(end_time)
+        ):
+            span = pd.Timestamp(coverage["endTime"]) - pd.Timestamp(coverage["startTime"])
+            matches.append((span, manifest_path.parent))
+    return min(matches, key=lambda item: item[0])[1] if matches else None
 
 
 def materialize_feature_store(
@@ -184,28 +208,17 @@ def materialize_feature_store(
 ) -> Path:
     settings, _ = pin_dataset(settings)
     contract = _contract(settings, start_time, end_time)
-    store_id = sha256_json(contract)[:32]
-    root = _store_root(settings)
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / store_id
-    manifest_path = target / "manifest.json"
+    recipe_id = "fr_" + sha256_json(contract)
+    # Keep recipe and snapshot identities in the manifest instead of nesting two
+    # full SHA-256 directory names. This stays below Windows' common path limit.
+    snapshots_root = _store_root(settings) / "snapshots"
     snapshot = _dataset_snapshot(settings)
-    existing: dict[str, object] | None = None
-    if manifest_path.is_file():
-        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if loaded.get("schemaVersion") == FEATURE_STORE_SCHEMA:
-            existing = loaded
-            coverage = loaded.get("coverage", {})
-            previous_snapshot = loaded.get("datasetSnapshot", {})
-            if (
-                not force
-                and isinstance(coverage, Mapping)
-                and isinstance(previous_snapshot, Mapping)
-                and previous_snapshot.get("sha256") == snapshot.get("sha256")
-                and pd.Timestamp(coverage.get("startTime")) <= pd.Timestamp(start_time)
-                and pd.Timestamp(coverage.get("endTime")) >= pd.Timestamp(end_time)
-            ):
-                return target
+    reusable = (
+        None if force else _reusable_snapshot(snapshots_root, recipe_id, start_time, end_time, snapshot)
+    )
+    if reusable is not None:
+        load_feature_store(reusable, start_time, end_time, verify_checksums=True)
+        return reusable
 
     import qlib
     from qlib.constant import REG_CN
@@ -218,45 +231,8 @@ def materialize_feature_store(
         dataset_cache=None,
         **parallel.qlib_init_kwargs(),
     )
-    frame: pd.DataFrame | None = None
-    if existing is not None and not force:
-        coverage = existing.get("coverage", {})
-        sync_context = snapshot.get("syncContext")
-        mode = str(snapshot.get("mode") or "")
-        safe_delta = mode in {"update", "repair", "update_fix"} and isinstance(sync_context, Mapping)
-        if (
-            safe_delta
-            and isinstance(coverage, Mapping)
-            and pd.Timestamp(coverage.get("startTime")) <= pd.Timestamp(start_time)
-        ):
-            assert isinstance(sync_context, Mapping)
-            cached_start = str(coverage["startTime"])
-            cached_end = str(coverage["endTime"])
-            frame = load_feature_store(target, cached_start, cached_end)
-            changed = [
-                pd.Timestamp(value)
-                for value in sync_context.get("changed_trade_dates", [])
-                if pd.Timestamp(value) <= pd.Timestamp(end_time)
-            ]
-            refresh_points = list(changed)
-            if pd.Timestamp(end_time) > pd.Timestamp(cached_end):
-                refresh_points.append(pd.Timestamp(cached_end))
-            if refresh_points:
-                config = _feature_store_config(settings)
-                lookback = int(config.get("append_lookback_trading_days", 120))
-                refresh_start = _lookback_start(min(refresh_points), lookback)
-                replacement = _raw_features(settings, refresh_start, end_time)
-                frame = _merge_recomputed(frame, replacement)
-            revised = [str(value) for value in sync_context.get("revised_symbols", []) if value]
-            if revised:
-                replacement = _raw_features(
-                    settings, min(str(start_time), cached_start), end_time, instruments=revised
-                )
-                frame = _merge_recomputed(frame, replacement)
-            frame = frame.loc[pd.Timestamp(min(str(start_time), cached_start)) : pd.Timestamp(end_time)]
-    if frame is None:
-        frame = _raw_features(settings, start_time, end_time)
-    return _write_feature_store(root, target, store_id, contract, snapshot, frame)
+    frame = _raw_features(settings, start_time, end_time)
+    return _write_feature_snapshot(snapshots_root, recipe_id, contract, snapshot, frame)
 
 
 def load_feature_store(
@@ -268,10 +244,10 @@ def load_feature_store(
 ) -> pd.DataFrame:
     manifest_path = path / "manifest.json"
     if not manifest_path.is_file():
-        raise FileNotFoundError(f"feature-store manifest is missing: {manifest_path}")
+        raise FileNotFoundError(f"feature-snapshot manifest is missing: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schemaVersion") != FEATURE_STORE_SCHEMA:
-        raise ValueError(f"unsupported feature-store schema: {manifest.get('schemaVersion')}")
+        raise ValueError(f"unsupported feature-snapshot schema: {manifest.get('schemaVersion')}")
     frames: list[pd.DataFrame] = []
     requested_years = set(range(pd.Timestamp(start_time).year, pd.Timestamp(end_time).year + 1))
     for entry in manifest.get("files", []):
@@ -283,7 +259,7 @@ def load_feature_store(
             raise ValueError(f"feature-store partition checksum mismatch: {file_path}")
         frames.append(pd.read_parquet(file_path))
     if not frames:
-        raise ValueError(f"feature store contains no partitions: {path}")
+        raise ValueError(f"feature snapshot contains no partitions: {path}")
     frame = pd.concat(frames).sort_index()
     return frame.loc[pd.Timestamp(start_time) : pd.Timestamp(end_time)]
 
@@ -295,9 +271,14 @@ def prepare_feature_data(
     frame = load_feature_store(path, start_time, end_time)
     manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
     return frame, {
-        "featureStoreId": manifest["featureStoreId"],
+        "featureRecipeId": manifest["featureRecipeId"],
+        "featureSnapshotId": manifest["featureSnapshotId"],
         "datasetVersionId": manifest.get("contract", {}).get("datasetVersionId"),
         "path": str(path),
         "rows": len(frame),
         "manifestSha256": sha256_file(path / "manifest.json"),
     }
+
+
+materialize_feature_snapshot = materialize_feature_store
+load_feature_snapshot = load_feature_store
