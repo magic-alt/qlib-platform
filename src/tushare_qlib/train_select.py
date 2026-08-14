@@ -37,6 +37,7 @@ from .prediction_snapshot import (
     prediction_snapshot_path,
     write_prediction_snapshot,
 )
+from .processor_state import processor_state_manifest
 from .research_gate import (
     ResearchPromotionError,
     ResearchThresholds,
@@ -604,8 +605,8 @@ def train_backtest_select(
     artifact_level: str = "full",
 ) -> Path:
     settings, pinned_dataset = pin_dataset(settings)
-    if promotion_mode not in {"release", "component", "signal"}:
-        raise ValueError("promotion_mode must be 'release', 'component', or 'signal'")
+    if promotion_mode not in {"release", "component", "signal", "holdout"}:
+        raise ValueError("promotion_mode must be 'release', 'component', 'signal', or 'holdout'")
     if runtime is not None and model_profile is not None:
         raise ValueError("pass either model_profile or a pre-resolved runtime, not both")
     if artifact_level not in {"minimal", "full"}:
@@ -665,6 +666,7 @@ def train_backtest_select(
             alpha_pack=alpha_pack,
             prepared_feature_data=prepared_feature_data,
         )
+    fitted_processor_state = processor_state_manifest(dataset.handler, train)
     feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
     feature_count = len(feature_columns)
     model_parameters = resolved_model_parameters(
@@ -814,6 +816,7 @@ def train_backtest_select(
                     "endDate": oos_end,
                 },
                 "featureStore": feature_store_metadata,
+                "processorState": fitted_processor_state,
                 "model": {
                     "name": runtime.profile.name,
                     "fingerprint": model_id,
@@ -840,6 +843,14 @@ def train_backtest_select(
                 },
                 "runtime": runtime.to_manifest(),
                 "timings": timing_payload,
+                "folds": [
+                    {
+                        "key": run_kind,
+                        "train": list(train),
+                        "valid": list(valid),
+                        "test": [oos_start, oos_end],
+                    }
+                ],
                 "metrics": signal_metrics,
                 "artifacts": [
                     {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
@@ -1060,6 +1071,7 @@ def train_backtest_select(
             "name": f"Qlib {run_kind} {oos_start}..{oos_end}",
             "dataset": dataset_manifest,
             "featureStore": feature_store_metadata,
+            "processorState": fitted_processor_state,
             "model": {
                 "name": runtime.profile.name,
                 "fingerprint": model_id,
@@ -1083,7 +1095,13 @@ def train_backtest_select(
                 ),
                 "decision": gate_report["decision"],
                 "gateReportPath": str(gate_path),
-                "gateMode": "component_validation" if promotion_mode == "component" else "release",
+                "gateMode": (
+                    "component_validation"
+                    if promotion_mode == "component"
+                    else "final_holdout"
+                    if promotion_mode == "holdout"
+                    else "release"
+                ),
             },
             "runtime": runtime.to_manifest(),
             "artifactLevel": artifact_level,
@@ -1148,10 +1166,10 @@ def train_backtest_select(
         )
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         if not gate_passed:
-            if review_required:
+            if review_required or promotion_mode == "holdout":
                 return manifest_path
             raise ResearchPromotionError(manifest_path)
-        if promotion_mode == "component" or not promoted:
+        if promotion_mode in {"component", "holdout"} or not promoted:
             return manifest_path
         assert path is not None
         return path

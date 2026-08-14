@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import re
+import shutil
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -13,7 +16,6 @@ import pandas as pd
 from .settings import Settings
 from .model_runtime import load_model_profile, resolve_runtime, write_timings
 from .research_gate import (
-    ResearchPromotionError,
     derive_daily_signal_diagnostics,
     ResearchThresholds,
     derive_research_metrics,
@@ -32,7 +34,13 @@ from .prediction_backtest import backtest_predictions
 from .prediction_snapshot import (
     PredictionSnapshotSpec,
     load_prediction_snapshot,
+    prediction_snapshot_path,
     write_prediction_snapshot,
+)
+from .walk_forward_acceptance import (
+    performance_baseline,
+    validate_fold_integrity,
+    validate_processor_isolation,
 )
 
 
@@ -45,11 +53,75 @@ class Fold:
     final_holdout: bool = False
 
 
+@dataclass(frozen=True)
+class CheckpointValidation:
+    manifest_path: Path | None
+    status: str
+    reason: str | None = None
+
+
 def _artifact_path(manifest: dict[str, Any], name: str) -> Path:
     for item in manifest.get("artifacts", []):
         if isinstance(item, dict) and item.get("name") == name and item.get("localPath"):
             return Path(str(item["localPath"]))
     raise FileNotFoundError(f"manifest artifact is missing: {name}")
+
+
+def _write_research_selection_lock(
+    path: Path,
+    *,
+    fold_plan: list[Fold],
+    rolling_manifests: list[dict[str, Any]],
+    aggregate_prediction_sha256: str,
+    thresholds: ResearchThresholds,
+) -> dict[str, object]:
+    if not rolling_manifests:
+        raise ValueError("research selection lock requires rolling OOS evidence")
+    reference = rolling_manifests[0]
+    experiment = reference.get("researchExperiment")
+    if not isinstance(experiment, dict):
+        raise ValueError("rolling fold is missing its research experiment contract")
+    project_root = Path(__file__).resolve().parents[2]
+    code_revision = git_revision(project_root)
+    payload: dict[str, object] = {
+        "schemaVersion": "research_selection_lock_v1",
+        "dataRelease": experiment.get("data_release_id"),
+        "alphaPack": {
+            "id": experiment.get("alpha_pack_id"),
+            "sha256": experiment.get("alpha_pack_sha256"),
+        },
+        "labelSpec": {
+            "id": experiment.get("label_spec_id"),
+            "contract": experiment.get("label"),
+        },
+        "splitSpec": {
+            "profile": experiment.get("split_profile_id"),
+            "folds": [asdict(fold) for fold in fold_plan],
+            "sha256": sha256_json([asdict(fold) for fold in fold_plan]),
+        },
+        "modelProfile": {
+            "id": experiment.get("model_profile_id"),
+            "sha256": experiment.get("model_profile_sha256"),
+        },
+        "portfolioPolicy": {
+            "id": experiment.get("portfolio_policy_id"),
+            "sha256": experiment.get("portfolio_policy_sha256"),
+        },
+        "gateThresholds": asdict(thresholds),
+        "codeCommit": code_revision.get("commit"),
+        "codeDirty": code_revision.get("dirty"),
+        "rollingOosPredictionSha256": aggregate_prediction_sha256,
+        "rollingOOS": {"usedForResearchSelection": True},
+        "finalHoldout": {
+            "usedForResearchSelection": False,
+            "accessedBeforeFinalization": False,
+        },
+    }
+    payload["lockSha256"] = sha256_json(payload)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+    return payload
 
 
 def _aggregate_component_timings(manifests: list[dict[str, Any]]) -> dict[str, float]:
@@ -77,11 +149,17 @@ def _read_oos_frame(manifest: dict[str, Any], name: str, column: str) -> pd.Data
         if len(frame.columns) != 1:
             raise ValueError(f"{name} must contain a {column} column")
         frame = frame.rename(columns={frame.columns[0]: column})
-    return frame[[column]].sort_index()
+    frame = frame[[column]]
+    if not frame.index.is_monotonic_increasing:
+        raise ValueError(f"{name} contains out-of-order datetime/instrument rows")
+    return frame
 
 
 def _write_continuous_oos_stream(
-    manifests: list[dict[str, Any]], output_dir: Path
+    manifests: list[dict[str, Any]],
+    output_dir: Path,
+    *,
+    expected_dates: pd.DatetimeIndex | None = None,
 ) -> tuple[Path, Path, dict[str, object]]:
     """Persist one strictly ordered prediction/label stream from rolling folds."""
 
@@ -96,6 +174,8 @@ def _write_continuous_oos_stream(
     for manifest in manifests:
         pred = _read_oos_frame(manifest, "oos_predictions.parquet", "score")
         label = _read_oos_frame(manifest, "oos_labels.parquet", "label")
+        if not pred.index.equals(label.index):
+            raise ValueError("fold prediction and label indexes do not match exactly")
         pred_dates = pd.DatetimeIndex(pred.index.get_level_values("datetime")).normalize()
         start = pred_dates.min()
         end = pred_dates.max()
@@ -133,6 +213,19 @@ def _write_continuous_oos_stream(
         raise ValueError("continuous OOS predictions contain duplicate datetime/instrument rows")
     if combined_labels.index.has_duplicates:
         raise ValueError("continuous OOS labels contain duplicate datetime/instrument rows")
+    actual_dates = pd.DatetimeIndex(
+        combined_predictions.index.get_level_values("datetime").unique()
+    ).normalize()
+    if expected_dates is not None:
+        expected = pd.DatetimeIndex(expected_dates).normalize().drop_duplicates().sort_values()
+        missing = expected.difference(actual_dates)
+        unexpected = actual_dates.difference(expected)
+        if len(missing) or len(unexpected):
+            raise ValueError(
+                "rolling OOS prediction calendar mismatch: "
+                f"missing={list(map(str, missing.date[:5]))}, "
+                f"unexpected={list(map(str, unexpected.date[:5]))}"
+            )
     prediction_path = output_dir / "oos_predictions.parquet"
     label_path = output_dir / "oos_labels.parquet"
     aggregate_snapshot: dict[str, object] | None = None
@@ -172,6 +265,8 @@ def _write_continuous_oos_stream(
     else:
         combined_predictions.to_parquet(prediction_path)
     combined_labels.to_parquet(label_path)
+    instrument_counts = combined_predictions.groupby(level="datetime").size().sort_index()
+    aggregate_sha256 = sha256_file(prediction_path)
     metadata: dict[str, object] = {
         "componentCount": len(components),
         "components": components,
@@ -181,13 +276,27 @@ def _write_continuous_oos_stream(
         "labelRows": len(combined_labels),
         "predictionDates": int(combined_predictions.index.get_level_values("datetime").nunique()),
         "duplicateRows": 0,
+        "overlappingTestDates": 0,
+        "outOfOrderRows": 0,
+        "missingExpectedFoldDates": 0,
+        "aggregatePredictionSha256": aggregate_sha256,
+        "instrumentCountPerDay": {
+            str(pd.Timestamp(date).date()): int(value) for date, value in instrument_counts.items()
+        },
+        "instrumentCountMin": int(instrument_counts.min()),
+        "instrumentCountMax": int(instrument_counts.max()),
         "predictionSnapshot": aggregate_snapshot,
     }
     return prediction_path, label_path, metadata
 
 
 def _verify_fold_boundary_continuity(
-    manifests: list[dict[str, Any]], holdings: pd.DataFrame, audit: pd.DataFrame
+    manifests: list[dict[str, Any]],
+    holdings: pd.DataFrame,
+    audit: pd.DataFrame,
+    report: pd.DataFrame | None = None,
+    *,
+    initial_cash: float | None = None,
 ) -> dict[str, object]:
     """Verify untouched positions do not lose their holding age at model boundaries."""
 
@@ -205,6 +314,12 @@ def _verify_fold_boundary_continuity(
         audit_frame["instrument"] = audit_frame["instrument"].astype(str)
     results: list[dict[str, object]] = []
     unexpected_resets: list[dict[str, object]] = []
+    cash_resets: list[dict[str, object]] = []
+    report_frame = report.copy() if report is not None else pd.DataFrame()
+    if not report_frame.empty:
+        report_frame.index = pd.DatetimeIndex(pd.to_datetime(report_frame.index)).normalize()
+        if "account" not in report_frame or "cash" not in report_frame:
+            raise ValueError("continuous portfolio report must contain account and cash")
     for previous, current in zip(manifests, manifests[1:], strict=False):
         current_pred = _read_oos_frame(current, "oos_predictions.parquet", "score")
         boundary = pd.DatetimeIndex(current_pred.index.get_level_values("datetime")).normalize().min()
@@ -215,8 +330,41 @@ def _verify_fold_boundary_continuity(
             "currentRunId": str(current.get("externalRunId", "")),
             "boundarySignalDate": str(boundary.date()),
         }
+        reset_reasons: list[str] = []
+        if not report_frame.empty:
+            prior_report_dates = report_frame.index[report_frame.index < boundary]
+            next_report_dates = report_frame.index[report_frame.index >= boundary]
+            if len(prior_report_dates) and len(next_report_dates):
+                before_report = report_frame.loc[prior_report_dates.max()]
+                after_report = report_frame.loc[next_report_dates.min()]
+                for cumulative in ("total_turnover", "total_cost"):
+                    if cumulative in report_frame and float(after_report[cumulative]) + 1e-9 < float(
+                        before_report[cumulative]
+                    ):
+                        reset_reasons.append(f"{cumulative}_decreased")
+                if initial_cash is not None:
+                    tolerance = max(1e-6, abs(initial_cash) * 1e-9)
+                    after_is_initial = (
+                        abs(float(after_report["account"]) - initial_cash) <= tolerance
+                        and abs(float(after_report["cash"]) - initial_cash) <= tolerance
+                    )
+                    before_is_initial = (
+                        abs(float(before_report["account"]) - initial_cash) <= tolerance
+                        and abs(float(before_report["cash"]) - initial_cash) <= tolerance
+                    )
+                    if after_is_initial and not before_is_initial:
+                        reset_reasons.append("account_and_cash_returned_to_initial_state")
+        if reset_reasons:
+            cash_resets.append({**base, "reasons": reset_reasons})
         if prior_dates.empty or next_dates.empty:
-            results.append({**base, "status": "NO_COMPARABLE_HOLDING_SNAPSHOTS", "continuingPositions": 0})
+            results.append(
+                {
+                    **base,
+                    "status": "NO_COMPARABLE_HOLDING_SNAPSHOTS" if not reset_reasons else "FAIL",
+                    "continuingPositions": 0,
+                    "unexpectedCashResets": reset_reasons,
+                }
+            )
             continue
         prior_date = prior_dates.max()
         next_date = next_dates.min()
@@ -253,18 +401,25 @@ def _verify_fold_boundary_continuity(
                 "continuingPositions": len(continuing),
                 "untouchedContinuingPositions": len(untouched),
                 "unexpectedHoldingDayResets": resets,
+                "unexpectedCashResets": reset_reasons,
             }
         )
     if unexpected_resets:
         raise RuntimeError(
             f"fold boundary holding_days reset in continuous backtest: {unexpected_resets[:5]}"
         )
+    if cash_resets:
+        raise RuntimeError(f"fold boundary cash/account reset in continuous backtest: {cash_resets[:5]}")
     return {
         "passed": True,
         "portfolioState": "SINGLE_CONTINUOUS_ACCOUNT",
+        "portfolioBacktestRunCount": 1,
+        "portfolioInitialCashEventCount": 1,
         "boundaryCount": len(results),
         "boundaries": results,
         "unexpectedHoldingDayResetCount": 0,
+        "boundaryHoldingResetCount": 0,
+        "boundaryCashResetCount": 0,
     }
 
 
@@ -282,6 +437,8 @@ def _training_checkpoint_fingerprint(
         project_root / "src" / "tushare_qlib" / "processors.py",
         project_root / "src" / "tushare_qlib" / "research_timing.py",
         project_root / "src" / "tushare_qlib" / "model_runtime.py",
+        project_root / "src" / "tushare_qlib" / "processor_state.py",
+        project_root / "src" / "tushare_qlib" / "walk_forward_acceptance.py",
     ]
     research = settings.data.get("research", {})
     research = research if isinstance(research, dict) else {}
@@ -368,28 +525,62 @@ def _checkpoint_fingerprint(
     payload = {
         "trainingFingerprint": training,
         "portfolioFingerprint": portfolio,
-        "promotionContract": "release-v3" if fold.final_holdout else "component-validation-v3",
+        "promotionContract": "final-holdout-v1" if fold.final_holdout else "component-validation-v3",
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[
         :16
     ]
 
 
-def _validated_checkpoint_manifest(
+def _checkpoint_payload(manifest_path: Path, expected_fingerprint: str) -> dict[str, object]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifacts: list[dict[str, str]] = []
+    for artifact in manifest.get("artifacts", []):
+        if not isinstance(artifact, dict):
+            raise ValueError("checkpoint manifest contains an invalid artifact entry")
+        path = Path(str(artifact.get("localPath") or "")).resolve()
+        if not path.is_file():
+            raise ValueError(f"checkpoint artifact is not a file: {path}")
+        artifacts.append(
+            {
+                "name": str(artifact.get("name") or path.name),
+                "localPath": str(path),
+                "sha256": sha256_file(path),
+            }
+        )
+    if not artifacts:
+        raise ValueError("checkpoint manifest contains no reusable artifacts")
+    return {
+        "schemaVersion": "walk_forward_checkpoint_v2",
+        "manifest": str(manifest_path.resolve()),
+        "manifestSha256": sha256_file(manifest_path),
+        "checkpointFingerprint": expected_fingerprint,
+        "artifacts": artifacts,
+    }
+
+
+def _inspect_checkpoint(
     settings: Settings, checkpoint: Path, expected_fingerprint: str
-) -> Path | None:
+) -> CheckpointValidation:
     if not checkpoint.is_file():
-        return None
+        return CheckpointValidation(None, "MISSING")
     try:
         payload = json.loads(checkpoint.read_text(encoding="utf-8"))
-        if payload.get("checkpointFingerprint") != expected_fingerprint:
-            return None
-        manifest_path = Path(str(payload["manifest"]))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return CheckpointValidation(None, "CORRUPTED", f"checkpoint_json:{type(exc).__name__}")
+    if payload.get("schemaVersion") != "walk_forward_checkpoint_v2":
+        return CheckpointValidation(None, "STALE", "checkpoint_schema")
+    if payload.get("checkpointFingerprint") != expected_fingerprint:
+        return CheckpointValidation(None, "STALE", "checkpoint_fingerprint")
+    try:
+        manifest_path = Path(str(payload["manifest"])).resolve()
         if not manifest_path.is_file():
-            return None
+            return CheckpointValidation(None, "CORRUPTED", "manifest_missing")
+        if sha256_file(manifest_path) != payload.get("manifestSha256"):
+            return CheckpointValidation(None, "CORRUPTED", "manifest_sha256")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
-        return None
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return CheckpointValidation(None, "CORRUPTED", f"manifest:{type(exc).__name__}")
     dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
     if dataset_manifest.is_file():
         current_dataset = json.loads(dataset_manifest.read_text(encoding="utf-8"))
@@ -397,19 +588,37 @@ def _validated_checkpoint_manifest(
             current_dataset.get("sha256", current_dataset.get("dataset_id", "unversioned"))
         )
         if str(manifest.get("dataset", {}).get("fingerprint")) != current_fingerprint:
-            return None
+            return CheckpointValidation(None, "STALE", "dataset_fingerprint")
     lineage = manifest.get("lineage", {})
     if not isinstance(lineage, dict) or not lineage.get("lineageId"):
-        return None
+        return CheckpointValidation(None, "CORRUPTED", "lineage_missing")
     if not lineage.get("complete") and not dirty_research_override_enabled(settings, lineage):
-        return None
-    artifacts = manifest.get("artifacts", [])
-    if not isinstance(artifacts, list) or not artifacts:
-        return None
-    for artifact in artifacts:
-        if not isinstance(artifact, dict) or not Path(str(artifact.get("localPath", ""))).is_file():
-            return None
-    return manifest_path
+        return CheckpointValidation(None, "STALE", "lineage_incomplete")
+    recorded_artifacts = payload.get("artifacts")
+    if not isinstance(recorded_artifacts, list) or not recorded_artifacts:
+        return CheckpointValidation(None, "CORRUPTED", "artifact_hashes_missing")
+    current_paths = {
+        str(Path(str(item.get("localPath") or "")).resolve())
+        for item in manifest.get("artifacts", [])
+        if isinstance(item, dict)
+    }
+    recorded_paths: set[str] = set()
+    for artifact in recorded_artifacts:
+        if not isinstance(artifact, dict):
+            return CheckpointValidation(None, "CORRUPTED", "artifact_hash_entry")
+        path = Path(str(artifact.get("localPath") or "")).resolve()
+        recorded_paths.add(str(path))
+        if not path.is_file() or sha256_file(path) != artifact.get("sha256"):
+            return CheckpointValidation(None, "CORRUPTED", f"artifact_sha256:{path.name}")
+    if recorded_paths != current_paths:
+        return CheckpointValidation(None, "CORRUPTED", "artifact_set")
+    return CheckpointValidation(manifest_path, "VALID")
+
+
+def _validated_checkpoint_manifest(
+    settings: Settings, checkpoint: Path, expected_fingerprint: str
+) -> Path | None:
+    return _inspect_checkpoint(settings, checkpoint, expected_fingerprint).manifest_path
 
 
 def _at_or_after(calendar: pd.DatetimeIndex, value: pd.Timestamp) -> pd.Timestamp:
@@ -552,6 +761,9 @@ def _evaluate_aggregate_oos_gate(
     research = settings.data.get("research", {})
     diagnostics_path = gate_path.with_suffix(".daily_ic.csv")
     daily_diagnostics = derive_daily_signal_diagnostics(predictions, labels)
+    daily_diagnostics["rolling_12m_rank_ic"] = (
+        daily_diagnostics["rank_ic"].rolling(252, min_periods=252).mean()
+    )
     daily_diagnostics.reset_index().to_csv(diagnostics_path, index=False)
     thresholds = ResearchThresholds.from_mapping(
         research.get("promotion_thresholds", {}) if isinstance(research, dict) else {}
@@ -580,16 +792,67 @@ def _evaluate_aggregate_oos_gate(
         "positive_ic_ratio",
         "positive_rank_ic_ratio",
     )
+    fold_diagnostics: list[dict[str, Any]] = [
+        {
+            "runId": str(manifest.get("externalRunId", "")),
+            "metrics": {key: manifest.get("metrics", {}).get(key) for key in fold_metric_keys},
+        }
+        for manifest in manifests
+    ]
+    fold_ics = [
+        (str(item["runId"]), float(item["metrics"]["ic_mean"]))
+        for item in fold_diagnostics
+        if isinstance(item["metrics"].get("ic_mean"), (int, float))
+        and math.isfinite(float(item["metrics"]["ic_mean"]))
+    ]
+    fold_rank_ics = [
+        float(item["metrics"]["rank_ic_mean"])
+        for item in fold_diagnostics
+        if isinstance(item["metrics"].get("rank_ic_mean"), (int, float))
+        and math.isfinite(float(item["metrics"]["rank_ic_mean"]))
+    ]
+    annual = daily_diagnostics.groupby(daily_diagnostics.index.year)[["ic", "rank_ic"]].mean()
+    rolling_rank = daily_diagnostics["rolling_12m_rank_ic"].dropna()
     report["signal_diagnostics"] = {
         "dailyArtifactPath": str(diagnostics_path),
         "dailyObservationCount": len(daily_diagnostics),
-        "folds": [
-            {
-                "runId": str(manifest.get("externalRunId", "")),
-                "metrics": {key: manifest.get("metrics", {}).get(key) for key in fold_metric_keys},
-            }
-            for manifest in manifests
+        "folds": fold_diagnostics,
+        "foldStability": {
+            "icByFold": [value for _, value in fold_ics],
+            "rankIcByFold": fold_rank_ics,
+            "positiveIcFoldRatio": (
+                sum(value > 0 for _, value in fold_ics) / len(fold_ics) if fold_ics else 0.0
+            ),
+            "bestFold": (
+                {
+                    "runId": max(fold_ics, key=lambda item: item[1])[0],
+                    "ic": max(value for _, value in fold_ics),
+                }
+                if fold_ics
+                else None
+            ),
+            "worstFold": (
+                {
+                    "runId": min(fold_ics, key=lambda item: item[1])[0],
+                    "ic": min(value for _, value in fold_ics),
+                }
+                if fold_ics
+                else None
+            ),
+            "icDispersion": float(pd.Series([value for _, value in fold_ics]).std(ddof=1))
+            if len(fold_ics) > 1
+            else 0.0,
+        },
+        "annualIc": [
+            {"year": int(year), "ic": float(row.ic), "rankIc": float(row.rank_ic)}
+            for year, row in annual.iterrows()
         ],
+        "rolling12mRankIc": {
+            "windowSessions": 252,
+            "latest": float(rolling_rank.iloc[-1]) if len(rolling_rank) else None,
+            "minimum": float(rolling_rank.min()) if len(rolling_rank) else None,
+            "maximum": float(rolling_rank.max()) if len(rolling_rank) else None,
+        },
     }
     write_gate_report(report, gate_path)
     return report
@@ -603,7 +866,18 @@ def run_walk_forward(
     benchmark: str = "SH000300",
     topn: int | None = None,
     model_profile: str | Path | None = None,
+    acceptance_mode: bool = False,
+    interrupt_after_fold: int | None = None,
+    checkpoint_namespace: str = "default",
 ) -> Path:
+    if interrupt_after_fold is not None and (not acceptance_mode or interrupt_after_fold < 1):
+        raise ValueError("interrupt_after_fold requires Full Walk-forward Acceptance and must be positive")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", checkpoint_namespace):
+        raise ValueError("checkpoint_namespace must be a safe 1-64 character identifier")
+    if acceptance_mode:
+        revision = git_revision(Path(__file__).resolve().parents[2])
+        if not revision.get("commit") or revision.get("dirty") is not False:
+            raise RuntimeError("Full Walk-forward Acceptance requires a clean committed code revision")
     settings, pinned_dataset = pin_dataset(settings)
     orchestration_started = time.perf_counter()
     runtime = resolve_runtime(load_model_profile(settings, model_profile))
@@ -636,6 +910,11 @@ def run_walk_forward(
         ),
         min_holdout_observations=thresholds.min_observations,
     )
+    fold_integrity = validate_fold_integrity(
+        folds,
+        calendar,
+        label_lookahead_sessions=timing.lookahead_days,
+    )
     timing_contract = {
         **timing.to_manifest(),
         "requestedPurgeDays": requested_purge,
@@ -654,7 +933,16 @@ def run_walk_forward(
             settings, folds[0].train[0], folds[-1].test[1]
         )
         feature_store_seconds = time.perf_counter() - feature_store_started
-    run_root = settings.paths.output / "research" / "walk_forward"
+    if acceptance_mode and (
+        not feature_store_metadata
+        or feature_store_metadata.get("cacheStatus") != "REUSED"
+        or feature_store_metadata.get("rawMaterializationCalls") != 0
+    ):
+        raise RuntimeError(
+            "Full Walk-forward Acceptance requires one pre-existing immutable FeatureSnapshot "
+            "with rawMaterializationCalls=0"
+        )
+    run_root = settings.paths.output / "research" / "walk_forward" / checkpoint_namespace
     run_root.mkdir(parents=True, exist_ok=True)
     manifests: list[dict[str, Any]] = []
     component_runs: list[dict[str, Any]] = []
@@ -670,7 +958,8 @@ def run_walk_forward(
             topn=topn,
         )
         checkpoint = run_root / f"{fold.key}_{checkpoint_fingerprint}.json"
-        fold_manifest_path = _validated_checkpoint_manifest(settings, checkpoint, checkpoint_fingerprint)
+        checkpoint_validation = _inspect_checkpoint(settings, checkpoint, checkpoint_fingerprint)
+        fold_manifest_path = checkpoint_validation.manifest_path
         reused = fold_manifest_path is not None
         if fold_manifest_path is None:
             result_path = train_backtest_select(
@@ -683,26 +972,17 @@ def run_walk_forward(
                 experiment_name=f"lean_csi300_{runtime.profile.name}_{fold.key}",
                 run_kind="final_holdout" if fold.final_holdout else "walk_forward_fold",
                 runtime=runtime,
-                promotion_mode="release" if fold.final_holdout else "component",
+                promotion_mode="holdout" if fold.final_holdout else "component",
                 prepared_feature_data=prepared_feature_data,
                 feature_store_metadata=feature_store_metadata,
                 artifact_level="full" if fold.final_holdout else "minimal",
             )
-            if fold.final_holdout and result_path.name != "manifest.json":
-                model_id = str(pd.read_csv(result_path)["model_id"].iloc[0])
-                fold_manifest_path = settings.paths.output / "research" / model_id / "manifest.json"
-            else:
-                fold_manifest_path = result_path
+            fold_manifest_path = result_path
             checkpoint_tmp = checkpoint.with_suffix(".json.tmp")
+            checkpoint_payload = _checkpoint_payload(fold_manifest_path, checkpoint_fingerprint)
+            checkpoint_payload["runtimeFingerprint"] = runtime.fingerprint
             checkpoint_tmp.write_text(
-                json.dumps(
-                    {
-                        "manifest": str(fold_manifest_path),
-                        "runtimeFingerprint": runtime.fingerprint,
-                        "checkpointFingerprint": checkpoint_fingerprint,
-                    },
-                    indent=2,
-                ),
+                json.dumps(checkpoint_payload, indent=2),
                 encoding="utf-8",
             )
             os.replace(checkpoint_tmp, checkpoint)
@@ -710,16 +990,9 @@ def run_walk_forward(
         promotion = manifest.get("promotion", {})
         if not isinstance(promotion, dict):
             raise ValueError(f"fold manifest has no promotion contract: {fold.key}")
-        expected_status = "PROMOTED" if fold.final_holdout else "CANDIDATE"
-        expected_mode = "release" if fold.final_holdout else "component_validation"
-        dirty_candidate = (
-            fold.final_holdout
-            and promotion.get("status") == "CANDIDATE"
-            and bool(manifest.get("metrics", {}).get("dirty_research_override"))
-        )
-        if (promotion.get("status") != expected_status and not dirty_candidate) or promotion.get(
-            "gateMode"
-        ) != expected_mode:
+        expected_statuses = {"CANDIDATE", "REJECTED"} if fold.final_holdout else {"CANDIDATE"}
+        expected_mode = "final_holdout" if fold.final_holdout else "component_validation"
+        if promotion.get("status") not in expected_statuses or promotion.get("gateMode") != expected_mode:
             raise ValueError(
                 f"fold {fold.key} has incompatible promotion contract: "
                 f"status={promotion.get('status')}, gateMode={promotion.get('gateMode')}"
@@ -737,7 +1010,15 @@ def run_walk_forward(
             "externalRunId": str(manifest["externalRunId"]),
             "manifestPath": str(fold_manifest_path),
             "checkpointReused": reused,
-            "promotionMode": "release" if fold.final_holdout else "component_validation",
+            "checkpointStatus": (
+                "REUSED"
+                if reused
+                else "INVALIDATED_REBUILT"
+                if checkpoint_validation.status in {"CORRUPTED", "STALE"}
+                else "BUILT"
+            ),
+            "checkpointInvalidationReason": checkpoint_validation.reason,
+            "promotionMode": "final_holdout" if fold.final_holdout else "component_validation",
             "artifactMode": "portfolio_full" if fold.final_holdout else "signal_only",
             "portfolioBacktestExecuted": fold.final_holdout,
             "timings": manifest.get("timings", {}),
@@ -752,11 +1033,22 @@ def run_walk_forward(
         manifest, _, _, _, component_run = execute_fold(fold)
         manifests.append(manifest)
         component_runs.append(component_run)
+        if interrupt_after_fold is not None and len(manifests) == interrupt_after_fold:
+            raise RuntimeError(f"acceptance fault injection interrupted after fold {fold.key}")
 
     rolling_ids = [str(manifest["externalRunId"]) for manifest in manifests]
     aggregate_key = hashlib.sha256("|".join(rolling_ids).encode()).hexdigest()[:32]
     aggregate_dir = run_root / f"aggregate_oos_{aggregate_key}"
-    prediction_path, label_path, oos_stream = _write_continuous_oos_stream(manifests, aggregate_dir)
+    expected_oos_dates = pd.DatetimeIndex([])
+    for fold in rolling_folds:
+        expected_oos_dates = expected_oos_dates.append(
+            calendar[(calendar >= fold.test[0]) & (calendar <= fold.test[1])]
+        )
+    prediction_path, label_path, oos_stream = _write_continuous_oos_stream(
+        manifests,
+        aggregate_dir,
+        expected_dates=expected_oos_dates,
+    )
     portfolio_manifest_path = backtest_predictions(
         settings,
         prediction_path,
@@ -768,7 +1060,13 @@ def run_walk_forward(
     continuous_report = pd.read_parquet(_artifact_path(portfolio_manifest, "portfolio_report.parquet"))
     continuous_audit = pd.read_parquet(_artifact_path(portfolio_manifest, "strategy_audit.parquet"))
     continuous_holdings = pd.read_parquet(_artifact_path(portfolio_manifest, "holdings.parquet"))
-    continuity = _verify_fold_boundary_continuity(manifests, continuous_holdings, continuous_audit)
+    continuity = _verify_fold_boundary_continuity(
+        manifests,
+        continuous_holdings,
+        continuous_audit,
+        continuous_report,
+        initial_cash=float(research.get("backtest_account", 500_000)),
+    )
     continuity_path = aggregate_dir / "fold_boundary_continuity.json"
     continuity_path.write_text(json.dumps(continuity, ensure_ascii=False, indent=2), encoding="utf-8")
     aggregate_gate_path = run_root / f"aggregate_oos_gate_{aggregate_key}.json"
@@ -780,48 +1078,24 @@ def run_walk_forward(
         portfolio_manifest,
         aggregate_gate_path,
     )
-    if not aggregate_gate["passed"] and aggregate_gate["decision"] == "REJECT":
-        rejection_manifest = run_root / f"aggregate_oos_{aggregate_key}.manifest.json"
-        rejection_manifest.write_text(
-            json.dumps(
-                {
-                    "schemaVersion": "2.0",
-                    "externalRunId": aggregate_key,
-                    "runKind": "walk_forward_aggregate_oos",
-                    "promotion": {
-                        "status": "REJECTED",
-                        "decision": "REJECT",
-                        "gateMode": "aggregate_rolling_oos",
-                        "gateReportPath": str(aggregate_gate_path),
-                    },
-                    "oosStream": oos_stream,
-                    "aggregatePortfolioRun": {
-                        "externalRunId": str(portfolio_manifest.get("externalRunId", "")),
-                        "manifestPath": str(portfolio_manifest_path),
-                        "stateMode": "single_continuous_account",
-                        "foldBoundaryContinuityPath": str(continuity_path),
-                    },
-                    "componentRuns": component_runs,
-                    "artifacts": [
-                        {"name": prediction_path.name, "localPath": str(prediction_path)},
-                        {"name": label_path.name, "localPath": str(label_path)},
-                        {"name": continuity_path.name, "localPath": str(continuity_path)},
-                        {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
-                    ],
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        raise ResearchPromotionError(rejection_manifest)
+    selection_lock_path = aggregate_dir / "research_selection_lock.json"
+    selection_lock = _write_research_selection_lock(
+        selection_lock_path,
+        fold_plan=folds,
+        rolling_manifests=manifests,
+        aggregate_prediction_sha256=str(oos_stream["aggregatePredictionSha256"]),
+        thresholds=thresholds,
+    )
 
     final_fold = final_folds[0]
     final_manifest, final_report, _, _, final_run = execute_fold(final_fold)
+    final_run["selectionLockSha256"] = selection_lock["lockSha256"]
+    final_run["accessedAfterSelectionLock"] = True
     if pd.Timestamp(final_report.index.min()) <= pd.Timestamp(continuous_report.index.max()):
         raise ValueError(f"overlapping OOS reports at fold {final_fold.key}")
     manifests.append(final_manifest)
     component_runs.append(final_run)
+    processor_isolation = validate_processor_isolation(manifests)
 
     # The top-level portfolio artifacts are the rolling OOS evidence used by the
     # aggregate gate.  The untouched final holdout remains an independent run.
@@ -832,6 +1106,24 @@ def run_walk_forward(
     external_id = hashlib.sha256("|".join(fold_ids).encode()).hexdigest()[:32]
     output_dir = settings.paths.output / "research" / external_id
     output_dir.mkdir(parents=True, exist_ok=True)
+    evidence_selection_lock_path = output_dir / "research_selection_lock.json"
+    shutil.copy2(selection_lock_path, evidence_selection_lock_path)
+    evidence_prediction_path = output_dir / "oos_predictions.parquet"
+    evidence_label_path = output_dir / "oos_labels.parquet"
+    shutil.copy2(prediction_path, evidence_prediction_path)
+    shutil.copy2(label_path, evidence_label_path)
+    aggregate_snapshot_path = prediction_snapshot_path(prediction_path)
+    evidence_snapshot_path = prediction_snapshot_path(evidence_prediction_path)
+    if aggregate_snapshot_path.is_file():
+        shutil.copy2(aggregate_snapshot_path, evidence_snapshot_path)
+    final_holdout_artifacts = {
+        "final_holdout_predictions.parquet": _artifact_path(final_manifest, "oos_predictions.parquet"),
+        "final_holdout_labels.parquet": _artifact_path(final_manifest, "oos_labels.parquet"),
+        "final_holdout_portfolio_report.parquet": _artifact_path(final_manifest, "portfolio_report.parquet"),
+        "final_holdout_holdings.parquet": _artifact_path(final_manifest, "holdings.parquet"),
+    }
+    for name, source in final_holdout_artifacts.items():
+        shutil.copy2(source, output_dir / name)
     report_path = output_dir / "portfolio_report.parquet"
     audit_path = output_dir / "strategy_audit.parquet"
     holdings_path = output_dir / "holdings.parquet"
@@ -863,13 +1155,18 @@ def run_walk_forward(
     aggregate_lineage["lineageId"] = hashlib.sha256(
         json.dumps(aggregate_lineage, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()[:32]
+    final_gate_path = Path(str(final_manifest.get("promotion", {}).get("gateReportPath") or ""))
+    if not final_gate_path.is_file():
+        raise ValueError("final holdout gate report is missing")
+    final_gate_report = json.loads(final_gate_path.read_text(encoding="utf-8"))
+    research_quality_passed = bool(aggregate_gate.get("passed")) and bool(final_gate_report.get("passed"))
     promoted = (
         bool(aggregate_lineage["complete"])
+        and research_quality_passed
         and all(
             manifest.get("promotion", {}).get("status") in {"CANDIDATE", "PROMOTED"}
             for manifest in manifests[:-1]
         )
-        and final_manifest.get("promotion", {}).get("status") == "PROMOTED"
     )
     aggregate_phases = _aggregate_component_timings(manifests)
     portfolio_phases = portfolio_manifest.get("timings", {}).get("phasesSeconds", {})
@@ -885,11 +1182,77 @@ def run_walk_forward(
         "checkpointReuseCount": sum(bool(item["checkpointReused"]) for item in component_runs),
         "reportRenderingIncluded": False,
     }
+    performance = performance_baseline(
+        component_runs,
+        feature_store=feature_store_metadata,
+        feature_seconds=feature_store_seconds,
+        portfolio_manifest=portfolio_manifest,
+        orchestration_seconds=time.perf_counter() - orchestration_started,
+    )
     write_timings(timings_path, runtime, timings)
+    evidence_path = output_dir / "walk_forward_evidence.json"
+    checkpoint_statuses = [str(item["checkpointStatus"]) for item in component_runs]
+    evidence = {
+        "acceptanceType": "FULL_WALK_FORWARD_V1_MODEL_EVIDENCE",
+        "checkpointNamespace": checkpoint_namespace,
+        "systemAcceptance": "PASS",
+        "walkForwardIntegrity": "PASS",
+        "researchQuality": (
+            "PASS"
+            if research_quality_passed
+            else "REVIEW"
+            if "RESEARCH_REVIEW"
+            in {str(aggregate_gate.get("decision")), str(final_gate_report.get("decision"))}
+            else "REJECT"
+        ),
+        "performanceAcceptance": "BASELINE_RECORDED",
+        "data": manifests[0].get("dataset"),
+        "featureSnapshot": {
+            **(feature_store_metadata or {}),
+            "sameAcrossFolds": True,
+        },
+        "foldIntegrity": {
+            **fold_integrity,
+            "duplicatePredictionRows": oos_stream["duplicateRows"],
+            "missingExpectedFoldDates": oos_stream["missingExpectedFoldDates"],
+            "outOfOrderRows": oos_stream["outOfOrderRows"],
+        },
+        "processorIsolation": processor_isolation,
+        "oosPrediction": oos_stream,
+        "stateContinuity": continuity,
+        "checkpointRecovery": {
+            "statuses": checkpoint_statuses,
+            "validFoldReuseCount": checkpoint_statuses.count("REUSED"),
+            "invalidatedAndRebuiltCount": checkpoint_statuses.count("INVALIDATED_REBUILT"),
+            "allPayloadsValidatedBeforeReuse": True,
+        },
+        "finalHoldout": {
+            "isolated": True,
+            "usedForResearchSelection": False,
+            "accessedBeforeFinalization": False,
+            "rollingOosOverlapDates": 0,
+            "selectionLockPath": str(evidence_selection_lock_path),
+            "selectionLockSha256": selection_lock["lockSha256"],
+            "gate": final_gate_report,
+            "predictionSha256": sha256_file(output_dir / "final_holdout_predictions.parquet"),
+            "portfolioSha256": sha256_file(output_dir / "final_holdout_portfolio_report.parquet"),
+            "holdingsSha256": sha256_file(output_dir / "final_holdout_holdings.parquet"),
+        },
+        "researchSelectionLock": selection_lock,
+        "model": {
+            "profile": runtime.profile.name,
+            "family": runtime.profile.family,
+            "aggregatePredictionSha256": oos_stream["aggregatePredictionSha256"],
+        },
+        "researchStability": aggregate_gate.get("signal_diagnostics"),
+        "performance": performance,
+    }
+    evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
     payload = {
         "schemaVersion": "2.0",
         "externalRunId": external_id,
         "runKind": "walk_forward",
+        "checkpointNamespace": checkpoint_namespace,
         "name": f"Qlib CSI300 walk-forward {start_date}..{end_date}",
         "dataset": manifests[-1]["dataset"],
         "datasetVersionId": pinned_dataset.version_id,
@@ -905,14 +1268,22 @@ def run_walk_forward(
         "lineage": aggregate_lineage,
         "promotion": {
             "status": "PROMOTED" if promoted else "CANDIDATE",
-            "decision": "PROMOTE" if promoted else "RESEARCH_ONLY",
+            "decision": (
+                "PROMOTE"
+                if promoted
+                else str(aggregate_gate.get("decision"))
+                if not aggregate_gate.get("passed")
+                else str(final_gate_report.get("decision"))
+            ),
             "gateMode": "aggregate_oos_and_final_holdout",
             "aggregateOosGate": aggregate_gate,
-            "finalHoldoutGate": final_manifest.get("promotion", {}),
+            "finalHoldoutGate": final_gate_report,
+            "finalHoldoutRunPromotion": final_manifest.get("promotion", {}),
             "componentValidationReports": [manifest.get("promotion", {}) for manifest in manifests[:-1]],
         },
         "timings": timings,
         "featureStore": feature_store_metadata,
+        "walkForwardEvidence": evidence,
         "folds": [asdict(fold) for fold in folds],
         "labelTiming": timing_contract,
         "execution": manifests[-1]["execution"],
@@ -921,6 +1292,7 @@ def run_walk_forward(
             "rollingOosPortfolio": "single_continuous_account",
             "topLevelPortfolioArtifacts": "rolling_oos_only",
             "finalHoldout": "independent_untouched_component_run",
+            "researchSelectionLock": str(evidence_selection_lock_path),
         },
         "oosStream": oos_stream,
         "aggregatePortfolioRun": {
@@ -942,13 +1314,28 @@ def run_walk_forward(
             {"name": holdings_path.name, "localPath": str(holdings_path), "rows": len(combined_holdings)},
             {"name": timings_path.name, "localPath": str(timings_path)},
             {
-                "name": prediction_path.name,
-                "localPath": str(prediction_path),
+                "name": evidence_prediction_path.name,
+                "localPath": str(evidence_prediction_path),
                 "rows": oos_stream["predictionRows"],
             },
-            {"name": label_path.name, "localPath": str(label_path), "rows": oos_stream["labelRows"]},
+            {
+                "name": evidence_label_path.name,
+                "localPath": str(evidence_label_path),
+                "rows": oos_stream["labelRows"],
+            },
+            *(
+                [{"name": evidence_snapshot_path.name, "localPath": str(evidence_snapshot_path)}]
+                if evidence_snapshot_path.is_file()
+                else []
+            ),
             {"name": continuity_path.name, "localPath": str(continuity_path)},
             {"name": aggregate_gate_path.name, "localPath": str(aggregate_gate_path)},
+            {
+                "name": evidence_selection_lock_path.name,
+                "localPath": str(evidence_selection_lock_path),
+            },
+            {"name": evidence_path.name, "localPath": str(evidence_path)},
+            *[{"name": name, "localPath": str(output_dir / name)} for name in final_holdout_artifacts],
         ],
     }
     from .backtest_report import ReportArtifacts, write_backtest_report

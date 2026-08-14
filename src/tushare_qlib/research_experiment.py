@@ -66,7 +66,11 @@ class ResearchExperimentSpec:
             raise ValueError("experiment.data_release does not match the pinned DataRelease")
         split_config = experiment.get("split", {})
         split_config = split_config if isinstance(split_config, Mapping) else {}
-        default_split = "wf_1500_126_63_v1" if run_kind == "walk_forward" else "fixed_split_v1"
+        default_split = (
+            "wf_1500_126_63_v1"
+            if run_kind in {"walk_forward", "walk_forward_fold", "final_holdout"}
+            else "fixed_split_v1"
+        )
         split = SplitSpec(
             profile_id=str(split_config.get("profile") or default_split),
             run_kind=run_kind,

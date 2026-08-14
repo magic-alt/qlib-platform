@@ -195,11 +195,16 @@ valid、63 日 test，累计 252 日 rolling OOS 与独立 252 日 final holdout
 
 一体化流程会自动从 OOS prediction、label 和组合报告计算 Research Gate。Signal 指标来自拼接后的完整 OOS
 prediction/label；Portfolio 指标只来自同一信号流驱动的单账户连续回测，不再复合各 fold 的独立账户收益。
-运行产出的 `fold_boundary_continuity.json` 会逐个边界验证未交易持仓的 `holding_days` 没有回退。只有全部阈值
-通过且 lineage 完整的
-运行才标记为 `PROMOTED`，并发布 `data/output/selection_YYYYMMDD.csv` 与
-`data/output/signals/signal_scores_YYYYMMDD.parquet`；未通过的运行保留 manifest、回测产物和
-`research_gate.json` 后失败退出，不会生成执行候选。
+运行产出的 `fold_boundary_continuity.json` 会逐个边界验证未交易持仓的 `holding_days` 没有回退。fixed
+release 只有全部阈值通过且 lineage 完整时才发布 selection/signal；失败会保留审计证据并退出。walk-forward
+始终把 final holdout 作为不发布候选的独立评估，只在 rolling 与 holdout 研究阈值均通过时把顶层证据标记为
+`APPROVED_RECIPE`，后续仍需 production refit。
+
+正式的 Ridge / LightGBM / XGBoost 跨 fold 因果性、checkpoint 中断恢复与篡改负例、单账户连续性、
+final holdout selection lock 和 exact replay 验收见
+[`docs/full_walk_forward_acceptance.md`](docs/full_walk_forward_acceptance.md)。Full Walk-forward 模式将
+系统验收与 Research Quality 分开；Alpha 指标 `REJECT` 不会阻止正确性证据和隔离后的 holdout 完成，
+但不会发布 selection、signal targets 或 TargetPortfolio。
 
 
 Research Gate 不再把 Pearson `ICIR` 当作唯一的一票否决项。对于 TopkDropout，稳定性检查满足
