@@ -22,7 +22,6 @@ def test_strategy_spec_is_the_single_source_for_topk_parameters(tmp_path: Path):
         tmp_path,
         {
             "strategy": {"topk_dropout": {"topk": 40, "n_drop": 3, "hold_thresh": 10}},
-            "execution": {"topk_dropout": {"topk": 99, "n_drop": 99}},
         },
     )
 
@@ -55,7 +54,6 @@ def test_portfolio_spec_comes_only_from_pipeline_portfolio_section(tmp_path: Pat
         tmp_path,
         {
             "portfolio": {"top_n": 12, "max_exposure": 0.75, "weighting": "equal"},
-            "execution": {"portfolio": {"top_n": 99, "max_exposure": 1.0}},
         },
     )
 

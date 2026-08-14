@@ -1,6 +1,0 @@
-# Deprecated in qlib-platform.
-# QMT broker connectivity is configured and operated by the sibling platform repository.
-# This file remains only as an explicit P3 migration marker and contains no credential fields.
-migration:
-  status: moved_to_platform
-  documentation: ../platform/docs/qmt_gateway.md

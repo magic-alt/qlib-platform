@@ -121,7 +121,7 @@ def parser() -> argparse.ArgumentParser:
     rp.add_argument("--positions-file")
 
     tp = sub.add_parser("build-target-portfolio")
-    tp.add_argument("--execution-config", default="configs/trading_execution_template.yaml")
+    tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
     tp.add_argument("--selection-file")
     tp.add_argument("--selection-date")
     tp.add_argument("--current-portfolio")
@@ -313,7 +313,7 @@ def main() -> None:
         from .trade_plan import build_trade_plan
 
         path, plan = build_trade_plan(
-            config_path=args.execution_config,
+            config_path=args.portfolio_config,
             selection_file=args.selection_file,
             selection_date=args.selection_date,
             prev_selection_file=args.current_portfolio,

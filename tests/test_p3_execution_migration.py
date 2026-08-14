@@ -5,9 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from tushare_qlib.artifacts import ArtifactType
 from tushare_qlib.cli import parser
 
 
+ROOT = Path(__file__).resolve().parents[1]
 RETIRED_COMMANDS = {
     "build-orders",
     "pretrade-risk",
@@ -18,6 +20,19 @@ RETIRED_COMMANDS = {
     "production-run",
     "production-replay",
     "shadow-run",
+}
+RETIRED_MODULES = {
+    "execution.py",
+    "risk_engine.py",
+    "pretrade_runner.py",
+    "holdings_ledger.py",
+    "broker_state.py",
+    "market_snapshot.py",
+    "freshness.py",
+    "production_orchestrator.py",
+    "production_replay.py",
+    "shadow_runner.py",
+    "snapshot_audit.py",
 }
 
 
@@ -40,25 +55,17 @@ def test_retired_execution_commands_fail_at_argument_parsing(command: str):
     assert exc.value.code == 2
 
 
-def test_qmt_gateway_is_not_packaged_or_exposed_by_qlib_platform():
-    root = Path(__file__).resolve().parents[1]
-    metadata = (root / "pyproject.toml").read_text(encoding="utf-8")
-    assert "qmt-gateway" not in metadata
-    assert "tq-qmt-gateway" not in metadata
-    assert 'exclude = ["tushare_qlib.qmt_gateway*"]' in metadata
-    assert (root / "src" / "tushare_qlib" / "qmt_gateway").is_dir()  # rollback-only source
+def test_execution_broker_and_ledger_sources_are_physically_removed():
+    package = ROOT / "src" / "tushare_qlib"
+    assert not (package / "broker").exists()
+    assert not (package / "qmt_gateway").exists()
+    assert not {path.name for path in package.iterdir()} & RETIRED_MODULES
 
 
-def test_cli_does_not_import_frozen_execution_domains():
-    root = Path(__file__).resolve().parents[1]
-    source = (root / "src" / "tushare_qlib" / "cli.py").read_text(encoding="utf-8")
-    forbidden = (
-        "from .execution import",
-        "from .risk_engine import HardRiskPolicy",
-        "from .broker_state import",
-        "from .holdings_ledger import",
-        "from .pretrade_runner import",
-        "from .production_orchestrator import",
-        "from .shadow_runner import",
-    )
-    assert not any(token in source for token in forbidden)
+def test_artifact_enum_is_research_only():
+    assert {item.value for item in ArtifactType} == {
+        "MODEL_SCORE",
+        "MODEL_TOPK",
+        "STRATEGY_DECISION",
+        "TARGET_PORTFOLIO",
+    }

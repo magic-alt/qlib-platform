@@ -56,26 +56,6 @@ def governed_artifact(tmp_path: Path) -> Callable[..., pd.DataFrame]:
                             "risk_degree": 0.95,
                         },
                         "portfolio": portfolio,
-                        "execution": {
-                            "board_lot": 100,
-                            "max_participation_rate": 0.05,
-                            "commission_rate": 0.00025,
-                            "min_commission": 5.0,
-                            "stamp_duty_sell": 0.0005,
-                            "transfer_fee_rate": 0.00001,
-                            "price_buffer_buy": 0.002,
-                            "price_buffer_sell": 0.002,
-                            "block_limit_up_buy": True,
-                            "block_limit_down_sell": True,
-                        },
-                        "risk": risk
-                        or {
-                            "max_gross_exposure": 1.0,
-                            "max_single_name": 1.0,
-                            "max_sector_exposure": 1.0,
-                            "max_daily_loss": 0.03,
-                            "kill_switch": False,
-                        },
                     },
                 }
             ),

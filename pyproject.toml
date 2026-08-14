@@ -48,9 +48,6 @@ dev = [
   "ruff>=0.8,<1",
   "mypy>=1.11,<2",
   "types-PyYAML>=6.0",
-  # Temporary P3 compatibility tests for the unshipped legacy QMT source.
-  "fastapi>=0.110,<1",
-  "uvicorn>=0.27,<1",
 ]
 
 [project.scripts]
@@ -58,7 +55,6 @@ tq = "tushare_qlib.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["tushare_qlib.qmt_gateway*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

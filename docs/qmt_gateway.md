@@ -8,9 +8,8 @@ platform/web/backend/app/broker/qmt_gateway
 platform/docs/qmt_gateway.md
 ```
 
-The source under `src/tushare_qlib/qmt_gateway` is retained temporarily for P3
-rollback and contract comparison only. It is excluded from package discovery,
-has no console entrypoint, and must not be started or extended here.
+P3 physically removed `src/tushare_qlib/qmt_gateway` and its installer/configuration
+surface. Gateway changes and operational commands must be made in `platform`.
 
 Qlib publishes `TARGET_PORTFOLIO`; platform owns QMT observations, hard risk,
 orders, fills, reconciliation and ledger state.

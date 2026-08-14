@@ -157,8 +157,8 @@ def topk_dropout_decision(
 
     The returned rows are the union of model TopK, current holdings, buy
     candidates and sell candidates.  A ``target_action`` is an actionable
-    strategy request; execution constraints such as T+1 inventory and ADV20
-    capacity are applied later by :func:`tushare_qlib.execution.build_topk_orders`.
+    research strategy request. T+1 inventory, liquidity and fill constraints
+    are applied downstream by platform/LEAN after TARGET_PORTFOLIO export.
     """
 
     policy = policy or TopkDropoutPolicy()

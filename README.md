@@ -253,7 +253,7 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 
 `platform` 校验 DataRelease、payload SHA256、lineage 和 `RESEARCH_PROMOTED` 状态后，才可创建
 LEAN validation draft。组合构造、hard risk、Paper、OMS、QMT、订单、成交与 ledger 全部属于 `platform`。
-旧的 execution/broker/ledger Python 模块仅作为 P3 兼容审计代码暂存，不再有 CLI 或安装入口。
+P3 已物理移除旧的 execution/broker/ledger/QMT Python 模块；Qlib 不再创建订单或维护交易状态。
 
 ### 4.2 SH000300 基准回测结果解读（历史示例）
 

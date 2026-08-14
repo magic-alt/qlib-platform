@@ -121,29 +121,11 @@ production:
     max_score_psi: 0.50
     min_topk_overlap: 0.30
     max_rank_turnover: 0.25
-  # Use inbox for drills. Switch to http_readonly only for a user-operated,
-  # GET-only gateway; the adapter exposes no submit/cancel methods.
-  broker:
-    kind: inbox
-    # base_url: https://broker-gateway.internal/v1
-    # token_env: BROKER_READONLY_TOKEN
-    timeout_seconds: 10
-    max_attempts: 3
-    retry_delay_seconds: 0.25
-  market:
-    kind: inbox
-    # base_url: https://market-gateway.internal/v1
-    # endpoint: quotes
-    timeout_seconds: 10
-    max_attempts: 3
-    retry_delay_seconds: 0.25
   notification:
     channel: feishu
     webhook_env: FEISHU_WEBHOOK_URL
     secret_env: FEISHU_WEBHOOK_SECRET
     retry_delays_seconds: [2, 10, 30]
-  inbox:
-    layout: pretrade/<trade_date>
 
 universe:
   instruments: csi300
@@ -208,7 +190,7 @@ research:
     require_unique_artifact: true
 
 strategy:
-  # Canonical strategy source for research, manifests, and execution.
+  # Canonical strategy source for research and manifests.
   topk_dropout:
     topk: 30
     n_drop: 5
@@ -228,20 +210,6 @@ portfolio:
   min_position: 0.002
   volatility_floor: 0.01
 
-execution:
-  board_lot: 100
-  max_participation_rate: 0.05
-  commission_rate: 0.00025
-  min_commission: 5
-  stamp_duty_sell: 0.0005
-  transfer_fee_rate: 0.00001
-  price_buffer_buy: 0.002
-  price_buffer_sell: 0.002
-  block_limit_up_buy: true
-  block_limit_down_sell: true
-  # Execution snapshots are fail-closed without a current UTC capture timestamp.
-  max_quote_age_seconds: 120
-  max_position_age_seconds: 300
 
 risk:
   max_gross_exposure: 0.95

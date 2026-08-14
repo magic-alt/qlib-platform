@@ -89,9 +89,6 @@ class StrategySpec:
     def from_settings(cls, settings: Settings, *, topk_override: int | None = None) -> "StrategySpec":
         strategy = _mapping(settings.data.get("strategy"))
         configured = _mapping(strategy.get("topk_dropout"))
-        if not configured:
-            # Compatibility is read-only: new manifests always serialize the canonical strategy section.
-            configured = _mapping(_mapping(settings.data.get("execution")).get("topk_dropout"))
         values = dict(configured)
         if topk_override is not None:
             values["topk"] = topk_override
@@ -136,28 +133,6 @@ class PortfolioSpec:
 
 
 @dataclass(frozen=True)
-class ExecutionSpec:
-    board_lot: int = 100
-    max_participation_rate: float = 0.05
-    commission_rate: float = 0.00025
-    min_commission: float = 5.0
-    stamp_duty_sell: float = 0.0005
-    transfer_fee_rate: float = 0.00001
-    price_buffer_buy: float = 0.002
-    price_buffer_sell: float = 0.002
-    block_limit_up_buy: bool = True
-    block_limit_down_sell: bool = True
-    max_quote_age_seconds: int = 120
-    max_position_age_seconds: int = 300
-
-    @classmethod
-    def from_settings(cls, settings: Settings) -> "ExecutionSpec":
-        data = _mapping(settings.data.get("execution"))
-        values = {name: data[name] for name in cls.__dataclass_fields__ if name in data}
-        return cls(**values)
-
-
-@dataclass(frozen=True)
 class RiskSpec:
     max_gross_exposure: float = 0.95
     max_single_name: float = 0.10
@@ -179,7 +154,7 @@ class RiskSpec:
             raise ValueError("risk.max_sector_exposure must be in (0, 1]")
         if not 0 < spec.max_daily_loss < 1:
             raise ValueError("risk.max_daily_loss must be in (0, 1)")
-        from .risk_engine import ExposureOverlayPolicy
+        from .exposure_overlay import ExposureOverlayPolicy
 
         ExposureOverlayPolicy.from_mapping(spec.exposure_overlay)
         return spec
@@ -191,7 +166,6 @@ class CanonicalConfig:
     model: ModelSpec
     strategy: StrategySpec
     portfolio: PortfolioSpec
-    execution: ExecutionSpec
     risk: RiskSpec
     promotion: ResearchThresholds
 
@@ -210,7 +184,6 @@ class CanonicalConfig:
             model=ModelSpec.from_runtime(runtime, parameters=model_parameters),
             strategy=StrategySpec.from_settings(settings, topk_override=topk_override),
             portfolio=PortfolioSpec.from_settings(settings),
-            execution=ExecutionSpec.from_settings(settings),
             risk=RiskSpec.from_settings(settings),
             promotion=ResearchThresholds.from_mapping(_mapping(research.get("promotion_thresholds"))),
         )

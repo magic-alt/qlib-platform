@@ -138,7 +138,7 @@ def _assert_recipe(settings: Settings, release: Mapping[str, Any], canonical: Ma
     approved_recipe = {key: value for key, value in approved_parameters.items() if key not in runtime_keys}
     if sha256_json(current_recipe) != sha256_json(approved_recipe):
         raise ValueError("configured model parameters differ from approved research recipe")
-    for section in ("dataset", "strategy", "portfolio", "execution", "risk"):
+    for section in ("dataset", "strategy", "portfolio", "risk"):
         if sha256_json(current.get(section)) != sha256_json(approved_copy.get(section)):
             raise ValueError(f"configured {section} differs from approved research recipe")
 
