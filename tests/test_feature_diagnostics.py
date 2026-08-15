@@ -85,8 +85,38 @@ def test_rolling_fold_year_and_orientation_are_oos_only():
     neg_summary = result.summary.set_index("feature").loc["NEG"]
     assert neg_summary["rank_ic_mean"] == pytest.approx(-1.0)
     assert neg_summary["oriented_rank_ic_mean"] == pytest.approx(1.0)
+    assert np.isnan(neg_summary["rank_icir"])
+    assert np.isnan(neg_summary["oriented_rank_icir"])
     assert neg_summary["positive_oriented_rank_ic_fold_ratio"] == pytest.approx(1.0)
     assert len(result.fold.loc[result.fold["feature"].eq("POS")]) == 2
+
+
+def test_oriented_rank_icir_uses_the_same_predeclared_direction_as_oriented_rank_ic():
+    features, labels = _panel(days=4)
+    dates = pd.DatetimeIndex(labels.index.get_level_values("datetime").unique())
+    labels.loc[dates[1], "label"] = [0, 1, 2, 3, 4, 5, 6, 9, 8, 7]
+    labels.loc[dates[2], "label"] = [0, 1, 2, 3, 4, 7, 6, 5, 9, 8]
+    labels.loc[dates[3], "label"] = [0, 1, 2, 4, 3, 5, 8, 7, 6, 9]
+    assignments = {date: f"fold_{number // 2}" for number, date in enumerate(dates)}
+
+    result = build_feature_diagnostics(
+        features,
+        labels,
+        _taxonomy(),
+        FeatureDiagnosticsSpec(
+            min_cross_section=5,
+            rolling_sessions=3,
+            short_rolling_sessions=2,
+            quantiles=5,
+        ),
+        fold_assignments=assignments,
+        hac_lag=2,
+    )
+    neg_summary = result.summary.set_index("feature").loc["NEG"]
+
+    assert neg_summary["rank_icir"] < 0
+    assert neg_summary["oriented_rank_icir"] > 0
+    assert neg_summary["oriented_rank_icir"] == pytest.approx(-neg_summary["rank_icir"])
 
 
 def test_quantile_returns_preserve_raw_and_oriented_spreads_and_turnover():

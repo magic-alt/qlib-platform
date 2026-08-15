@@ -130,6 +130,16 @@ def parser() -> argparse.ArgumentParser:
     alpha_diagnose.add_argument("--feature-snapshot", required=True)
     alpha_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
     alpha_diagnose.add_argument("--output")
+    regime_diagnose = sub.add_parser("regime-diagnose")
+    regime_diagnose.add_argument("--base-study", required=True)
+    regime_diagnose.add_argument("--acceptance", required=True)
+    regime_diagnose.add_argument("--walk-forward", required=True)
+    regime_diagnose.add_argument("--ridge-predictions", required=True)
+    regime_diagnose.add_argument("--lightgbm-predictions", required=True)
+    regime_diagnose.add_argument("--feature-snapshot", required=True)
+    regime_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    regime_diagnose.add_argument("--regimes", default="configs/regimes/ashare_regime_v1.yaml")
+    regime_diagnose.add_argument("--output")
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -724,6 +734,35 @@ def main() -> None:
                     "manifest": str(manifest_path),
                     "featureCount": manifest["featureCount"],
                     "rollingOosSessions": manifest["rollingOosSessions"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "regime-diagnose":
+        from .research.regime_study import run_regime_diagnose
+
+        manifest_path = run_regime_diagnose(
+            settings,
+            base_study=args.base_study,
+            acceptance=args.acceptance,
+            walk_forward=args.walk_forward,
+            ridge_predictions=args.ridge_predictions,
+            lightgbm_predictions=args.lightgbm_predictions,
+            feature_snapshot=args.feature_snapshot,
+            taxonomy_path=args.taxonomy,
+            regime_path=args.regimes,
+            output_root=args.output,
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "studyId": manifest["studyId"],
+                    "manifest": str(manifest_path),
+                    "regimeDiagnostics": manifest["status"]["regimeDiagnostics"],
+                    "availability": manifest["availability"],
                 },
                 ensure_ascii=False,
             )
