@@ -1,0 +1,28 @@
+schema: ashare_failure_attribution_v1
+attributionId: ashare_failure_attribution_v1
+minimumCrossSection: 50
+annualizationSessions: 252
+labelHorizonSessions: 5
+failureFold: rolling_07
+
+portfolioVariants:
+  baseline:
+    topk: 30
+    nDrop: 5
+    holdThreshold: 5
+  topk20:
+    topk: 20
+    nDrop: 5
+    holdThreshold: 5
+  topk50:
+    topk: 50
+    nDrop: 10
+    holdThreshold: 5
+
+costMultipliers: [0.0, 0.5, 1.0, 1.5, 2.0]
+
+classification:
+  minimumRankIc: 0.02
+  costPrimaryGrossFraction: 0.50
+  modelTopkNearIdentity: 0.90
+  topkIncrementTolerance: 0.000001

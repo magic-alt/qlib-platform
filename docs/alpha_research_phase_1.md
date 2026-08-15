@@ -200,10 +200,49 @@ attribution bridge with these stages:
 5. turnover and transaction-cost drag;
 6. net excess return and risk metrics.
 
-Test a bounded grid for TopK, `n_drop`, hold period, score weighting, volatility scaling, industry
-constraints, single-name caps, and turnover penalties. Treat these as portfolio experiments, not
-new model evidence. Report sensitivity surfaces and stable regions instead of selecting one lucky
-point.
+The first failure-attribution study deliberately narrows this to the accepted XGBoost baseline,
+`TopK20/drop5/hold5`, and `TopK50/drop10/hold5`. It does not select a winner. The baseline continuous
+rolling OOS portfolio is read from the certified XGBoost walk-forward bundle; optional comparator
+baseline and bounded prediction-only portfolio manifests use the exact accepted prediction checksum.
+Run it with:
+
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml attribution-diagnose \
+  --regime-study <REGIME_STUDY_MANIFEST> \
+  --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
+  --walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
+  --ridge-predictions <CERTIFIED_RIDGE_ROLLING_OOS_PARQUET> \
+  --lightgbm-predictions <CERTIFIED_LIGHTGBM_ROLLING_OOS_PARQUET> \
+  --portfolio-run xgboost:topk20=<PREDICTION_ONLY_MANIFEST> \
+  --portfolio-run xgboost:topk50=<PREDICTION_ONLY_MANIFEST> \
+  --output <ATTRIBUTION_STUDY_OUTPUT_ROOT>
+```
+
+`--portfolio-run` is optional and repeatable. It also accepts `ridge:baseline` and
+`lightgbm:baseline` when their certified portfolio bundles are available. Every supplied strategy
+must match one of the three predeclared variants in
+`configs/attribution/ashare_failure_attribution_v1.yaml`.
+
+Signal conversion uses the five-session forward label and reports IC, RankIC, TopK and BottomK
+label means, TopK-universe and TopK-BottomK spreads, hit rate, temporal TopK overlap, rank turnover,
+prediction dispersion, and XGBoost/comparator TopK overlap. Realized P&L remains a separate daily
+chain: gross return, benchmark, gross excess, explicit cost, net return, net excess, IR, drawdown,
+and turnover. The two chains are never added into a statistically invalid waterfall.
+
+The study reuses `strategy_audit.parquet` fields and attributes decision and execution events to
+entry, exit, rank replacement, hold threshold, suspension, price-limit block, unfilled, and partial
+fill categories. It reports the full OOS sample, every causal regime, and `rolling_07`. Cost
+sensitivity is fixed to `0x`, `0.5x`, `1x`, `1.5x`, and `2x` on the same realized gross-return path.
+
+The immutable bundle derives exactly one `PRIMARY_ALPHA_LOSS_SOURCE` from `SIGNAL`, `MODEL`,
+`RANKING`, `PORTFOLIO`, `COST`, `REGIME`, or `MIXED`. The classification contract is predeclared;
+it is not edited after seeing the study result. The command performs zero model training, model
+prediction, feature materialization, portfolio backtest execution, final-holdout selection, or
+publishing.
+
+Broader score weighting, volatility scaling, industry constraints, single-name caps, and turnover
+penalties remain follow-on portfolio research only when this attribution identifies implementation
+as the primary loss source.
 
 ## Required artifacts
 
