@@ -264,7 +264,7 @@ def test_checkpoint_fingerprint_covers_fold_artifact_producer(tmp_path, monkeypa
     assert changed != base
 
 
-def test_default_three_month_walk_forward_completes_when_final_quality_is_rejected(
+def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_are_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     paths = Paths.from_root(tmp_path / "data")
@@ -378,8 +378,8 @@ def test_default_three_month_walk_forward_completes_when_final_quality_is_reject
         gate_path.write_text(
             json.dumps(
                 {
-                    "passed": promotion_mode != "holdout",
-                    "decision": "REJECT" if promotion_mode == "holdout" else "COMPONENT_VALIDATED",
+                    "passed": False,
+                    "decision": "REJECT",
                 }
             ),
             encoding="utf-8",
@@ -414,10 +414,11 @@ def test_default_three_month_walk_forward_completes_when_final_quality_is_reject
             "canonicalConfig": {},
             "lineage": {"lineageId": f"lineage-{run_id}", "complete": True},
             "promotion": {
-                "status": "REJECTED" if promotion_mode == "holdout" else "CANDIDATE",
-                "decision": "REJECT" if promotion_mode == "holdout" else "COMPONENT_VALIDATED",
+                "status": "REJECTED",
+                "decision": "REJECT",
                 "gateMode": "final_holdout" if promotion_mode == "holdout" else "component_validation",
                 "gateReportPath": str(gate_path),
+                "promotionAuthorized": False,
             },
             "execution": {},
             "timings": {"phasesSeconds": {}},
