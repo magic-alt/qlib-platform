@@ -78,6 +78,10 @@ def _research_label_horizon_days(settings: Settings) -> int:
     return label_timing_from_settings(settings).horizon_days
 
 
+def _promotion_authorized(promotion_mode: str, promoted: bool) -> bool:
+    return promotion_mode == "release" and promoted
+
+
 def _align_oos_labels(
     predictions: pd.Series | pd.DataFrame,
     raw_labels: pd.Series | pd.DataFrame,
@@ -1132,6 +1136,7 @@ def train_backtest_select(
                     if promotion_mode == "holdout"
                     else "release"
                 ),
+                "promotionAuthorized": _promotion_authorized(promotion_mode, promoted),
             },
             "runtime": runtime.to_manifest(),
             "artifactLevel": artifact_level,
