@@ -229,6 +229,41 @@ def test_checkpoint_fingerprint_changes_with_strategy_or_execution(tmp_path):
     assert execution_changed != strategy_changed
 
 
+def test_checkpoint_fingerprint_covers_fold_artifact_producer(tmp_path, monkeypatch):
+    settings = Settings(
+        config_path=tmp_path / "pipeline.yaml",
+        data={"research": {"random_seed": 42}, "universe": {"instruments": "all"}},
+        paths=Paths.from_root(tmp_path / "data"),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=tmp_path / "qlib",
+    )
+    fold = Fold(
+        "rolling_00",
+        ("2020-01-01", "2021-01-01"),
+        ("2021-02-01", "2021-03-01"),
+        ("2021-04-01", "2021-05-01"),
+    )
+    from tushare_qlib import walk_forward
+
+    original_sha256_file = walk_forward.sha256_file
+    producer_hash = {"value": "producer-v1"}
+
+    def controlled_sha256(path):
+        if Path(path).name == "train_select.py":
+            return producer_hash["value"]
+        return original_sha256_file(path)
+
+    monkeypatch.setattr(walk_forward, "sha256_file", controlled_sha256)
+    base = _checkpoint_fingerprint(settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=30)
+    producer_hash["value"] = "producer-v2"
+    changed = _checkpoint_fingerprint(
+        settings, fold, runtime_fingerprint="cpu", benchmark="SH000300", topn=30
+    )
+
+    assert changed != base
+
+
 def test_default_three_month_walk_forward_completes_when_final_quality_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
