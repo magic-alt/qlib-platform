@@ -90,6 +90,10 @@ def _write_research_selection_lock(
             "id": experiment.get("alpha_pack_id"),
             "sha256": experiment.get("alpha_pack_sha256"),
         },
+        "featureSet": {
+            "id": experiment.get("feature_set_id"),
+            "sha256": experiment.get("feature_set_sha256"),
+        },
         "labelSpec": {
             "id": experiment.get("label_spec_id"),
             "contract": experiment.get("label"),
@@ -235,6 +239,7 @@ def _write_continuous_oos_stream(
         stable_fields = (
             "data_release_id",
             "alpha_pack_id",
+            "feature_set_id",
             "feature_snapshot_id",
             "label_spec_id",
             "model_profile_id",
@@ -260,6 +265,7 @@ def _write_continuous_oos_stream(
                 model_id="wf_" + sha256_json([item["model_id"] for item in snapshot_contracts]),
                 model_profile_id=first["model_profile_id"],
                 fold_id="rolling_oos_aggregate",
+                feature_set_id=first["feature_set_id"],
             ),
         )
     else:

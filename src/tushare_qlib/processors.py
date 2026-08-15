@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from qlib.data.dataset.processor import Processor
 
+from .research.phase2_features import BENCHMARK_FAMILIES, INTERACTIONS, ORIENTATIONS, feature_set
+
 
 class AshareUniverseFilter(Processor):
     """Point-in-time row filter executed before model normalization."""
@@ -135,6 +137,170 @@ class CrossSectionalFactorProcessor(Processor):
         result = result.drop(columns=[("feature", "INDUSTRY_L1_CODE")])
         result.sort_index(inplace=True)
         return result
+
+    def readonly(self) -> bool:
+        return False
+
+
+class Phase2FeatureSetProcessor(Processor):
+    """Build and isolate a pre-registered Phase 2 feature set by date.
+
+    The handler loads the immutable superset once. This processor performs the
+    cross-sectional transformations and then drops every field outside the
+    registered ablation, preventing accidental feature leakage between P2 runs.
+    """
+
+    _SUPPORT = {"INDUSTRY_L1_CODE", "PAUSED", "IS_ST", "LISTED_DAYS", "CIRC_MV", "MONEY20"}
+    _ACCOUNTING = {
+        *BENCHMARK_FAMILIES["Profitability"],
+        *BENCHMARK_FAMILIES["Growth"],
+        *BENCHMARK_FAMILIES["Investment"],
+        *BENCHMARK_FAMILIES["Accruals"],
+    }
+
+    def __init__(
+        self,
+        feature_set_id: str,
+        selected_technical: tuple[str, ...] | list[str] = (),
+        non_applicable_industry_codes: tuple[str, ...] | list[str] = ("801780", "801790"),
+        minimum_residual_cross_section: int = 20,
+    ) -> None:
+        self.feature_set_id = feature_set_id
+        self.selected_technical = tuple(str(value) for value in selected_technical)
+        self.non_applicable_industry_codes = tuple(str(value) for value in non_applicable_industry_codes)
+        self.minimum_residual_cross_section = int(minimum_residual_cross_section)
+        self.spec = feature_set(feature_set_id)
+        if self.spec.source_pack != "ashare_alpha_phase2_v1":
+            raise ValueError(f"{feature_set_id} is not a Phase 2 superset feature set")
+        if self.spec.include_selected_technical and not self.selected_technical:
+            raise ValueError("A7 requires a frozen non-empty selected_technical list")
+        if not self.spec.include_selected_technical and self.selected_technical:
+            raise ValueError("selected_technical is allowed only for its registered feature set")
+        if self.minimum_residual_cross_section < 5:
+            raise ValueError("minimum_residual_cross_section must be at least five")
+
+    @staticmethod
+    def _rank_z(values: pd.Series) -> pd.Series:
+        ranked = (
+            pd.to_numeric(values, errors="coerce")
+            .replace([np.inf, -np.inf], np.nan)
+            .rank(method="average", pct=True)
+        )
+        scale = ranked.std(ddof=0)
+        if not np.isfinite(scale) or scale <= 1e-12:
+            return ranked - ranked.mean()
+        return (ranked - ranked.mean()) / scale
+
+    def _residual_lowvol(
+        self,
+        lowvol: pd.Series,
+        value: pd.Series,
+        profitability: pd.Series,
+        size: pd.Series,
+        industry: pd.Series,
+    ) -> pd.Series:
+        controls = pd.DataFrame(
+            {"value": value, "profitability": profitability, "size": size},
+            index=lowvol.index,
+        )
+        dummies = pd.get_dummies(industry.astype("string"), prefix="industry", dtype=float)
+        design = pd.concat([controls, dummies], axis=1)
+        valid = lowvol.notna() & design.notna().all(axis=1)
+        result = pd.Series(np.nan, index=lowvol.index, dtype=float)
+        if valid.sum() < self.minimum_residual_cross_section:
+            return result
+        matrix = np.column_stack([np.ones(int(valid.sum())), design.loc[valid].to_numpy(dtype=float)])
+        target = lowvol.loc[valid].to_numpy(dtype=float)
+        coefficients = np.linalg.lstsq(matrix, target, rcond=None)[0]
+        result.loc[valid] = target - matrix @ coefficients
+        return self._rank_z(result)
+
+    def __call__(self, df: pd.DataFrame) -> pd.DataFrame:
+        if not isinstance(df.columns, pd.MultiIndex) or "feature" not in df.columns.get_level_values(0):
+            raise ValueError("Phase 2 feature processor requires grouped feature columns")
+        features = df["feature"]
+        required = {
+            "INDUSTRY_L1_CODE",
+            "LOG_TOTAL_MV",
+            *{name for names in BENCHMARK_FAMILIES.values() for name in names},
+        }
+        missing = sorted(required - set(features))
+        if missing:
+            raise ValueError(f"Phase 2 superset is missing fields: {missing}")
+        forbidden = sorted(set(self.selected_technical) & self._SUPPORT)
+        unknown_technical = sorted(set(self.selected_technical) - set(features))
+        if forbidden or unknown_technical:
+            raise ValueError(
+                f"invalid selected technical fields: support={forbidden}, unknown={unknown_technical}"
+            )
+
+        blocks: list[pd.DataFrame] = []
+        for _, positions in features.groupby(level="datetime", sort=False).indices.items():
+            block = features.iloc[positions]
+            industry = block["INDUSTRY_L1_CODE"]
+            industry_codes = industry.astype("string").str.replace(r"\.0$", "", regex=True)
+            applicable = ~industry_codes.isin(self.non_applicable_industry_codes)
+            normalized = pd.DataFrame(index=block.index)
+            for name in sorted(required - {"INDUSTRY_L1_CODE"}):
+                values = pd.to_numeric(block[name], errors="coerce")
+                if name in self._ACCOUNTING:
+                    values = values.where(applicable)
+                normalized[name] = self._rank_z(values * ORIENTATIONS.get(name, 1.0))
+
+            composites = {
+                "VALUE_COMPOSITE": normalized[list(BENCHMARK_FAMILIES["Value"])].mean(axis=1, skipna=False),
+                "PROFITABILITY_COMPOSITE": normalized[list(BENCHMARK_FAMILIES["Profitability"])].mean(
+                    axis=1, skipna=False
+                ),
+                "LOWVOL_COMPOSITE": normalized[list(BENCHMARK_FAMILIES["LowRisk"])].mean(
+                    axis=1, skipna=False
+                ),
+                "SIZE_COMPOSITE": normalized["LOG_TOTAL_MV"],
+                "LIQUIDITY_COMPOSITE": normalized[list(BENCHMARK_FAMILIES["Liquidity"])].mean(
+                    axis=1, skipna=False
+                ),
+                "MOMENTUM_COMPOSITE": normalized[list(BENCHMARK_FAMILIES["PriceMomentum"])].mean(
+                    axis=1, skipna=False
+                ),
+            }
+            composites["VOLATILITY_COMPOSITE"] = -composites["LOWVOL_COMPOSITE"]
+            normalized["FUNDAMENTAL_MOMENTUM"] = normalized[list(BENCHMARK_FAMILIES["Growth"])].mean(
+                axis=1, skipna=False
+            )
+            normalized["LOWVOL_RESIDUAL"] = self._residual_lowvol(
+                composites["LOWVOL_COMPOSITE"],
+                composites["VALUE_COMPOSITE"],
+                composites["PROFITABILITY_COMPOSITE"],
+                composites["SIZE_COMPOSITE"],
+                industry_codes,
+            )
+            for name, values in composites.items():
+                normalized[name] = values
+            for name, (left, right) in INTERACTIONS.items():
+                normalized[name] = self._rank_z(normalized[left] * normalized[right])
+            for name in self.selected_technical:
+                normalized[name] = self._rank_z(block[name])
+
+            selected: list[str] = []
+            for family in self.spec.families:
+                if family in BENCHMARK_FAMILIES:
+                    selected.extend(BENCHMARK_FAMILIES[family])
+                elif family == "FundamentalMomentum":
+                    selected.append("FUNDAMENTAL_MOMENTUM")
+                elif family == "ResidualLowRisk":
+                    selected.append("LOWVOL_RESIDUAL")
+                else:
+                    raise ValueError(f"unsupported Phase 2 family in {self.feature_set_id}: {family}")
+            selected.extend(self.selected_technical)
+            if self.spec.include_interactions:
+                selected.extend(INTERACTIONS)
+            selected = list(dict.fromkeys(selected))
+            blocks.append(normalized[selected])
+
+        processed = pd.concat(blocks).sort_index()
+        processed.columns = pd.MultiIndex.from_product([["feature"], processed.columns])
+        non_feature = df.loc[:, df.columns.get_level_values(0) != "feature"]
+        return pd.concat([processed, non_feature], axis=1).sort_index()
 
     def readonly(self) -> bool:
         return False

@@ -1,0 +1,140 @@
+schema: ashare_phase2_v1
+
+identity:
+  programId: ashare_alpha_research_phase2_v1
+  dataReleaseProfile: ashare_qlib_research_v2
+  universe: PIT_CSI300
+  labelSpec: return_5d_t1_v1
+  splitProfile: wf_1500_126_63_v1
+  costModel: ashare_cost_v1
+  portfolioPolicy: topk_dropout_v1
+
+hypotheses:
+  H001:
+    name: china_earnings_value
+    family: Value
+    kind: feature
+    direction: positive
+    definition: parent_net_income_ttm / total_market_cap
+    normalization: daily_rank_z
+    controls: [Size, Profitability, LowRisk, Liquidity]
+    firstRejection: no positive incremental rolling-OOS RankIC after benchmark controls
+  H002:
+    name: profitability_adjusted_lowvol
+    family: LowRisk
+    kind: composite
+    direction: positive
+    definition: residualized negative volatility composite
+    normalization: daily_industry_size_value_profitability_residual_rank_z
+    controls: [Industry, Size, Value, Profitability]
+    firstRejection: low-vol residual fails the pre-registered incremental gate
+  H003:
+    name: gross_profitability
+    family: Profitability
+    kind: feature
+    direction: positive
+    definition: gross_profit_ttm / average_total_assets
+    normalization: daily_rank_z
+    applicableIndustries: [NON_FINANCIAL]
+    controls: [Size, Value, LowRisk, Liquidity]
+    firstRejection: applicable-universe coverage or incremental RankIC fails
+  H004:
+    name: operating_profitability
+    family: Profitability
+    kind: feature
+    direction: positive
+    definition: operating_profit_ttm / average_total_assets
+    normalization: daily_rank_z
+    applicableIndustries: [NON_FINANCIAL]
+    controls: [Size, Value, LowRisk, Liquidity]
+    firstRejection: nested Ridge delta is non-positive
+  H005:
+    name: fundamental_momentum
+    family: FundamentalMomentum
+    kind: composite
+    direction: positive
+    definition: equal_weight(revenue_growth,earnings_growth,operating_profit_growth,cashflow_growth)
+    normalization: daily_rank_z
+    applicableIndustries: [NON_FINANCIAL]
+    controls: [Size, Value, Profitability, LowRisk, Liquidity]
+    firstRejection: performance is concentrated in one year or fails multiple-testing control
+  H101:
+    name: value_x_volatility
+    family: Interaction
+    kind: interaction
+    direction: positive
+    definition: daily_rank_z(value) * daily_rank_z(volatility)
+    normalization: daily_rank_z_product
+    members: [Value, Volatility]
+    firstRejection: explicit Ridge interaction has no incremental rolling-OOS RankIC
+  H102:
+    name: value_x_size
+    family: Interaction
+    kind: interaction
+    direction: positive
+    definition: daily_rank_z(value) * daily_rank_z(size)
+    normalization: daily_rank_z_product
+    members: [Value, Size]
+    firstRejection: explicit Ridge interaction has no incremental rolling-OOS RankIC
+  H103:
+    name: profitability_x_value
+    family: Interaction
+    kind: interaction
+    direction: positive
+    definition: daily_rank_z(profitability) * daily_rank_z(value)
+    normalization: daily_rank_z_product
+    members: [Profitability, Value]
+    firstRejection: explicit Ridge interaction has no incremental rolling-OOS RankIC
+  H104:
+    name: profitability_x_lowvol
+    family: Interaction
+    kind: interaction
+    direction: positive
+    definition: daily_rank_z(profitability) * daily_rank_z(low_volatility)
+    normalization: daily_rank_z_product
+    members: [Profitability, LowVolatility]
+    firstRejection: explicit Ridge interaction has no incremental rolling-OOS RankIC
+  H105:
+    name: momentum_x_volatility
+    family: Interaction
+    kind: interaction
+    direction: positive
+    definition: daily_rank_z(momentum) * daily_rank_z(volatility)
+    normalization: daily_rank_z_product
+    members: [Momentum, Volatility]
+    firstRejection: explicit Ridge interaction has no incremental rolling-OOS RankIC
+  H106:
+    name: liquidity_x_volatility
+    family: Interaction
+    kind: interaction
+    direction: positive
+    definition: daily_rank_z(liquidity) * daily_rank_z(volatility)
+    normalization: daily_rank_z_product
+    members: [Liquidity, Volatility]
+    firstRejection: explicit Ridge interaction has no incremental rolling-OOS RankIC
+
+multipleTesting:
+  hacLag: 6
+  bhAlpha: 0.05
+  localFdrAlpha: 0.20
+  romanoWolfAlpha: 0.05
+  romanoWolfResamples: 5000
+  blockSessions: 20
+  randomSeed: 42
+
+robustness:
+  minimumCoverage: 0.80
+  minimumOrientedRankIc: 0.01
+  minimumPositiveFoldRatio: 0.60
+  minimumHacT: 1.96
+  minimumWorstFoldRankIc: -0.01
+  minimumWorstRollingRankIc: -0.005
+  minimumLeaveOneYearRetention: 0.50
+  maximumTurnoverIncrease: 0.20
+  stressedCostMultiple: 1.50
+
+finalHoldout:
+  policy: FIRST_SESSION_AFTER_SELECTION_LOCK
+  sessions: 252
+  labelMaturitySessions: 5
+  accessLimit: 1

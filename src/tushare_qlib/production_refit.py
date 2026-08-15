@@ -158,6 +158,12 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
     research = research if isinstance(research, Mapping) else {}
     seed = int(research.get("random_seed", 42))
     np.random.seed(seed)
+    experiment = settings.data.get("experiment", {})
+    experiment = experiment if isinstance(experiment, Mapping) else {}
+    alpha_config = experiment.get("alpha", {})
+    alpha_config = alpha_config if isinstance(alpha_config, Mapping) else {}
+    feature_set_id = str(alpha_config.get("feature_set") or "").strip() or None
+    selected_technical = tuple(str(value) for value in alpha_config.get("selected_technical", ()))
 
     import qlib
     from qlib.constant import REG_CN
@@ -183,6 +189,8 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
         label_spec=label_spec_from_settings(settings),
         prepared_feature_data=prepared,
         alpha_pack=alpha_pack,
+        feature_set_id=feature_set_id,
+        selected_technical=selected_technical,
     )
     feature_columns = [str(column) for column in selection_dataset.handler.get_cols(col_set="feature")]
     parameters = resolved_model_parameters(
@@ -211,6 +219,8 @@ def refit_production_model(settings: Settings, research_run: str | Path, *, as_o
             label_spec=label_spec_from_settings(settings),
             prepared_feature_data=prepared,
             alpha_pack=alpha_pack,
+            feature_set_id=feature_set_id,
+            selected_technical=selected_technical,
         )
         final_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
         if final_columns != feature_columns:

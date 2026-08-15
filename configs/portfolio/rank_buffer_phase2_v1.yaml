@@ -1,0 +1,9 @@
+schema: rank_buffer_phase2_v1
+entryRank: 20
+exitRank: 40
+maxReplacements: 5
+holdThresholdSessions: 5
+onlyTradable: true
+forbidAllTradeAtLimit: true
+predictionSnapshotReuseRequired: true
+costSensitivityMultiples: [1.0, 1.5, 2.0]

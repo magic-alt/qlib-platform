@@ -113,6 +113,8 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--full-acceptance", action="store_true")
     rr.add_argument("--interrupt-after-fold", type=int)
     rr.add_argument("--checkpoint-namespace", default="default")
+    rr.add_argument("--feature-set")
+    rr.add_argument("--selected-technical", action="append", default=[])
     pb = sub.add_parser("backtest-predictions")
     pb.add_argument("predictions")
     pb.add_argument("--benchmark")
@@ -190,6 +192,34 @@ def parser() -> argparse.ArgumentParser:
         default="configs/synthesis/ashare_phase1_synthesis_v1.yaml",
     )
     phase1_synthesize.add_argument("--output")
+    phase2_validate = sub.add_parser("phase2-validate")
+    phase2_validate.add_argument("--phase1-manifest", required=True)
+    phase2_validate.add_argument(
+        "--contract",
+        default="configs/research/ashare_phase2_v1.yaml",
+    )
+    phase2_validate.add_argument("--output", required=True)
+    phase2_plan = sub.add_parser("phase2-plan")
+    phase2_plan.add_argument("--contract-lock", required=True)
+    phase2_plan.add_argument("--output", required=True)
+    phase2_data_accept = sub.add_parser("phase2-data-accept")
+    phase2_data_accept.add_argument("--evidence", required=True)
+    phase2_data_accept.add_argument("--output", required=True)
+    phase2_accept = sub.add_parser("phase2-accept")
+    phase2_accept.add_argument("--contract-lock", required=True)
+    phase2_accept.add_argument("--candidates", required=True)
+    phase2_accept.add_argument("--output", required=True)
+    phase2_select = sub.add_parser("phase2-select")
+    phase2_select.add_argument("--contract-lock", required=True)
+    phase2_select.add_argument("--acceptance", required=True)
+    phase2_select.add_argument("--design-release", required=True)
+    phase2_select.add_argument("--selection-date", required=True)
+    phase2_select.add_argument("--output", required=True)
+    phase2_holdout = sub.add_parser("phase2-final-holdout-open")
+    phase2_holdout.add_argument("--selection-lock", required=True)
+    phase2_holdout.add_argument("--final-release", required=True)
+    phase2_holdout.add_argument("--calendar", required=True)
+    phase2_holdout.add_argument("--output", required=True)
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -444,6 +474,15 @@ def main() -> None:
     # package, so a stale optional QLIB_REPO does not mask a valid editable
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
+    if args.command == "research-run" and args.feature_set:
+        experiment = settings.data.setdefault("experiment", {})
+        if not isinstance(experiment, dict):
+            raise ValueError("experiment config must be a mapping")
+        alpha = experiment.setdefault("alpha", {})
+        if not isinstance(alpha, dict):
+            raise ValueError("experiment.alpha config must be a mapping")
+        alpha["feature_set"] = args.feature_set
+        alpha["selected_technical"] = list(args.selected_technical)
 
     if args.command in {
         "dataset-list",
@@ -905,6 +944,105 @@ def main() -> None:
                 ensure_ascii=False,
             )
         )
+        return
+
+    if args.command == "phase2-validate":
+        from .research.phase2_contract import write_phase2_contract_lock
+
+        lock_path = write_phase2_contract_lock(
+            phase1_manifest=args.phase1_manifest,
+            contract_path=args.contract,
+            output=args.output,
+        )
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "programId": lock["programId"],
+                    "primaryRecommendation": lock["recommendationRoute"]["primaryRecommendation"],
+                    "allowedWorkstreams": lock["recommendationRoute"]["allowedWorkstreams"],
+                    "lock": str(lock_path),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "phase2-plan":
+        from .research.phase2_program import write_phase2_experiment_plan
+
+        path = write_phase2_experiment_plan(
+            contract_lock=args.contract_lock,
+            output=args.output,
+        )
+        print(path)
+        return
+
+    if args.command == "phase2-data-accept":
+        from .research.phase2_data_acceptance import write_data_release_v2_acceptance
+
+        evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
+        checks = evidence.get("checks") if isinstance(evidence, dict) else None
+        if not isinstance(checks, dict):
+            raise ValueError("Phase 2 DataRelease evidence must contain a checks mapping")
+        path = write_data_release_v2_acceptance(settings, evidence=checks, output=args.output)
+        print(path)
+        return
+
+    if args.command == "phase2-accept":
+        from .research.phase2_program import write_incremental_acceptance
+
+        source = Path(args.candidates).expanduser().resolve()
+        candidates = json.loads(source.read_text(encoding="utf-8"))
+        if isinstance(candidates, dict):
+            candidates = candidates.get("candidates")
+        if not isinstance(candidates, list):
+            raise ValueError("Phase 2 candidate input must be a JSON list")
+        path = write_incremental_acceptance(
+            contract_lock=args.contract_lock,
+            candidates=candidates,
+            output=args.output,
+        )
+        print(path)
+        return
+
+    if args.command == "phase2-select":
+        from .research.phase2_selection import write_phase2_selection_lock
+
+        acceptance = json.loads(Path(args.acceptance).read_text(encoding="utf-8"))
+        candidates = acceptance.get("candidates") if isinstance(acceptance, dict) else None
+        if not isinstance(candidates, list):
+            raise ValueError("Phase 2 acceptance artifact has no candidate list")
+        path = write_phase2_selection_lock(
+            contract_lock=args.contract_lock,
+            candidates=[item for item in candidates if item.get("gatePass") is True],
+            design_release_manifest=args.design_release,
+            selection_date=args.selection_date,
+            output=args.output,
+        )
+        print(path)
+        return
+
+    if args.command == "phase2-final-holdout-open":
+        from .research.phase2_selection import open_final_holdout
+
+        calendar_path = Path(args.calendar).expanduser().resolve()
+        if calendar_path.suffix.lower() == ".json":
+            calendar = json.loads(calendar_path.read_text(encoding="utf-8"))
+        else:
+            calendar_frame = pd.read_csv(calendar_path)
+            if len(calendar_frame.columns) != 1:
+                raise ValueError("Phase 2 holdout calendar must contain exactly one column")
+            calendar = calendar_frame.iloc[:, 0].tolist()
+        if not isinstance(calendar, list):
+            raise ValueError("Phase 2 holdout calendar must be a JSON list or one-column CSV")
+        path = open_final_holdout(
+            selection_lock=args.selection_lock,
+            final_release_manifest=args.final_release,
+            trading_calendar=calendar,
+            output=args.output,
+        )
+        print(path)
         return
 
     if args.command == "backtest-predictions":

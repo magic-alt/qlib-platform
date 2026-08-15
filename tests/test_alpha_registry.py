@@ -10,8 +10,10 @@ def test_first_alpha_pack_set_is_registered_with_stable_contracts():
         "alpha158_daily_v1",
         "alpha158_pit_v1",
         "multifactor_core_v1",
+        "ashare_factor_benchmark_v1",
+        "ashare_alpha_phase2_v1",
     }
-    assert len({pack.fingerprint for pack in ALPHA_PACKS.values()}) == 3
+    assert len({pack.fingerprint for pack in ALPHA_PACKS.values()}) == len(ALPHA_PACKS)
     assert "industry_classification_pit" in ALPHA_PACKS["multifactor_core_v1"].required_release_components
     assert ALPHA_PACKS["alpha158_pit_v1"].processor_recipe == "alpha158_default_v1"
 

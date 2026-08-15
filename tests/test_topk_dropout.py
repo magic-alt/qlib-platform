@@ -6,9 +6,11 @@ from types import SimpleNamespace
 
 import pandas as pd
 from tushare_qlib.topk_dropout import (
+    RankBufferPolicy,
     TopkDropoutPolicy,
     enforce_deterministic_qlib_position_order,
     topk_dropout_decision,
+    rank_buffer_decision,
 )
 
 
@@ -84,6 +86,28 @@ def test_only_tradable_skips_limited_candidate_before_combined_ranking():
     assert decision.at["C", "target_action"] == "BUY"
     assert not decision.at["A", "is_buy_candidate"]
     assert decision.at["A", "target_action"] == "HOLD"
+
+
+def test_rank_buffer_holds_inside_exit_rank_and_replaces_breach():
+    scores = pd.Series({f"S{rank:02d}": 100 - rank for rank in range(1, 46)})
+    positions = pd.DataFrame(
+        {
+            "instrument": ["S05", "S35", "S45"],
+            "quantity": [100, 100, 100],
+            "holding_days": [10, 10, 10],
+        }
+    )
+    decision = rank_buffer_decision(
+        scores,
+        positions,
+        _quotes(list(scores.index)),
+        policy=RankBufferPolicy(entry_rank=20, exit_rank=40, max_replacements=1, hold_thresh=5),
+    ).set_index("instrument")
+
+    assert decision.at["S35", "target_action"] == "HOLD"
+    assert decision.at["S35", "action_reason"] == "INSIDE_HOLD_BUFFER"
+    assert decision.at["S45", "target_action"] == "SELL"
+    assert decision.loc[decision["target_action"].eq("BUY")].shape[0] == 1
 
 
 def test_live_buy_sell_sets_match_official_qlib_topk_dropout(monkeypatch):

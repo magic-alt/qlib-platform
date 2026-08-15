@@ -10,6 +10,7 @@ from .regime_study import run_regime_diagnose
 from .explanation_study import run_explanation_diagnose
 from .study import run_alpha_diagnose
 from .synthesis_study import run_phase1_synthesis
+from .phase2_contract import Phase2Contract, load_phase2_contract, write_phase2_contract_lock
 
 __all__ = [
     "FailureAttributionSpec",
@@ -22,4 +23,7 @@ __all__ = [
     "run_explanation_diagnose",
     "run_regime_diagnose",
     "run_phase1_synthesis",
+    "Phase2Contract",
+    "load_phase2_contract",
+    "write_phase2_contract_lock",
 ]

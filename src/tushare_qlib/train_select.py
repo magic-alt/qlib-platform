@@ -263,6 +263,8 @@ def build_dataset(
     label_spec: LabelSpec,
     alpha_pack: AlphaPackSpec,
     prepared_feature_data: pd.DataFrame | None = None,
+    feature_set_id: str | None = None,
+    selected_technical: tuple[str, ...] = (),
 ) -> Any:
     from qlib.contrib.data.handler import check_transform_proc
     from qlib.data.dataset import DatasetH
@@ -285,10 +287,24 @@ def build_dataset(
             },
         }
     ]
-    infer_processors = [
-        {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}},
-    ]
-    if alpha_pack.processor_recipe == "multifactor_cross_section_v1":
+    infer_processors = []
+    if alpha_pack.processor_recipe == "phase2_feature_set_v1":
+        if not feature_set_id:
+            raise ValueError("Phase 2 alpha pack requires experiment.alpha.feature_set")
+        infer_processors.append(
+            {
+                "class": "Phase2FeatureSetProcessor",
+                "module_path": "tushare_qlib.processors",
+                "kwargs": {
+                    "feature_set_id": feature_set_id,
+                    "selected_technical": list(selected_technical),
+                },
+            }
+        )
+        infer_processors.append(
+            {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}}
+        )
+    elif alpha_pack.processor_recipe == "multifactor_cross_section_v1":
         infer_processors.append(
             {
                 "class": "CrossSectionalFactorProcessor",
@@ -296,7 +312,13 @@ def build_dataset(
                 "kwargs": {"minimum_industry_members": 5},
             }
         )
+        infer_processors.append(
+            {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}}
+        )
     else:
+        infer_processors.append(
+            {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}}
+        )
         infer_processors.append(
             {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}}
         )
@@ -669,6 +691,12 @@ def train_backtest_select(
     seed = int(research.get("random_seed", 42))
     alpha_pack = alpha_pack_from_settings(settings)
     assert_alpha_pack_compatible(settings, alpha_pack)
+    experiment_config = settings.data.get("experiment", {})
+    experiment_config = experiment_config if isinstance(experiment_config, dict) else {}
+    alpha_config = experiment_config.get("alpha", {})
+    alpha_config = alpha_config if isinstance(alpha_config, dict) else {}
+    feature_set_id = str(alpha_config.get("feature_set") or "").strip() or None
+    selected_technical = tuple(str(value) for value in alpha_config.get("selected_technical", ()))
     np.random.seed(seed)
     _configure_mlflow_tracking(settings)
     parallel = resolve_qlib_parallel_runtime(settings)
@@ -699,6 +727,8 @@ def train_backtest_select(
             label_spec=label_spec,
             alpha_pack=alpha_pack,
             prepared_feature_data=prepared_feature_data,
+            feature_set_id=feature_set_id,
+            selected_technical=selected_technical,
         )
     fitted_processor_state = processor_state_manifest(dataset.handler, train)
     feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]

@@ -1,0 +1,16 @@
+schema: ashare_phase2_regime_overlay_v1
+causality:
+  informationLagSessions: 1
+  thresholdSource: expanding_history_only
+  minimumHistorySessions: 252
+experiments:
+  P2-R01: {highVolLowRiskWeight: 0.5}
+  P2-R02: {highVolLowRiskWeight: 0.0}
+  P2-R03:
+    grossExposure: inverse_market_volatility
+    lower: 0.5
+    upper: 1.0
+constraints:
+  regimeSpecificModelsAllowed: false
+  predictionSnapshotReuseRequired: true
+  leverageAllowed: false

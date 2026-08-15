@@ -1,0 +1,26 @@
+extends: pipeline.yaml
+
+experiment:
+  alpha:
+    pack: ashare_alpha_phase2_v1
+    feature_set: A1
+
+qlib:
+  include_fields_extra:
+    - total_assets_pit
+    - prior_year_total_assets_pit
+    - total_equity_pit
+    - prior_year_total_equity_pit
+    - gross_profit_ttm_pit
+    - prior_year_gross_profit_ttm_pit
+    - operating_profit_ttm_pit
+    - prior_year_operating_profit_ttm_pit
+    - operating_cash_flow_ttm_pit
+    - prior_year_operating_cash_flow_ttm_pit
+    - revenue_ttm_pit
+    - prior_year_revenue_ttm_pit
+    - parent_net_income_ttm_pit
+    - prior_year_parent_net_income_ttm_pit
+    - capex_ttm_pit
+    - fixed_assets_pit
+    - total_shares_pit

@@ -66,7 +66,7 @@ def _run(
     _read_staging_manifest(data_path)
     dump_script = _dump_script(settings)
     qlib_repo = dump_script.parent.parent
-    fields = ",".join(settings.data["qlib"]["include_fields"])
+    fields = ",".join(settings.qlib_include_fields)
     export_cfg = settings.data.get("qlib", {}).get("export", {})
     configured_workers = export_cfg.get("max_workers", 4) if isinstance(export_cfg, dict) else 4
     max_workers = 1 if single_thread else max(1, int(configured_workers))
@@ -420,7 +420,7 @@ def write_fingerprint(
     universe_hash = membership_fingerprint(settings)
     content: dict[str, object] = {
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
-        "fields": settings.data["qlib"]["include_fields"],
+        "fields": list(settings.qlib_include_fields),
         "staging_manifest_sha256": combined_stage_hash,
         "staging_manifests": stage_hashes,
         "pipeline_config_sha256": sha256_file(settings.config_path),
@@ -474,7 +474,7 @@ def write_fingerprint(
         extra={
             "dataset_id": settings.qlib_dataset_name,
             "mode": mode,
-            "fields": settings.data["qlib"]["include_fields"],
+            "fields": list(settings.qlib_include_fields),
             "staging_manifest_sha256": combined_stage_hash,
             "staging_manifests": stage_hashes,
             "source_snapshot_id": combined_stage_hash,

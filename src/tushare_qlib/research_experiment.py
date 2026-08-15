@@ -27,6 +27,8 @@ class ResearchExperimentSpec:
     data_release_id: str
     alpha_pack_id: str
     alpha_pack_sha256: str
+    feature_set_id: str
+    feature_set_sha256: str
     label_spec_id: str
     label: dict[str, object]
     split_profile_id: str
@@ -81,10 +83,21 @@ class ResearchExperimentSpec:
         portfolio_policy_id = str(portfolio_config.get("policy") or "topk_dropout_v1")
         if portfolio_policy_id != "topk_dropout_v1":
             raise ValueError(f"unknown portfolio policy: {portfolio_policy_id}")
+        alpha_config = experiment.get("alpha", {})
+        alpha_config = alpha_config if isinstance(alpha_config, Mapping) else {}
+        feature_set_id = str(alpha_config.get("feature_set") or alpha_pack.pack_id)
+        if alpha_pack.processor_recipe == "phase2_feature_set_v1":
+            from .research.phase2_features import feature_set
+
+            feature_set_sha256 = feature_set(feature_set_id).fingerprint
+        else:
+            feature_set_sha256 = alpha_pack.fingerprint
         return cls(
             data_release_id=canonical.dataset.dataset_id,
             alpha_pack_id=alpha_pack.pack_id,
             alpha_pack_sha256=alpha_pack.fingerprint,
+            feature_set_id=feature_set_id,
+            feature_set_sha256=feature_set_sha256,
             label_spec_id=label_spec.spec_id,
             label=label_spec.to_manifest(),
             split_profile_id=split.profile_id,

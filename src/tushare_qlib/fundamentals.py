@@ -18,6 +18,30 @@ PIT_FIELDS = (
     "ocf_to_or_pit",
 )
 
+# DataRelease v2 adds standardized point-in-time accounting primitives.  These
+# are data facts (including TTM and prior-year comparable values), not Alpha
+# scores; factor definitions remain owned by the Qlib research layer.
+PIT_FIELDS_V2 = (
+    *PIT_FIELDS,
+    "total_assets_pit",
+    "prior_year_total_assets_pit",
+    "total_equity_pit",
+    "prior_year_total_equity_pit",
+    "gross_profit_ttm_pit",
+    "prior_year_gross_profit_ttm_pit",
+    "operating_profit_ttm_pit",
+    "prior_year_operating_profit_ttm_pit",
+    "operating_cash_flow_ttm_pit",
+    "prior_year_operating_cash_flow_ttm_pit",
+    "revenue_ttm_pit",
+    "prior_year_revenue_ttm_pit",
+    "parent_net_income_ttm_pit",
+    "prior_year_parent_net_income_ttm_pit",
+    "capex_ttm_pit",
+    "fixed_assets_pit",
+    "total_shares_pit",
+)
+
 
 def build_pit_fundamentals(reports: pd.DataFrame, calendar: pd.DataFrame) -> pd.DataFrame:
     """Expand announced financial reports only from their public announce date.

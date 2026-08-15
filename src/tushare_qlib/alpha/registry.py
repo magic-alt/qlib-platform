@@ -4,7 +4,7 @@ import json
 from typing import Mapping
 
 from .base import AlphaPackSpec
-from ..fundamentals import PIT_FIELDS
+from ..fundamentals import PIT_FIELDS, PIT_FIELDS_V2
 from ..settings import Settings
 
 
@@ -79,6 +79,43 @@ ALPHA_PACKS: dict[str, AlphaPackSpec] = {
             "cash_flow",
         ),
     ),
+    "ashare_factor_benchmark_v1": AlphaPackSpec(
+        "ashare_factor_benchmark_v1",
+        1,
+        "TushareAshareFactorBenchmark",
+        (*_BASE_FIELDS, *_DAILY_FIELDS, "total_mv", "industry_l1_code", *PIT_FIELDS_V2),
+        ("pit_fundamentals", "industry_classification_pit"),
+        252,
+        "multifactor_cross_section_v1",
+        (
+            "value",
+            "profitability",
+            "growth",
+            "investment",
+            "accruals",
+            "low_risk",
+            "size",
+            "liquidity",
+            "fundamental_momentum",
+            "price_momentum",
+            "reversal",
+        ),
+    ),
+    "ashare_alpha_phase2_v1": AlphaPackSpec(
+        "ashare_alpha_phase2_v1",
+        1,
+        "TushareAsharePhase2",
+        (*_BASE_FIELDS, *_DAILY_FIELDS, "total_mv", "industry_l1_code", *PIT_FIELDS_V2),
+        ("pit_fundamentals", "industry_classification_pit"),
+        252,
+        "phase2_feature_set_v1",
+        (
+            "benchmark",
+            "technical",
+            "interaction_inputs",
+            "state",
+        ),
+    ),
 }
 
 
@@ -106,6 +143,10 @@ def assert_alpha_pack_compatible(settings: Settings, pack: AlphaPackSpec) -> Non
             raise ValueError(f"alpha pack {pack.pack_id} missing Qlib fields: {missing_fields}")
     if settings.uses_platform_release() and pack.required_release_components:
         release = json.loads(settings.platform_release_manifest.read_text(encoding="utf-8"))
+        if pack.processor_recipe == "phase2_feature_set_v1" and release.get("profile") != (
+            "ashare_qlib_research_v2"
+        ):
+            raise ValueError("Phase 2 alpha pack requires ashare_qlib_research_v2")
         roles = {str(item.get("role")) for item in release.get("components", [])}
         missing = sorted(set(pack.required_release_components) - roles)
         if missing:

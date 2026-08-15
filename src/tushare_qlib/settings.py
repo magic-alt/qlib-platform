@@ -32,6 +32,31 @@ def _require_mapping(value: Any, name: str) -> dict[str, Any]:
     return value
 
 
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _load_config(path: Path, seen: frozenset[Path] = frozenset()) -> dict[str, Any]:
+    source = path.expanduser().resolve()
+    if source in seen:
+        raise ValueError(f"configuration extends cycle: {source}")
+    with source.open("r", encoding="utf-8") as fp:
+        loaded = _require_mapping(yaml.safe_load(fp), "root config")
+    parent = loaded.pop("extends", None)
+    if parent is None:
+        return loaded
+    parent_path = Path(str(parent)).expanduser()
+    if not parent_path.is_absolute():
+        parent_path = source.parent / parent_path
+    return _deep_merge(_load_config(parent_path, seen | {source}), loaded)
+
+
 @dataclass(frozen=True)
 class Paths:
     root: Path
@@ -103,9 +128,7 @@ class Settings:
     ) -> "Settings":
         load_dotenv()
         config_path = Path(config_path).expanduser().resolve()
-        with config_path.open("r", encoding="utf-8") as fp:
-            loaded = yaml.safe_load(fp)
-        data = _expand_env(_require_mapping(loaded, "root config"))
+        data = _expand_env(_load_config(config_path))
 
         if "project_root" not in data:
             raise ValueError("project_root is required")
@@ -234,3 +257,12 @@ class Settings:
     @property
     def qlib_dataset_ref(self) -> str:
         return str(self.data.get("qlib", {}).get("dataset_ref") or "research-current")
+
+    @property
+    def qlib_include_fields(self) -> tuple[str, ...]:
+        qlib = _require_mapping(self.data.get("qlib", {}), "qlib")
+        base = qlib.get("include_fields", ())
+        extra = qlib.get("include_fields_extra", ())
+        if not isinstance(base, list) or not isinstance(extra, list):
+            raise ValueError("qlib include_fields and include_fields_extra must be lists")
+        return tuple(dict.fromkeys(str(value) for value in [*base, *extra]))
