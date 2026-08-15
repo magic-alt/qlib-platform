@@ -139,6 +139,34 @@ def test_checkpoint_payload_tamper_is_invalidated(tmp_path: Path):
     assert inspected.reason == "artifact_sha256:oos_predictions.parquet"
 
 
+def test_checkpoint_directory_artifact_tamper_is_invalidated(tmp_path: Path):
+    artifact = tmp_path / "report_assets"
+    artifact.mkdir()
+    chart = artifact / "equity_curve.svg"
+    chart.write_text("version-1", encoding="utf-8")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset": {"fingerprint": "dataset"},
+                "lineage": {"lineageId": "lineage", "complete": True},
+                "artifacts": [{"name": artifact.name, "localPath": str(artifact)}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    checkpoint = tmp_path / "checkpoint.json"
+    payload = _checkpoint_payload(manifest_path, "expected")
+    checkpoint.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert payload["artifacts"][0]["kind"] == "directory"
+    assert _inspect_checkpoint(_settings(tmp_path), checkpoint, "expected").status == "VALID"
+    chart.write_text("version-2", encoding="utf-8")
+    inspected = _inspect_checkpoint(_settings(tmp_path), checkpoint, "expected")
+    assert inspected.status == "CORRUPTED"
+    assert inspected.reason == "artifact_sha256:report_assets"
+
+
 def test_continuous_oos_rejects_missing_dates_and_out_of_order_rows(tmp_path: Path):
     output = tmp_path / "fold"
     output.mkdir()
