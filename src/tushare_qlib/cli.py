@@ -124,6 +124,12 @@ def parser() -> argparse.ArgumentParser:
     rp = sub.add_parser("research-report")
     rp.add_argument("run_dir")
     rp.add_argument("--positions-file")
+    alpha_diagnose = sub.add_parser("alpha-diagnose")
+    alpha_diagnose.add_argument("--acceptance", required=True)
+    alpha_diagnose.add_argument("--walk-forward", required=True)
+    alpha_diagnose.add_argument("--feature-snapshot", required=True)
+    alpha_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    alpha_diagnose.add_argument("--output")
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -697,6 +703,31 @@ def main() -> None:
         run_dir = Path(args.run_dir).expanduser().resolve()
         write_backtest_report(settings, run_dir, positions_file=args.positions_file)
         print(json.dumps(_report_payload(run_dir / "manifest.json"), ensure_ascii=False))
+        return
+
+    if args.command == "alpha-diagnose":
+        from .research.study import run_alpha_diagnose
+
+        manifest_path = run_alpha_diagnose(
+            settings,
+            acceptance=args.acceptance,
+            walk_forward=args.walk_forward,
+            feature_snapshot=args.feature_snapshot,
+            taxonomy_path=args.taxonomy,
+            output_root=args.output,
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "studyId": manifest["studyId"],
+                    "manifest": str(manifest_path),
+                    "featureCount": manifest["featureCount"],
+                    "rollingOosSessions": manifest["rollingOosSessions"],
+                },
+                ensure_ascii=False,
+            )
+        )
         return
 
     if args.command == "backtest-predictions":
