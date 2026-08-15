@@ -1,0 +1,24 @@
+schema: ashare_phase1_synthesis_v1
+synthesisId: ashare_phase1_synthesis_v1
+
+recommendationPriority:
+  - PORTFOLIO_CONSTRUCTION
+  - REGIME_AWARE_RESEARCH
+  - XGBOOST_TUNING
+  - ALPHA_PACK_V2
+  - NO_GO_NEW_ALPHA
+
+stableFeature:
+  minimumOrientedRankIc: 0.01
+  minimumPositiveFoldRatio: 0.60
+  minimumHacT: 1.96
+  minimumCoverage: 0.80
+
+dilution:
+  minimumUnstableFeatureFraction: 0.25
+  minimumRedundantStableFeatures: 1
+
+repeatableRegime:
+  minimumRankIc: 0.02
+  minimumPositiveFoldRatio: 0.60
+  minimumValidFolds: 2
