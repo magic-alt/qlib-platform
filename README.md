@@ -65,7 +65,7 @@ Qlib 会校验 release ID、canonical manifest/component SHA-256、覆盖区间�
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
   --start <START> --end <END> --single-thread
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml feature-store --dataset-ref research-current --start 20160104 --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml feature-store --dataset-ref research-current --start 20160201 --end <END>
 ```
 
 同一正式验证中，Qlib 与 LEAN 必须引用完全相同的 `dataset_release_id`。

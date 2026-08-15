@@ -16,7 +16,7 @@ experiment:
 project_root: ${QUANT_DATA_ROOT}/derived/qlib/${DATASET_RELEASE_ID}
 storage:
   registry_path: ${QUANT_DATA_ROOT}/derived/qlib/registry/qlib.sqlite
-start_date: "20160104"
+start_date: "20160201"
 end_date: "20260810"
 calendar_end_date: "20261231"
 

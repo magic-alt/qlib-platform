@@ -76,7 +76,7 @@ After Bronze data and extended financial data exist:
 
 ```powershell
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
-  --start 20160104 --end 20260810 --single-thread
+  --start 20160201 --end 20260810 --single-thread
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-list
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-resolve research-current
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
