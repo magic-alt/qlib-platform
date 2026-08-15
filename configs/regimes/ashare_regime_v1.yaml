@@ -1,0 +1,66 @@
+schema: ashare_regime_v1
+regimeId: ashare_regime_v1
+minimumSessions: 63
+hacLag: 6
+fdrAlpha: 0.05
+topK: 30
+
+features:
+  stable: [DV_TTM, PE_TTM, PB, STD5, STD10, STD20, STD30, STD60]
+  hypothesisOnly: [MIN20, MIN30, MIN60]
+
+composites:
+  value: [DV_TTM, PE_TTM, PB]
+  low_vol: [STD5, STD10, STD20, STD30, STD60]
+
+dimensions:
+  market_trend:
+    source: certified_benchmark_close
+    score: close_to_moving_average
+    window: 120
+    classifier: symmetric_threshold
+    threshold: 0.02
+    states: [DOWN, NEUTRAL, UP]
+
+  market_volatility:
+    source: certified_benchmark_close
+    score: realized_volatility
+    window: 20
+    annualization: 252
+    classifier: expanding_quantiles
+    quantiles: [0.3333333333333333, 0.6666666666666666]
+    minHistory: 252
+    thresholdAsOf: T-1
+    states: [LOW, MID, HIGH]
+
+  market_activity:
+    source: certified_feature_snapshot
+    field: TURNOVER_F
+    aggregation: cross_sectional_median
+    classifier: expanding_quantiles
+    quantiles: [0.3333333333333333, 0.6666666666666666]
+    minHistory: 252
+    thresholdAsOf: T-1
+    states: [LOW, NORMAL, HIGH]
+
+  size_style:
+    source: certified_data_release_and_feature_snapshot
+    score: small_minus_large_return
+    sizeField: LOG_CIRC_MV
+    basketQuantile: 0.30
+    bucketLagSessions: 1
+    window: 20
+    classifier: symmetric_threshold
+    threshold: 0.02
+    states: [LARGE_CAP, NEUTRAL, SMALL_CAP]
+
+  industry_breadth:
+    source: certified_pit_sw2021_l1
+    score: trailing_positive_industry_ratio
+    window: 20
+    minimumIndustries: 10
+    classifier: expanding_quantiles
+    quantiles: [0.3333333333333333, 0.6666666666666666]
+    minHistory: 252
+    thresholdAsOf: T-1
+    states: [NARROW, NORMAL, BROAD]

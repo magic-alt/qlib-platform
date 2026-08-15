@@ -312,13 +312,13 @@ def _write_report(
         "",
         "This table is diagnostic output, not a factor-selection or promotion decision.",
         "",
-        "| Feature | Family | Oriented RankIC | RankICIR | Coverage median |",
+        "| Feature | Family | Oriented RankIC | Oriented RankICIR | Coverage median |",
         "| --- | --- | ---: | ---: | ---: |",
     ]
     for row in strongest.itertuples(index=False):
         lines.append(
             f"| {row.feature} | {row.family} | {row.oriented_rank_ic_mean:.6f} | "
-            f"{row.rank_icir:.6f} | {row.coverage_median:.6f} |"
+            f"{row.oriented_rank_icir:.6f} | {row.coverage_median:.6f} |"
         )
     lines.extend(
         [

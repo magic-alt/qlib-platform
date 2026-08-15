@@ -68,6 +68,9 @@ Feature diagnostics use a minimum valid cross-section of 50. IC and RankIC are N
 constant cross-sections. ICIR retains the existing unannualized Qlib-compatible daily mean/std
 definition, while separate Newey-West t-statistics use the LabelSpec lookahead as the Bartlett lag.
 Trailing 63- and 252-session statistics are causal windows ending at the reported date.
+The summary artifact retains raw `rank_icir` and adds `oriented_rank_icir`; any report column paired
+with `oriented_rank_ic_mean` must display `oriented_rank_icir`, so declared negative directions do
+not appear with a semantically contradictory IR sign.
 
 Single-factor quantiles preserve both raw Q5-Q1 and taxonomy-oriented spreads. Unknown directions
 are not flipped from observed OOS outcomes. Membership turnover is the fraction of the prior
@@ -136,6 +139,41 @@ that a small or dominant regime cannot masquerade as robust evidence.
 The central test is whether XGBoost's advantage comes from stable nonlinear signal, a small set of
 interactions, or concentration in favorable regimes, and whether the high positive-IC-fold ratio
 is diluted by low magnitude or high variance across time.
+
+The causal regime engine is a second immutable, read-only study layered on a PASS feature study.
+It validates the three accepted rolling OOS prediction checksums and consumes no final-holdout
+artifact. Run it with:
+
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml regime-diagnose \
+  --base-study <ALPHA_PHASE1_FEATURE_MANIFEST> \
+  --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
+  --walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
+  --ridge-predictions <CERTIFIED_RIDGE_ROLLING_OOS_PARQUET> \
+  --lightgbm-predictions <CERTIFIED_LIGHTGBM_ROLLING_OOS_PARQUET> \
+  --feature-snapshot <FEATURE_SNAPSHOT_DIRECTORY> \
+  --taxonomy configs/alpha_taxonomy/alpha158_pit_v1.yaml \
+  --regimes configs/regimes/ashare_regime_v1.yaml \
+  --output <REGIME_STUDY_OUTPUT_ROOT>
+```
+
+`ashare_regime_v1` predeclares five independent one-dimensional labels: benchmark trend,
+benchmark realized volatility, cross-sectional market activity, lagged-size small-minus-large
+style, and PIT SW2021 L1 industry breadth. Expanding volatility/activity/breadth thresholds for
+date T use observations only through T-1. Size baskets use a one-session-lagged size rank. The
+first diagnostic family is fixed to eight stable candidates, three direction-unknown MIN
+hypotheses, and the accepted Ridge/LightGBM/XGBoost predictions. States with fewer than 63 sessions
+are `INSUFFICIENT_SAMPLE`; feature-regime inference uses Newey-West HAC and one global BH-FDR
+adjustment across the predeclared factor-regime tests.
+
+If a certified input component is absent, the affected dimension is `INPUT_UNAVAILABLE` and the
+study status is `PARTIAL`. In particular, current-industry fields from a security master must never
+substitute for a missing PIT industry component. A named fold such as `rolling_07` is profiled only
+after the same causal rules label all rolling OOS dates; it is not itself a regime definition.
+
+The regime bundle contains `regime_definitions.json`, `regime_labels.parquet`, factor and model
+regime tables, model-to-core-composite correlation, TopK Jaccard overlap, fold regime profiles, and
+a manifest/report. It does not produce AlphaPack v2 or a final Phase 1 recommendation.
 
 ## Workstream 4: model explanation
 

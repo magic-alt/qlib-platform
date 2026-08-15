@@ -290,3 +290,26 @@ def test_alpha_diagnose_cli_requires_governed_inputs():
 
     assert args.command == "alpha-diagnose"
     assert args.taxonomy == "configs/alpha_taxonomy/alpha158_pit_v1.yaml"
+
+
+def test_regime_diagnose_cli_requires_certified_models_and_defaults_to_predeclared_regimes():
+    args = parser().parse_args(
+        [
+            "regime-diagnose",
+            "--base-study",
+            "alpha-study.json",
+            "--acceptance",
+            "acceptance.json",
+            "--walk-forward",
+            "xgb-run",
+            "--ridge-predictions",
+            "ridge.parquet",
+            "--lightgbm-predictions",
+            "lightgbm.parquet",
+            "--feature-snapshot",
+            "fs-test",
+        ]
+    )
+
+    assert args.command == "regime-diagnose"
+    assert args.regimes == "configs/regimes/ashare_regime_v1.yaml"

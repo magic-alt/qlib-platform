@@ -335,6 +335,8 @@ def derive_feature_summary(
                 "rank_ic_std": float(rank_ic.std(ddof=1)),
                 "icir": _ratio(ic),
                 "rank_icir": _ratio(rank_ic),
+                "oriented_icir": (_ratio(oriented_ic) if orientation is not None else float("nan")),
+                "oriented_rank_icir": (_ratio(oriented_rank) if orientation is not None else float("nan")),
                 "oriented_ic_mean": float(oriented_ic.mean()) if orientation is not None else float("nan"),
                 "oriented_rank_ic_mean": (
                     float(oriented_rank.mean()) if orientation is not None else float("nan")
