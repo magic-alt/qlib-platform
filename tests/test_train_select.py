@@ -7,6 +7,7 @@ import pytest
 
 from tushare_qlib.settings import Paths, Settings
 from tushare_qlib.train_select import (
+    _align_oos_labels,
     _default_splits_from_data,
     _export_daily_selections,
     _export_daily_signal_scores,
@@ -14,6 +15,48 @@ from tushare_qlib.train_select import (
     _official_calendar,
     _research_label_horizon_days,
 )
+
+
+def test_align_oos_labels_reindexes_label_superset_to_predictions():
+    prediction_index = pd.MultiIndex.from_tuples(
+        [
+            (pd.Timestamp("2026-01-05"), "A"),
+            (pd.Timestamp("2026-01-06"), "B"),
+        ],
+        names=["datetime", "instrument"],
+    )
+    label_index = prediction_index.append(
+        pd.MultiIndex.from_tuples(
+            [(pd.Timestamp("2026-01-06"), "C")],
+            names=["datetime", "instrument"],
+        )
+    )
+    predictions = pd.DataFrame({"score": [0.3, 0.2]}, index=prediction_index)
+    labels = pd.DataFrame({"target": [0.01, float("nan"), 0.02]}, index=label_index)
+
+    aligned = _align_oos_labels(predictions, labels)
+
+    assert aligned.index.equals(predictions.index)
+    assert list(aligned.columns) == ["label"]
+    assert aligned.iloc[0, 0] == pytest.approx(0.01)
+    assert pd.isna(aligned.iloc[1, 0])
+
+
+def test_align_oos_labels_rejects_prediction_without_label_key():
+    prediction_index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp("2026-01-05"), "A")],
+        names=["datetime", "instrument"],
+    )
+    label_index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp("2026-01-05"), "B")],
+        names=["datetime", "instrument"],
+    )
+
+    with pytest.raises(ValueError, match="1 rows without labels"):
+        _align_oos_labels(
+            pd.DataFrame({"score": [0.3]}, index=prediction_index),
+            pd.DataFrame({"label": [0.01]}, index=label_index),
+        )
 
 
 def test_default_splits_reserve_release_observations_and_future_trade_day(tmp_path, monkeypatch):
