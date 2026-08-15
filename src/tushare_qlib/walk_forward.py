@@ -438,6 +438,8 @@ def _training_checkpoint_fingerprint(
         project_root / "src" / "tushare_qlib" / "research_timing.py",
         project_root / "src" / "tushare_qlib" / "model_runtime.py",
         project_root / "src" / "tushare_qlib" / "processor_state.py",
+        project_root / "src" / "tushare_qlib" / "train_select.py",
+        project_root / "src" / "tushare_qlib" / "prediction_snapshot.py",
         project_root / "src" / "tushare_qlib" / "walk_forward_acceptance.py",
     ]
     research = settings.data.get("research", {})
