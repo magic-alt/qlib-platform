@@ -177,13 +177,53 @@ a manifest/report. It does not produce AlphaPack v2 or a final Phase 1 recommend
 
 ## Workstream 4: model explanation
 
-Use XGBoost as the primary baseline and compare all models on identical OOS keys. Produce:
+Use XGBoost as the primary baseline, LightGBM as the nonlinear comparator, and Ridge coefficients
+as a linear reference on identical rolling OOS keys. The explanation study runs only after the
+feature, regime, and failure-attribution studies pass their own integrity contracts:
 
-- permutation importance on validation/OOS-safe partitions;
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml explanation-diagnose \
+  --base-study <ALPHA_PHASE1_FEATURE_MANIFEST> \
+  --regime-study <REGIME_STUDY_MANIFEST> \
+  --attribution-study <ATTRIBUTION_STUDY_MANIFEST> \
+  --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
+  --ridge-walk-forward <CERTIFIED_RIDGE_WALK_FORWARD_BUNDLE> \
+  --lightgbm-walk-forward <CERTIFIED_LIGHTGBM_WALK_FORWARD_BUNDLE> \
+  --xgboost-walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
+  --feature-snapshot <FEATURE_SNAPSHOT_DIRECTORY> \
+  --model-artifact-root <LOCAL_MLFLOW_ROOT> \
+  --taxonomy configs/alpha_taxonomy/alpha158_pit_v1.yaml \
+  --explanation configs/explanation/ashare_model_explanation_v1.yaml \
+  --output <EXPLANATION_STUDY_OUTPUT_ROOT>
+```
+
+The original Full Walk-forward Acceptance hashes aggregate predictions, not the fold-local
+`params.pkl` binaries retained by the Qlib/MLflow recorder. The explanation study therefore fails
+closed unless it can bind every rolling model retrospectively through the exact recorder id,
+recorder `pred.pkl`, component and aggregate accepted predictions, fitted processor-state replay,
+model score parity, and TreeSHAP additivity. This evidence grade is
+`DERIVED_SAME_RECORDER_ADDITIVITY`; it must not be described as direct binary certification by the
+original Full Acceptance.
+
+The study produces:
+
 - gain/split importance as model diagnostics, not causal evidence;
-- SHAP summaries and stability by fold/year/regime;
+- Ridge signed/absolute coefficient reference;
+- native TreeSHAP summaries and stability by fold/year/causal regime;
 - leading pairwise interactions and their stability;
-- bounded depth and regularization sensitivity around the current profile.
+- explicit H1/H2/H3 hypothesis assessments and one XGBoost mechanism classification.
+
+The immutable bundle contains `feature_importance.parquet`, `shap_summary.parquet`,
+`shap_by_fold.parquet`, `shap_by_year.parquet`, `shap_by_regime.parquet`,
+`xgb_interactions.parquet`, `explanation_stability.parquet`, a summary, report, and manifest.
+Missing PIT industry breadth propagates as `regimeConditioning=PARTIAL` without preventing the core
+model explanation from passing.
+
+This retrospective study performs zero training, creates no new PredictionSnapshot, executes no
+portfolio, accesses no final-holdout component, and authorizes no publishing. Native SHAP and
+interaction calculations are recorded separately as explanation evaluations; they are not hidden
+as zero model computation. Permutation importance and retraining-based bounded sensitivity remain
+`NOT_RUN` in this no-retraining study and cannot be used as positive evidence for XGBoost tuning.
 
 Do not start a large hyperparameter sweep or introduce a broad deep-model family in this phase.
 Any tuning experiment must have a written hypothesis and a small, fixed search budget.
@@ -248,12 +288,14 @@ as the primary loss source.
 
 Phase 1 should publish one immutable diagnosis bundle containing:
 
-- `feature_catalog.csv` with economic group and feature definition;
-- `feature_stability.parquet` and `feature_stability_summary.csv`;
+- `factor_taxonomy.json` with economic group and feature definition;
+- `feature_daily_ic.parquet`, `feature_summary.parquet`, and fold/year/rolling stability tables;
 - `feature_correlation.parquet` and `feature_clusters.json`;
-- `single_factor_quantiles.parquet` and `turnover_attribution.parquet`;
-- `regime_definitions.json` and `regime_diagnostics.parquet`;
-- `model_comparison.parquet`, `feature_importance.parquet`, and SHAP/interaction summaries;
+- `factor_quantile_returns.parquet` and `turnover_attribution.parquet`;
+- `regime_definitions.json`, `factor_regime_diagnostics.parquet`, and
+  `model_regime_diagnostics.parquet` plus correlation/overlap/fold profiles;
+- `feature_importance.parquet`, `shap_summary.parquet`, fold/year/regime SHAP tables, and
+  `xgb_interactions.parquet`;
 - `prediction_portfolio_attribution.parquet` and portfolio sensitivity results;
 - `alpha_phase_1_manifest.json` with all governed identities, code commit, parameters, and hashes;
 - `alpha_phase_1_report.md` with conclusions, uncertainty, rejected hypotheses, and recommendation.

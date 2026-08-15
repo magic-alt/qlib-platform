@@ -158,6 +158,28 @@ def parser() -> argparse.ArgumentParser:
         default="configs/attribution/ashare_failure_attribution_v1.yaml",
     )
     attribution_diagnose.add_argument("--output")
+    explanation_diagnose = sub.add_parser("explanation-diagnose")
+    explanation_diagnose.add_argument("--base-study", required=True)
+    explanation_diagnose.add_argument("--regime-study", required=True)
+    explanation_diagnose.add_argument("--attribution-study", required=True)
+    explanation_diagnose.add_argument("--acceptance", required=True)
+    explanation_diagnose.add_argument("--ridge-walk-forward", required=True)
+    explanation_diagnose.add_argument("--lightgbm-walk-forward", required=True)
+    explanation_diagnose.add_argument("--xgboost-walk-forward", required=True)
+    explanation_diagnose.add_argument("--feature-snapshot", required=True)
+    explanation_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    explanation_diagnose.add_argument(
+        "--model-artifact-root",
+        action="append",
+        required=True,
+        metavar="PATH",
+        help="local MLflow/Qlib recorder root containing RUN_ID/artifacts/params.pkl",
+    )
+    explanation_diagnose.add_argument(
+        "--explanation",
+        default="configs/explanation/ashare_model_explanation_v1.yaml",
+    )
+    explanation_diagnose.add_argument("--output")
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -809,6 +831,39 @@ def main() -> None:
                     "manifest": str(manifest_path),
                     "failureAttribution": manifest["status"]["failureAttribution"],
                     "primaryAlphaLossSource": manifest["primaryAlphaLossSource"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "explanation-diagnose":
+        from .research.explanation_study import run_explanation_diagnose
+
+        manifest_path = run_explanation_diagnose(
+            settings,
+            base_study=args.base_study,
+            regime_study=args.regime_study,
+            attribution_study=args.attribution_study,
+            acceptance=args.acceptance,
+            ridge_walk_forward=args.ridge_walk_forward,
+            lightgbm_walk_forward=args.lightgbm_walk_forward,
+            xgboost_walk_forward=args.xgboost_walk_forward,
+            feature_snapshot=args.feature_snapshot,
+            taxonomy_path=args.taxonomy,
+            model_artifact_roots=args.model_artifact_root,
+            explanation_path=args.explanation,
+            output_root=args.output,
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "studyId": manifest["studyId"],
+                    "manifest": str(manifest_path),
+                    "modelExplanation": manifest["status"]["modelExplanation"],
+                    "regimeConditioning": manifest["status"]["regimeConditioning"],
+                    "primaryMechanism": manifest["primaryMechanism"],
                 },
                 ensure_ascii=False,
             )

@@ -1,0 +1,24 @@
+schema: ashare_model_explanation_v1
+explanationId: ashare_model_explanation_v1
+topFeatures: 20
+minimumCrossSection: 50
+minimumRegimeSessions: 63
+interactionRowsPerFold: 128
+interactionTopPairs: 30
+randomSeed: 42
+scoreParityTolerance: 0.000001
+shapAdditivityTolerance: 0.00001
+
+hypotheses:
+  h1MainEffectFamilies: [Value, Volatility]
+  h1MinimumShapShare: 0.50
+  h2InteractionFamilyPairs:
+    - [Value, Volatility]
+    - [Value, Size]
+    - [Volatility, Momentum]
+  h2MinimumInteractionShare: 0.20
+  h2MinimumFoldPersistence: 0.50
+  h3MinimumTopFeatureJaccard: 0.40
+  h3MinimumDirectionAgreement: 0.70
+  h3MaximumMagnitudeCv: 1.00
+  h3MaximumRegimeDrift: 0.60
