@@ -36,6 +36,45 @@ All primary comparisons must pin the same:
 The final holdout remains sealed for research selection. Phase 1 selection and diagnosis use
 rolling OOS evidence; the holdout is used only by the existing locked final evaluation protocol.
 
+## Feature-diagnostics foundation
+
+The first implementation is an independent, read-only Research Study Layer under
+`tushare_qlib.research`. It consumes the certified raw FeatureSnapshot and the rolling OOS labels
+already embedded in the aggregate PredictionSnapshot. It does not call feature materialization,
+fit or replay a model, execute a portfolio, authorize publishing, or read final-holdout payloads.
+
+Run it with the repository-local interpreter:
+
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml alpha-diagnose \
+  --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
+  --walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
+  --feature-snapshot <FEATURE_SNAPSHOT_DIRECTORY> \
+  --taxonomy configs/alpha_taxonomy/alpha158_pit_v1.yaml \
+  --output <STUDY_OUTPUT_ROOT>
+```
+
+The acceptance and XGBoost bundle are both required. The acceptance proves cross-model Golden
+Acceptance but deliberately contains no local run paths; the XGBoost bundle provides the certified
+rolling labels, fold plan, selection lock, and FeatureSnapshot manifest checksum. The command
+cross-validates both sources and fails closed on identity or checksum drift.
+
+The immutable output is written under `ars_<contract-sha256>/`. Its contract binds the
+DataRelease, dataset version, AlphaPack, FeatureSnapshot, LabelSpec, rolling split, acceptance,
+taxonomy, implementation hashes, and diagnostic parameters. Rerunning the same contract validates
+and reuses byte-exact artifacts; it never overwrites a corrupt study.
+
+Feature diagnostics use a minimum valid cross-section of 50. IC and RankIC are NaN for smaller or
+constant cross-sections. ICIR retains the existing unannualized Qlib-compatible daily mean/std
+definition, while separate Newey-West t-statistics use the LabelSpec lookahead as the Bartlett lag.
+Trailing 63- and 252-session statistics are causal windows ending at the reported date.
+
+Single-factor quantiles preserve both raw Q5-Q1 and taxonomy-oriented spreads. Unknown directions
+are not flipped from observed OOS outcomes. Membership turnover is the fraction of the prior
+quantile membership absent from the current quantile. Pairwise redundancy uses the mean of daily
+cross-sectional rank correlations; deterministic Union-Find edges require the same economic family,
+`role=alpha`, and absolute correlation of at least 0.85.
+
 ## Workstream 1: feature stability
 
 For every feature, compute from OOS observations only:
@@ -63,11 +102,18 @@ Map features into the initial economic groups:
 - Volatility
 - Reversal
 - Size
+- Flow
+- TechnicalOther
+- StateSupport
 
-Keep an explicit `Unclassified` bucket rather than forcing an unsupported economic label. Within
-each group, cluster features using rank correlation and compare cluster representatives by OOS
-stability, coverage, turnover, and net quantile spread. Across groups, measure incremental value
-with orthogonalized or residualized group scores fitted without future data.
+Every feature has an explicit `role` (`alpha`, `exposure`, or `support`) and economic direction
+(`positive`, `negative`, or `unknown`). `TechnicalOther` is used instead of inventing an unsupported
+economic interpretation. Money-flow features use the separate `Flow` family. `LOG_CIRC_MV` is a
+Size exposure; `CIRC_MV`, `MONEY20`, PAUSED/ST/listed/limit fields remain available for eligibility
+logic but are support-only and excluded from alpha ranking and clusters. Within each alpha family,
+cluster features using rank correlation and compare cluster representatives by OOS stability,
+coverage, turnover, and net quantile spread. Across groups, measure incremental value with
+orthogonalized or residualized group scores fitted without future data.
 
 This workstream produces candidates for `alpha158_pit_v2` or `multifactor_core_v2`; it does not
 change the registered AlphaPack during Phase 1.
