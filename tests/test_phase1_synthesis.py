@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 import pandas as pd
@@ -16,6 +16,7 @@ from tushare_qlib.research.phase1_synthesis import (
     load_phase1_synthesis_spec,
 )
 from tushare_qlib.research.synthesis_study import (
+    _bundle_relative_path,
     _load_source,
     _validate_regime_availability,
     run_phase1_synthesis,
@@ -70,6 +71,13 @@ def test_repository_synthesis_config_freezes_priority_and_thresholds():
     assert spec.recommendation_priority == RECOMMENDATIONS
     assert spec.minimum_oriented_rank_ic == pytest.approx(0.01)
     assert spec.minimum_regime_valid_folds == 2
+
+
+def test_bundle_manifest_paths_are_posix_normalized_on_windows():
+    root = PureWindowsPath(r"C:\research\aps_test")
+    artifact = root / "evidence" / "feature" / "feature_summary.parquet"
+
+    assert _bundle_relative_path(root, artifact) == "evidence/feature/feature_summary.parquet"
 
 
 @pytest.mark.parametrize(

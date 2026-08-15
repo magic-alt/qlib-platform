@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Mapping
 
 import pandas as pd
@@ -344,10 +344,14 @@ def _source_contract(source: SourceStudy) -> dict[str, object]:
     }
 
 
+def _bundle_relative_path(root: PurePath, path: PurePath) -> str:
+    return path.relative_to(root).as_posix()
+
+
 def _artifact_entry(root: Path, path: Path) -> dict[str, object]:
     return {
         "name": path.name,
-        "path": str(path.relative_to(root)),
+        "path": _bundle_relative_path(root, path),
         "sha256": sha256_file(path),
     }
 
