@@ -15,6 +15,15 @@ dataset alias、lineage 和 research run；生产模式以 `DataRelease → Qlib
 [`docs/qlib_data_platform.md`](docs/qlib_data_platform.md)。LEAN、OMS、交易风控和券商写接口不属于
 本仓库边界，详见 [`docs/architecture_boundary.md`](docs/architecture_boundary.md)。
 
+## 当前阶段
+
+> **Research Infrastructure: CERTIFIED**
+
+基础设施验证阶段已经冻结；认证范围、默认问题归因和重新打开认证的条件见
+[`docs/research_infrastructure_certification.md`](docs/research_infrastructure_certification.md)。当前正式研究任务是
+[`Alpha Research Phase 1：alpha158_pit_v1 稳定性与失效机制诊断`](docs/alpha_research_phase_1.md)。在认证不变量没有
+出现反证时，弱策略结果默认进入 Alpha、模型、regime 或组合构造诊断，而不是重新归因于已通过验收的研究基础设施。
+
 ## 1. 安装
 
 ```bash
