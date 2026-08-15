@@ -284,6 +284,41 @@ Broader score weighting, volatility scaling, industry constraints, single-name c
 penalties remain follow-on portfolio research only when this attribution identifies implementation
 as the primary loss source.
 
+## Workstream 6: Phase 1 synthesis
+
+The synthesis study is the terminal, read-only decision layer. It accepts only the four immutable
+feature, regime, attribution, and explanation manifests; validates every referenced artifact hash
+and the complete parent/identity chain; and derives one recommendation from thresholds frozen in
+`configs/synthesis/ashare_phase1_synthesis_v1.yaml`:
+
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase1-synthesize \
+  --feature-study <ALPHA_PHASE1_FEATURE_MANIFEST> \
+  --regime-study <REGIME_STUDY_MANIFEST> \
+  --attribution-study <ATTRIBUTION_STUDY_MANIFEST> \
+  --explanation-study <EXPLANATION_STUDY_MANIFEST> \
+  --synthesis configs/synthesis/ashare_phase1_synthesis_v1.yaml \
+  --output <SYNTHESIS_OUTPUT_ROOT>
+```
+
+Recommendation priority is fixed to Portfolio Construction, Regime-aware Research, XGBoost
+Tuning, AlphaPack v2, then No-go/New Alpha. Each candidate records eligibility, supporting and
+counter-evidence, gaps, and rejection reasons. `XGBOOST_TUNING` is ineligible when bounded
+sensitivity is `NOT_RUN`; importance or SHAP evidence alone is not a tuning mandate.
+
+The current PIT industry gap is the only permitted non-blocking `PARTIAL` regime condition. The
+bundle retains `evidenceCompleteness=PARTIAL`, `regimeDiagnostics=PARTIAL`, and
+`DATA_GAP_PIT_INDUSTRY`, while setting
+`phase1Completion=COMPLETE_WITH_KNOWN_DATA_GAP`. Missing industry evidence is excluded from
+denominators and is never treated as zero or negative performance. Any other missing regime,
+lineage mismatch, model-binding/additivity failure, artifact tamper, final-holdout selection, or
+publishing authorization fails closed.
+
+The synthesis bundle stores byte-exact source manifest receipts, a checksum-backed artifact index,
+the evidence summary, report, and `alpha_phase_1_manifest.json`. It copies the actual upstream
+artifact names instead of inventing legacy aliases. It performs zero training, prediction,
+materialization, or portfolio backtests and does not authorize publishing.
+
 ## Required artifacts
 
 Phase 1 should publish one immutable diagnosis bundle containing:

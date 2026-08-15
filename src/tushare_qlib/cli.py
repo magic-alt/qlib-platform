@@ -180,6 +180,16 @@ def parser() -> argparse.ArgumentParser:
         default="configs/explanation/ashare_model_explanation_v1.yaml",
     )
     explanation_diagnose.add_argument("--output")
+    phase1_synthesize = sub.add_parser("phase1-synthesize")
+    phase1_synthesize.add_argument("--feature-study", required=True)
+    phase1_synthesize.add_argument("--regime-study", required=True)
+    phase1_synthesize.add_argument("--attribution-study", required=True)
+    phase1_synthesize.add_argument("--explanation-study", required=True)
+    phase1_synthesize.add_argument(
+        "--synthesis",
+        default="configs/synthesis/ashare_phase1_synthesis_v1.yaml",
+    )
+    phase1_synthesize.add_argument("--output")
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -864,6 +874,33 @@ def main() -> None:
                     "modelExplanation": manifest["status"]["modelExplanation"],
                     "regimeConditioning": manifest["status"]["regimeConditioning"],
                     "primaryMechanism": manifest["primaryMechanism"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "phase1-synthesize":
+        from .research.synthesis_study import run_phase1_synthesis
+
+        manifest_path = run_phase1_synthesis(
+            settings,
+            feature_study=args.feature_study,
+            regime_study=args.regime_study,
+            attribution_study=args.attribution_study,
+            explanation_study=args.explanation_study,
+            synthesis_path=args.synthesis,
+            output_root=args.output,
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "studyId": manifest["studyId"],
+                    "manifest": str(manifest_path),
+                    "phase1Completion": manifest["status"]["phase1Completion"],
+                    "regimeDiagnostics": manifest["status"]["regimeDiagnostics"],
+                    "primaryRecommendation": manifest["primaryRecommendation"],
                 },
                 ensure_ascii=False,
             )
