@@ -313,3 +313,27 @@ def test_regime_diagnose_cli_requires_certified_models_and_defaults_to_predeclar
 
     assert args.command == "regime-diagnose"
     assert args.regimes == "configs/regimes/ashare_regime_v1.yaml"
+
+
+def test_attribution_diagnose_cli_is_governed_and_accepts_only_explicit_portfolio_inputs():
+    args = parser().parse_args(
+        [
+            "attribution-diagnose",
+            "--regime-study",
+            "regime.json",
+            "--acceptance",
+            "acceptance.json",
+            "--walk-forward",
+            "xgb-run",
+            "--ridge-predictions",
+            "ridge.parquet",
+            "--lightgbm-predictions",
+            "lightgbm.parquet",
+            "--portfolio-run",
+            "xgboost:topk20=topk20/manifest.json",
+        ]
+    )
+
+    assert args.command == "attribution-diagnose"
+    assert args.portfolio_run == ["xgboost:topk20=topk20/manifest.json"]
+    assert args.attribution == "configs/attribution/ashare_failure_attribution_v1.yaml"

@@ -140,6 +140,24 @@ def parser() -> argparse.ArgumentParser:
     regime_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
     regime_diagnose.add_argument("--regimes", default="configs/regimes/ashare_regime_v1.yaml")
     regime_diagnose.add_argument("--output")
+    attribution_diagnose = sub.add_parser("attribution-diagnose")
+    attribution_diagnose.add_argument("--regime-study", required=True)
+    attribution_diagnose.add_argument("--acceptance", required=True)
+    attribution_diagnose.add_argument("--walk-forward", required=True)
+    attribution_diagnose.add_argument("--ridge-predictions", required=True)
+    attribution_diagnose.add_argument("--lightgbm-predictions", required=True)
+    attribution_diagnose.add_argument(
+        "--portfolio-run",
+        action="append",
+        default=[],
+        metavar="MODEL:VARIANT=PATH",
+        help="optional certified baseline or bounded prediction-only portfolio input",
+    )
+    attribution_diagnose.add_argument(
+        "--attribution",
+        default="configs/attribution/ashare_failure_attribution_v1.yaml",
+    )
+    attribution_diagnose.add_argument("--output")
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -763,6 +781,34 @@ def main() -> None:
                     "manifest": str(manifest_path),
                     "regimeDiagnostics": manifest["status"]["regimeDiagnostics"],
                     "availability": manifest["availability"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "attribution-diagnose":
+        from .research.attribution_study import run_attribution_diagnose
+
+        manifest_path = run_attribution_diagnose(
+            settings,
+            regime_study=args.regime_study,
+            acceptance=args.acceptance,
+            walk_forward=args.walk_forward,
+            ridge_predictions=args.ridge_predictions,
+            lightgbm_predictions=args.lightgbm_predictions,
+            portfolio_runs=args.portfolio_run,
+            attribution_path=args.attribution,
+            output_root=args.output,
+        )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "studyId": manifest["studyId"],
+                    "manifest": str(manifest_path),
+                    "failureAttribution": manifest["status"]["failureAttribution"],
+                    "primaryAlphaLossSource": manifest["primaryAlphaLossSource"],
                 },
                 ensure_ascii=False,
             )
