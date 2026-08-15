@@ -13,8 +13,16 @@ from tushare_qlib.train_select import (
     _export_daily_signal_scores,
     _load_local_benchmark_series,
     _official_calendar,
+    _promotion_authorized,
     _research_label_horizon_days,
 )
+
+
+def test_promotion_authorization_is_explicitly_false_outside_release_mode():
+    assert _promotion_authorized("component", promoted=True) is False
+    assert _promotion_authorized("holdout", promoted=True) is False
+    assert _promotion_authorized("release", promoted=False) is False
+    assert _promotion_authorized("release", promoted=True) is True
 
 
 def test_align_oos_labels_reindexes_label_superset_to_predictions():
