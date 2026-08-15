@@ -541,13 +541,20 @@ def _checkpoint_payload(manifest_path: Path, expected_fingerprint: str) -> dict[
         if not isinstance(artifact, dict):
             raise ValueError("checkpoint manifest contains an invalid artifact entry")
         path = Path(str(artifact.get("localPath") or "")).resolve()
-        if not path.is_file():
-            raise ValueError(f"checkpoint artifact is not a file: {path}")
+        if path.is_file():
+            artifact_kind = "file"
+            artifact_sha256 = sha256_file(path)
+        elif path.is_dir():
+            artifact_kind = "directory"
+            artifact_sha256 = _checkpoint_directory_sha256(path)
+        else:
+            raise ValueError(f"checkpoint artifact is missing: {path}")
         artifacts.append(
             {
                 "name": str(artifact.get("name") or path.name),
                 "localPath": str(path),
-                "sha256": sha256_file(path),
+                "kind": artifact_kind,
+                "sha256": artifact_sha256,
             }
         )
     if not artifacts:
@@ -559,6 +566,22 @@ def _checkpoint_payload(manifest_path: Path, expected_fingerprint: str) -> dict[
         "checkpointFingerprint": expected_fingerprint,
         "artifacts": artifacts,
     }
+
+
+def _checkpoint_directory_sha256(path: Path) -> str:
+    entries: list[dict[str, object]] = []
+    for item in sorted(path.rglob("*"), key=lambda value: value.relative_to(path).as_posix()):
+        if item.is_symlink():
+            raise ValueError(f"checkpoint directory artifact contains a symlink: {item}")
+        if item.is_file():
+            entries.append(
+                {
+                    "path": item.relative_to(path).as_posix(),
+                    "sizeBytes": item.stat().st_size,
+                    "sha256": sha256_file(item),
+                }
+            )
+    return sha256_json(entries)
 
 
 def _inspect_checkpoint(
@@ -610,7 +633,17 @@ def _inspect_checkpoint(
             return CheckpointValidation(None, "CORRUPTED", "artifact_hash_entry")
         path = Path(str(artifact.get("localPath") or "")).resolve()
         recorded_paths.add(str(path))
-        if not path.is_file() or sha256_file(path) != artifact.get("sha256"):
+        kind = str(artifact.get("kind") or "file")
+        try:
+            if kind == "file":
+                valid = path.is_file() and sha256_file(path) == artifact.get("sha256")
+            elif kind == "directory":
+                valid = path.is_dir() and _checkpoint_directory_sha256(path) == artifact.get("sha256")
+            else:
+                return CheckpointValidation(None, "CORRUPTED", f"artifact_kind:{path.name}")
+        except (OSError, ValueError):
+            valid = False
+        if not valid:
             return CheckpointValidation(None, "CORRUPTED", f"artifact_sha256:{path.name}")
     if recorded_paths != current_paths:
         return CheckpointValidation(None, "CORRUPTED", "artifact_set")
