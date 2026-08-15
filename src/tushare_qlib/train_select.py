@@ -78,6 +78,36 @@ def _research_label_horizon_days(settings: Settings) -> int:
     return label_timing_from_settings(settings).horizon_days
 
 
+def _align_oos_labels(
+    predictions: pd.Series | pd.DataFrame,
+    raw_labels: pd.Series | pd.DataFrame,
+) -> pd.DataFrame:
+    """Return the label payload on exactly the model's OOS inference index."""
+
+    prediction_index = predictions.index
+    label_frame = raw_labels.to_frame("label") if isinstance(raw_labels, pd.Series) else raw_labels.copy()
+    if "label" not in label_frame:
+        if len(label_frame.columns) != 1:
+            raise ValueError("OOS labels must contain exactly one label column")
+        label_frame = label_frame.rename(columns={label_frame.columns[0]: "label"})
+    expected_names = ["datetime", "instrument"]
+    if not isinstance(prediction_index, pd.MultiIndex) or prediction_index.names != expected_names:
+        raise ValueError("OOS predictions require a datetime/instrument MultiIndex")
+    if not isinstance(label_frame.index, pd.MultiIndex) or label_frame.index.names != expected_names:
+        raise ValueError("OOS labels require a datetime/instrument MultiIndex")
+    if prediction_index.has_duplicates:
+        raise ValueError("OOS predictions contain duplicate datetime/instrument rows")
+    if label_frame.index.has_duplicates:
+        raise ValueError("OOS labels contain duplicate datetime/instrument rows")
+    missing_labels = prediction_index.difference(label_frame.index)
+    if len(missing_labels):
+        raise ValueError(f"OOS predictions have {len(missing_labels)} rows without labels")
+    aligned = label_frame[["label"]].reindex(prediction_index)
+    if not aligned.index.equals(prediction_index):
+        raise ValueError("OOS label alignment did not preserve the prediction index")
+    return aligned
+
+
 def _default_splits_from_data(settings: Settings) -> tuple[tuple[str, str], tuple[str, str], tuple[str, str]]:
     dates = shared_research_calendar(settings)
     research = settings.data.get("research", {})
@@ -746,7 +776,7 @@ def train_backtest_select(
             gate_path = artifact_dir / ("component_gate.json" if component_mode else "signal_gate.json")
             manifest_path = artifact_dir / "manifest.json"
             with timings.measure("artifact_export_seconds"):
-                label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
+                label_frame = _align_oos_labels(pred, raw_label)
                 prediction_snapshot = write_prediction_snapshot(
                     pred_path,
                     pred,
@@ -935,7 +965,7 @@ def train_backtest_select(
                 report = recorder.load_object("portfolio_analysis/report_normal_1day.pkl")
                 positions = recorder.load_object("portfolio_analysis/positions_normal_1day.pkl")
                 indicators = recorder.load_object("portfolio_analysis/indicators_normal_1day_obj.pkl")
-            label_frame = raw_label.to_frame("label") if isinstance(raw_label, pd.Series) else raw_label
+            label_frame = _align_oos_labels(pred, raw_label)
             prediction_snapshot = write_prediction_snapshot(
                 pred_path,
                 pred,
