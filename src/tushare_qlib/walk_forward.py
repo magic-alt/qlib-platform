@@ -992,12 +992,17 @@ def run_walk_forward(
         promotion = manifest.get("promotion", {})
         if not isinstance(promotion, dict):
             raise ValueError(f"fold manifest has no promotion contract: {fold.key}")
-        expected_statuses = {"CANDIDATE", "REJECTED"} if fold.final_holdout else {"CANDIDATE"}
+        expected_statuses = {"CANDIDATE", "REJECTED"}
         expected_mode = "final_holdout" if fold.final_holdout else "component_validation"
-        if promotion.get("status") not in expected_statuses or promotion.get("gateMode") != expected_mode:
+        if (
+            promotion.get("status") not in expected_statuses
+            or promotion.get("gateMode") != expected_mode
+            or promotion.get("promotionAuthorized") is not False
+        ):
             raise ValueError(
                 f"fold {fold.key} has incompatible promotion contract: "
-                f"status={promotion.get('status')}, gateMode={promotion.get('gateMode')}"
+                f"status={promotion.get('status')}, gateMode={promotion.get('gateMode')}, "
+                f"promotionAuthorized={promotion.get('promotionAuthorized')}"
             )
         if fold.final_holdout:
             report = pd.read_parquet(_artifact_path(manifest, "portfolio_report.parquet"))
