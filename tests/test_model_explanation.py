@@ -214,7 +214,10 @@ def test_explanation_bundle_is_immutable_and_detects_tamper(tmp_path: Path):
         "explanationEvaluationCalls": 1,
     }
     frames = {"feature_importance.parquet": pd.DataFrame({"feature": ["VAL"], "rank": [1]})}
-    summary = {"xgbPrimaryMechanism": "INCONCLUSIVE"}
+    summary = {
+        "xgbPrimaryMechanism": "INCONCLUSIVE",
+        "stableSignalStructure": np.bool_(True),
+    }
 
     first = _materialize_bundle(
         tmp_path,
@@ -237,6 +240,10 @@ def test_explanation_bundle_is_immutable_and_detects_tamper(tmp_path: Path):
     assert manifest["selectionUsesFinalHoldout"] is False
     assert manifest["publishingAuthorized"] is False
     assert manifest["executionIsolation"]["modelTrainCalls"] == 0
+    materialized_summary = json.loads(
+        (first.parent / "model_explanation_summary.json").read_text(encoding="utf-8")
+    )
+    assert materialized_summary["stableSignalStructure"] is True
     artifact = first.parent / "feature_importance.parquet"
     artifact.write_bytes(b"tampered")
     with pytest.raises(ValueError, match="checksum mismatch"):

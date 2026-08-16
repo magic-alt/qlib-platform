@@ -41,6 +41,12 @@ EXPLANATION_MANIFEST_NAME = "model_explanation_manifest.json"
 MODELS = ("ridge", "lightgbm", "xgboost")
 
 
+def _json_default(value: object) -> object:
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(f"Object of type {value.__class__.__name__} is not JSON serializable")
+
+
 @dataclass(frozen=True)
 class FoldModelInput:
     model: str
@@ -580,7 +586,13 @@ def _write_report(path: Path, study_id: str, summary: Mapping[str, Any], regime_
         "## Hypothesis assessment",
         "",
         "```json",
-        json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2),
+        json.dumps(
+            summary,
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+            default=_json_default,
+        ),
         "```",
         "",
         "Permutation importance and retraining-based bounded sensitivity remain not run. Neither absent test is treated as positive tuning evidence.",
@@ -611,7 +623,14 @@ def _materialize_bundle(
             artifacts.append(_artifact_entry(artifact_path, rows=len(frame)))
         summary_path = building / "model_explanation_summary.json"
         summary_path.write_text(
-            json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8"
+            json.dumps(
+                summary,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+                default=_json_default,
+            ),
+            encoding="utf-8",
         )
         artifacts.append(_artifact_entry(summary_path))
         report_path = building / "model_explanation_report.md"
