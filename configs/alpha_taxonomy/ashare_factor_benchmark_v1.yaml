@@ -1,0 +1,35 @@
+schema: alpha_factor_taxonomy_v1
+taxonomyId: ashare_factor_benchmark_taxonomy_v1
+alphaPackId: ashare_factor_benchmark_v1
+
+features:
+  EARNINGS_YIELD: {family: Value, role: alpha, direction: positive}
+  BOOK_TO_PRICE: {family: Value, role: alpha, direction: positive}
+  DIVIDEND_YIELD: {family: Value, role: alpha, direction: positive}
+  GROSS_PROFIT_ASSETS: {family: Profitability, role: alpha, direction: positive}
+  OPERATING_PROFIT_ASSETS: {family: Profitability, role: alpha, direction: positive}
+  CASHFLOW_PROFIT_ASSETS: {family: Profitability, role: alpha, direction: positive}
+  ROE_PIT: {family: Profitability, role: alpha, direction: positive}
+  ROA_PIT: {family: Profitability, role: alpha, direction: positive}
+  REVENUE_GROWTH_TTM: {family: Growth, role: alpha, direction: positive}
+  EARNINGS_GROWTH_TTM: {family: Growth, role: alpha, direction: positive}
+  OPERATING_PROFIT_GROWTH_TTM: {family: Growth, role: alpha, direction: positive}
+  CASHFLOW_GROWTH_TTM: {family: Growth, role: alpha, direction: positive}
+  ASSET_GROWTH: {family: Investment, role: alpha, direction: negative}
+  CAPEX_ASSETS: {family: Investment, role: alpha, direction: negative}
+  ACCRUALS: {family: Accruals, role: alpha, direction: negative}
+  VOL_20: {family: LowRisk, role: alpha, direction: negative}
+  DOWNSIDE_VOL_20: {family: LowRisk, role: alpha, direction: negative}
+  LOG_TOTAL_MV: {family: Size, role: exposure, direction: positive}
+  LOG_CIRC_MV: {family: Size, role: exposure, direction: positive}
+  TURNOVER_20: {family: Liquidity, role: alpha, direction: negative}
+  AMIHUD_20: {family: Liquidity, role: alpha, direction: negative}
+  MOMENTUM_6M: {family: Momentum, role: alpha, direction: positive}
+  MOMENTUM_12M: {family: Momentum, role: alpha, direction: positive}
+  REVERSAL_5D: {family: Reversal, role: alpha, direction: negative}
+  INDUSTRY_L1_CODE: {family: StateSupport, role: support, direction: unknown}
+  PAUSED: {family: StateSupport, role: support, direction: unknown}
+  IS_ST: {family: StateSupport, role: support, direction: unknown}
+  LISTED_DAYS: {family: StateSupport, role: support, direction: unknown}
+  CIRC_MV: {family: StateSupport, role: support, direction: unknown}
+  MONEY20: {family: StateSupport, role: support, direction: unknown}

@@ -11,9 +11,14 @@ import pytest
 from tushare_qlib.platform_release import (
     REQUIRED_RESEARCH_COMPONENTS,
     QLIB_RESEARCH_PROFILE,
+    QLIB_RESEARCH_PROFILE_V2,
     load_platform_release,
     materialize_platform_release,
     platform_release_preflight,
+)
+from tushare_qlib.research.phase2_data_acceptance import (
+    REQUIRED_V2_ACCEPTANCE_CHECKS,
+    write_data_release_v2_acceptance,
 )
 from tushare_qlib.settings import Paths, Settings
 
@@ -27,7 +32,7 @@ def _write_release(root: Path, *, profile: str = "cn-equity-daily-research-v2") 
     source.mkdir(parents=True)
     components = []
     profile_required = REQUIRED_RESEARCH_COMPONENTS
-    if profile == QLIB_RESEARCH_PROFILE:
+    if profile in {QLIB_RESEARCH_PROFILE, QLIB_RESEARCH_PROFILE_V2}:
         profile_required |= {"qlib_staging", "industry_classification_pit"}
     roles = sorted(profile_required | {"qlib_staging"})
     sources: dict[Path, Path] = {}
@@ -77,11 +82,17 @@ def _write_release(root: Path, *, profile: str = "cn-equity-daily-research-v2") 
                 "rowCount": 1,
             }
         ]
+        schema_version = "1"
+        if profile == QLIB_RESEARCH_PROFILE_V2:
+            if role == "pit_fundamentals":
+                schema_version = "2"
+            elif role == "qlib_staging":
+                schema_version = "qlib-staging-v2"
         identity = {
             "role": role,
             "componentReleaseId": f"component:{role}:1",
             "datasetKey": role,
-            "schemaVersion": "1",
+            "schemaVersion": schema_version,
             "coverage": {"start": "2020-01-01", "end": "2026-08-13"},
             "files": files,
         }
@@ -184,6 +195,73 @@ def test_qlib_profile_materializes_pit_industry_codes(tmp_path: Path):
     assert release.profile == QLIB_RESEARCH_PROFILE
     assert staged.loc[0, "industry_l1_code"] == 801010.0
     assert json.loads((settings.paths.staging_full / "staging_manifest.json").read_text())["files"]
+
+
+def test_phase2_profile_accepts_only_expanded_component_schemas(tmp_path: Path):
+    manifest, release_id = _write_release(tmp_path, profile=QLIB_RESEARCH_PROFILE_V2)
+    settings = _settings(tmp_path, manifest, release_id)
+
+    assert load_platform_release(settings).profile == QLIB_RESEARCH_PROFILE_V2
+
+    payload = json.loads(manifest.read_text())
+    pit = next(item for item in payload["components"] if item["role"] == "pit_fundamentals")
+    pit["schemaVersion"] = "1"
+    component_identity = {
+        key: pit[key]
+        for key in (
+            "role",
+            "componentReleaseId",
+            "datasetKey",
+            "schemaVersion",
+            "coverage",
+            "files",
+        )
+    }
+    pit["componentSha256"] = hashlib.sha256(_canonical_bytes(component_identity)).hexdigest()
+    identity = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"dataReleaseId", "identitySha256", "manifestSha256", "publishedAt"}
+    }
+    identity_sha = hashlib.sha256(_canonical_bytes(identity)).hexdigest()
+    payload["dataReleaseId"] = f"ds_{identity_sha}"
+    payload["identitySha256"] = identity_sha
+    payload["manifestSha256"] = hashlib.sha256(
+        _canonical_bytes({key: value for key, value in payload.items() if key != "manifestSha256"})
+    ).hexdigest()
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+    settings.data["data_source"]["platform_release"]["id"] = payload["dataReleaseId"]
+
+    with pytest.raises(ValueError, match="component schema mismatch"):
+        load_platform_release(settings)
+
+
+def test_phase2_data_acceptance_is_narrow_and_hash_bound(tmp_path: Path):
+    manifest, release_id = _write_release(tmp_path, profile=QLIB_RESEARCH_PROFILE_V2)
+    settings = _settings(tmp_path, manifest, release_id)
+    evidence = {
+        name: {"status": "PASS", "artifactSha256": hashlib.sha256(name.encode()).hexdigest()}
+        for name in REQUIRED_V2_ACCEPTANCE_CHECKS
+    }
+
+    path = write_data_release_v2_acceptance(
+        settings,
+        evidence=evidence,
+        output=tmp_path / "phase2-data-acceptance.json",
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["passed"] is True
+    assert payload["fullInfrastructureRecertificationRun"] is False
+    assert payload["dataReleaseId"] == release_id
+
+    evidence["PIT_LEAKAGE"]["status"] = "FAIL"
+    with pytest.raises(ValueError, match="checks failed"):
+        write_data_release_v2_acceptance(
+            settings,
+            evidence=evidence,
+            output=tmp_path / "failed.json",
+        )
 
 
 def test_release_rejects_corrupt_component_and_wrong_configured_id(tmp_path: Path):

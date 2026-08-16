@@ -35,9 +35,18 @@ CORE_RESEARCH_COMPONENTS = frozenset(
 )
 REQUIRED_RESEARCH_COMPONENTS = CORE_RESEARCH_COMPONENTS
 QLIB_RESEARCH_PROFILE = "ashare_qlib_research_v1"
+QLIB_RESEARCH_PROFILE_V2 = "ashare_qlib_research_v2"
 DATA_RELEASE_PROFILES = {
     "cn-equity-daily-research-v2": CORE_RESEARCH_COMPONENTS,
     QLIB_RESEARCH_PROFILE: CORE_RESEARCH_COMPONENTS | {"qlib_staging", "industry_classification_pit"},
+    QLIB_RESEARCH_PROFILE_V2: CORE_RESEARCH_COMPONENTS | {"qlib_staging", "industry_classification_pit"},
+}
+PROFILE_COMPONENT_SCHEMAS = {
+    QLIB_RESEARCH_PROFILE_V2: {
+        "pit_fundamentals": "2",
+        "industry_classification_pit": "1",
+        "qlib_staging": "qlib-staging-v2",
+    }
 }
 
 
@@ -193,6 +202,13 @@ def load_platform_release(settings: Settings) -> PlatformRelease:
     missing = sorted(expected_required - set(components))
     if missing:
         raise ValueError(f"DataRelease is missing required research components: {missing}")
+    for role, expected_schema in PROFILE_COMPONENT_SCHEMAS.get(profile, {}).items():
+        actual_schema = str(components[role].get("schemaVersion") or "")
+        if actual_schema != expected_schema:
+            raise ValueError(
+                "DataRelease component schema mismatch: "
+                f"{role} expected {expected_schema}, got {actual_schema or 'missing'}"
+            )
     return PlatformRelease(data_root, manifest_path, manifest, components)
 
 

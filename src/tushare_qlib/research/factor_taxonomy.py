@@ -22,6 +22,12 @@ ALLOWED_FAMILIES = {
     "Size",
     "TechnicalOther",
     "StateSupport",
+    "Profitability",
+    "Investment",
+    "Accruals",
+    "LowRisk",
+    "FundamentalMomentum",
+    "Interaction",
 }
 ALLOWED_ROLES = {"alpha", "exposure", "support"}
 ALLOWED_DIRECTIONS = {"positive", "negative", "unknown"}

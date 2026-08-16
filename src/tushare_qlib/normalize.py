@@ -433,10 +433,10 @@ def _benchmark_staging_frame(settings: Settings, calendar: pd.DatetimeIndex) -> 
     )
     frame["paused"] = 0.0
     frame["symbol"] = "SH000300"
-    for column in settings.data["qlib"]["include_fields"]:
+    for column in settings.qlib_include_fields:
         if column not in frame:
             frame[column] = np.nan
-    return frame[["date", "symbol", *settings.data["qlib"]["include_fields"]]]
+    return frame[["date", "symbol", *settings.qlib_include_fields]]
 
 
 def _remove_staging_tree(path: Path) -> None:

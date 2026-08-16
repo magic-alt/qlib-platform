@@ -29,6 +29,7 @@ class PredictionSnapshotSpec:
     model_id: str
     model_profile_id: str
     fold_id: str
+    feature_set_id: str = "legacy"
 
     @classmethod
     def from_experiment(
@@ -48,6 +49,7 @@ class PredictionSnapshotSpec:
             model_id=model_id,
             model_profile_id=experiment.model_profile_id,
             fold_id=fold_id,
+            feature_set_id=experiment.feature_set_id,
         )
 
 

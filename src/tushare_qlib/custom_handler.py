@@ -147,3 +147,85 @@ class TushareMultiFactorCore(Alpha158):
             "MONEY20",
         ]
         return fields, names
+
+
+class TushareAshareFactorBenchmark(Alpha158):
+    """Pre-registered China A-share benchmark characteristics.
+
+    Accounting inputs are already point-in-time/TTM standardized by the
+    DataRelease.  This handler owns only economically named ratios and price
+    history expressions.
+    """
+
+    def get_feature_config(self):
+        daily_return = "$close/Ref($close, 1)-1"
+        average_assets = "($total_assets_pit+$prior_year_total_assets_pit)/2"
+        fields = [
+            "$parent_net_income_ttm_pit/$total_mv",
+            "$total_equity_pit/$total_mv",
+            "$dv_ttm",
+            f"$gross_profit_ttm_pit/{average_assets}",
+            f"$operating_profit_ttm_pit/{average_assets}",
+            f"$operating_cash_flow_ttm_pit/{average_assets}",
+            "$roe_waa_pit",
+            "$roa_pit",
+            "$revenue_ttm_pit/$prior_year_revenue_ttm_pit-1",
+            "$parent_net_income_ttm_pit/$prior_year_parent_net_income_ttm_pit-1",
+            "$operating_profit_ttm_pit/$prior_year_operating_profit_ttm_pit-1",
+            "$operating_cash_flow_ttm_pit/$prior_year_operating_cash_flow_ttm_pit-1",
+            "$total_assets_pit/$prior_year_total_assets_pit-1",
+            f"$capex_ttm_pit/{average_assets}",
+            f"($parent_net_income_ttm_pit-$operating_cash_flow_ttm_pit)/{average_assets}",
+            f"Std({daily_return},20)",
+            f"Std(If({daily_return}<0,{daily_return},0),20)",
+            "Log($total_mv+1)",
+            "Log($circ_mv+1)",
+            "Mean($turnover_rate_f,20)",
+            f"Mean(Abs({daily_return})/($money+1),20)",
+            "$close/Ref($close,126)-1",
+            "$close/Ref($close,252)-1",
+            "$close/Ref($close,5)-1",
+            "$industry_l1_code",
+            "$paused",
+            "$is_st",
+            "$listed_days",
+            "$circ_mv",
+            "Mean($money,20)",
+        ]
+        names = [
+            "EARNINGS_YIELD",
+            "BOOK_TO_PRICE",
+            "DIVIDEND_YIELD",
+            "GROSS_PROFIT_ASSETS",
+            "OPERATING_PROFIT_ASSETS",
+            "CASHFLOW_PROFIT_ASSETS",
+            "ROE_PIT",
+            "ROA_PIT",
+            "REVENUE_GROWTH_TTM",
+            "EARNINGS_GROWTH_TTM",
+            "OPERATING_PROFIT_GROWTH_TTM",
+            "CASHFLOW_GROWTH_TTM",
+            "ASSET_GROWTH",
+            "CAPEX_ASSETS",
+            "ACCRUALS",
+            "VOL_20",
+            "DOWNSIDE_VOL_20",
+            "LOG_TOTAL_MV",
+            "LOG_CIRC_MV",
+            "TURNOVER_20",
+            "AMIHUD_20",
+            "MOMENTUM_6M",
+            "MOMENTUM_12M",
+            "REVERSAL_5D",
+            "INDUSTRY_L1_CODE",
+            "PAUSED",
+            "IS_ST",
+            "LISTED_DAYS",
+            "CIRC_MV",
+            "MONEY20",
+        ]
+        return fields, names
+
+
+class TushareAsharePhase2(TushareAshareFactorBenchmark):
+    """Phase 2 superset; immutable feature subsets own individual ablations."""

@@ -72,6 +72,24 @@ class TopkDropoutPolicy:
             raise ValueError("risk_degree must be in (0, 1]")
 
 
+@dataclass(frozen=True)
+class RankBufferPolicy:
+    entry_rank: int = 20
+    exit_rank: int = 40
+    max_replacements: int = 5
+    hold_thresh: int = 5
+    only_tradable: bool = True
+    forbid_all_trade_at_limit: bool = True
+
+    def validate(self) -> None:
+        if self.entry_rank <= 0 or self.exit_rank <= self.entry_rank:
+            raise ValueError("rank buffer requires 0 < entry_rank < exit_rank")
+        if self.max_replacements <= 0:
+            raise ValueError("max_replacements must be positive")
+        if self.hold_thresh < 0:
+            raise ValueError("hold_thresh must be non-negative")
+
+
 def _normalise_scores(scores: pd.Series | pd.DataFrame) -> pd.Series:
     if isinstance(scores, pd.DataFrame):
         if scores.shape[1] != 1:
@@ -276,6 +294,108 @@ def topk_dropout_decision(
     return (
         result.assign(_action_rank=action_rank)
         .sort_values(["_action_rank", "action_order", "score_rank", "instrument"], na_position="last")
+        .drop(columns="_action_rank")
+        .reset_index(drop=True)
+    )
+
+
+def rank_buffer_decision(
+    scores: pd.Series | pd.DataFrame,
+    positions: pd.DataFrame | None,
+    quotes: pd.DataFrame | None = None,
+    *,
+    policy: RankBufferPolicy | None = None,
+    signal_date: str | pd.Timestamp | None = None,
+    trade_date: str | pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """Apply a pre-registered buy/hold rank spread without an optimizer."""
+
+    policy = policy or RankBufferPolicy()
+    policy.validate()
+    score = _normalise_scores(scores)
+    current = _normalise_positions(positions)
+    quote = _normalise_quotes(quotes, required=policy.only_tradable)
+    ranked = score.sort_values(ascending=False)
+    ranks = pd.Series(np.arange(1, len(ranked) + 1), index=ranked.index)
+    current_list = pd.Index(current["instrument"].tolist())
+    all_instruments = ranked.index.union(current_list)
+    flags = _quote_flags(
+        all_instruments,
+        quote,
+        TopkDropoutPolicy(
+            topk=policy.entry_rank,
+            n_drop=policy.max_replacements,
+            hold_thresh=policy.hold_thresh,
+            only_tradable=policy.only_tradable,
+            forbid_all_trade_at_limit=policy.forbid_all_trade_at_limit,
+        ),
+    )
+    holding_days = (
+        current.set_index("instrument")["holding_days"] if not current.empty else pd.Series(dtype=int)
+    )
+    sell_candidates = sorted(
+        (
+            str(instrument)
+            for instrument in current_list
+            if not np.isfinite(float(ranks.get(instrument, np.nan)))
+            or int(ranks[instrument]) > policy.exit_rank
+        ),
+        key=lambda instrument: (-int(ranks.get(instrument, len(ranks) + 1)), instrument),
+    )
+    sells: list[str] = []
+    blocked_sell: dict[str, str] = {}
+    for instrument in sell_candidates:
+        if len(sells) >= policy.max_replacements:
+            blocked_sell[instrument] = "MAX_REPLACEMENTS"
+        elif int(holding_days.get(instrument, 0)) < policy.hold_thresh:
+            blocked_sell[instrument] = "HOLD_THRESHOLD"
+        elif not bool(flags.at[instrument, "sell_tradable"]):
+            blocked_sell[instrument] = "NOT_TRADABLE_SELL"
+        else:
+            sells.append(instrument)
+    retained = [str(value) for value in current_list if str(value) not in set(sells)]
+    slots = max(0, policy.entry_rank - len(retained))
+    buys: list[str] = []
+    for instrument in ranked.index:
+        name = str(instrument)
+        if len(buys) >= min(slots, policy.max_replacements) or int(ranks[name]) > policy.entry_rank:
+            break
+        if name in retained or name in set(sells):
+            continue
+        if bool(flags.at[name, "buy_tradable"]):
+            buys.append(name)
+    relevant = sorted(set(current_list) | set(ranked.head(policy.exit_rank).index))
+    rows: list[dict[str, object]] = []
+    for instrument in relevant:
+        is_current = instrument in set(current_list)
+        if instrument in sells:
+            action, reason = "SELL", "EXIT_RANK_BREACH"
+        elif instrument in buys:
+            action, reason = "BUY", "ENTRY_RANK_AND_OPEN_SLOT"
+        elif instrument in blocked_sell:
+            action, reason = "HOLD", blocked_sell[instrument]
+        elif is_current:
+            action, reason = "HOLD", "INSIDE_HOLD_BUFFER"
+        else:
+            action, reason = "HOLD", "NOT_SELECTED"
+        rows.append(
+            {
+                "signal_date": str(pd.Timestamp(signal_date).date()) if signal_date is not None else None,
+                "trade_date": str(pd.Timestamp(trade_date).date()) if trade_date is not None else None,
+                "instrument": instrument,
+                "score": float(score.get(instrument, np.nan)),
+                "score_rank": int(ranks[instrument]) if instrument in ranks else pd.NA,
+                "is_current_position": is_current,
+                "target_action": action,
+                "action_reason": reason,
+            }
+        )
+    action_order = {"SELL": 0, "BUY": 1, "HOLD": 2}
+    action_rank = pd.Series([action_order[str(row["target_action"])] for row in rows])
+    return (
+        pd.DataFrame(rows)
+        .assign(_action_rank=action_rank)
+        .sort_values(["_action_rank", "score_rank", "instrument"], na_position="last")
         .drop(columns="_action_rank")
         .reset_index(drop=True)
     )
