@@ -8,9 +8,12 @@ from tushare_qlib.lineage import sha256_json
 from tushare_qlib.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
 from tushare_qlib.research.regime import RegimeSpec
 from tushare_qlib.research.regime_diagnostics import (
+    ModelComparisonSpec,
     benjamini_hochberg,
     build_oriented_composites,
+    derive_model_daily_metrics,
     derive_factor_regime_diagnostics,
+    normalize_model_predictions,
     derive_topk_regime_overlap,
 )
 
@@ -132,3 +135,23 @@ def test_topk_overlap_is_grouped_by_causal_regime():
 
     assert xgb.loc["value", "jaccard_mean"] == pytest.approx(1.0)
     assert xgb.loc["low_vol", "jaccard_mean"] == pytest.approx(0.0)
+
+
+def test_model_diagnostics_accept_explicit_phase3_anchor_names_and_comparisons():
+    dates = pd.bdate_range("2025-01-02", periods=2)
+    instruments = ["A", "B", "C"]
+    index = pd.MultiIndex.from_product([dates, instruments], names=["datetime", "instrument"])
+    labels = pd.DataFrame({"label": np.tile([1.0, 2.0, 3.0], 2)}, index=index)
+    predictions = {
+        "P2-06_A4_RIDGE": pd.DataFrame({"score": np.tile([1.0, 2.0, 3.0], 2)}, index=index),
+        "P2-07_A4_XGB": pd.DataFrame({"score": np.tile([3.0, 2.0, 1.0], 2)}, index=index),
+    }
+    normalized = normalize_model_predictions(predictions, labels, required_models=tuple(predictions))
+    result = derive_model_daily_metrics(
+        normalized,
+        minimum_cross_section=3,
+        model_comparisons=[ModelComparisonSpec("P2-07_A4_XGB", "P2-06_A4_RIDGE")],
+    )
+
+    comparison = result.loc[result["model"].eq("P2-07_A4_XGB_minus_P2-06_A4_RIDGE")]
+    assert comparison["rank_ic"].eq(-2.0).all()

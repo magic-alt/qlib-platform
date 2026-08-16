@@ -1,0 +1,58 @@
+schema: ashare_phase3_v1
+
+identity:
+  programId: ashare_alpha_stability_phase3_v1
+  predecessorProgram: ashare_alpha_research_phase2_v1
+  universe: PIT_CSI300
+  labelSpec: return_5d_t1_v1
+  costModel: ashare_cost_v1
+  portfolioPolicy: topk_dropout_v1
+
+objective:
+  primary: TEMPORAL_ALPHA_STABILITY
+  factorExpansionAllowed: false
+  technicalZooExpansionAllowed: false
+
+anchors:
+  - id: P2-06_A4_RIDGE
+    experimentId: P2-06
+    role: linear_control
+    featureSet: A4
+    model: ridge
+
+  - id: P2-07_A4_XGB
+    experimentId: P2-07
+    role: nonlinear_anchor
+    featureSet: A4
+    model: xgboost
+
+  - id: P2-08_A5_XGB
+    experimentId: P2-08
+    role: enriched_anchor
+    featureSet: A5
+    model: xgboost
+
+comparisons:
+  - candidate: P2-07_A4_XGB
+    baseline: P2-06_A4_RIDGE
+
+  - candidate: P2-08_A5_XGB
+    baseline: P2-07_A4_XGB
+
+regime:
+  spec: configs/regimes/ashare_regime_v1.yaml
+
+diagnostics:
+  rollingWindows: [63, 126, 252]
+  transitionWindows: [20, 63]
+  minimumRegimeSessions: 63
+  minimumCrossSection: 50
+  topK: 30
+  ageBucketUpperSessions: [21, 42, 63, 126]
+
+finalHoldout:
+  inheritedFromPhase2: true
+  accessAllowed: false
+
+formalCandidatesAllowed: false
+publishingAuthorized: false

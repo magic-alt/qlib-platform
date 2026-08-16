@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,16 @@ class RegimeDiagnosticArtifacts:
     model_factor_correlation: pd.DataFrame
     topk_overlap: pd.DataFrame
     fold_profile: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class ModelComparisonSpec:
+    candidate: str
+    baseline: str
+
+    @property
+    def comparison_id(self) -> str:
+        return f"{self.candidate}_minus_{self.baseline}"
 
 
 def _safe_corr(left: pd.Series, right: pd.Series, *, method: str = "pearson") -> float:
@@ -51,7 +61,10 @@ def benjamini_hochberg(p_values: pd.Series) -> pd.Series:
 
 
 def normalize_model_predictions(
-    predictions: Mapping[str, pd.DataFrame], labels: pd.DataFrame
+    predictions: Mapping[str, pd.DataFrame],
+    labels: pd.DataFrame,
+    *,
+    required_models: Sequence[str] = ("ridge", "lightgbm", "xgboost"),
 ) -> dict[str, pd.DataFrame]:
     normalized_labels = normalize_oos_labels(labels)
     result: dict[str, pd.DataFrame] = {}
@@ -80,8 +93,11 @@ def normalize_model_predictions(
             },
             index=normalized_labels.index,
         )
-    if set(result) != {"ridge", "lightgbm", "xgboost"}:
-        raise ValueError("regime diagnosis requires exactly ridge, lightgbm, and xgboost predictions")
+    required = tuple(str(value) for value in required_models)
+    if not required or len(required) != len(set(required)):
+        raise ValueError("required_models must be non-empty and unique")
+    if set(result) != set(required):
+        raise ValueError(f"regime diagnosis requires exactly these models: {list(required)}")
     return result
 
 
@@ -115,6 +131,10 @@ def derive_model_daily_metrics(
     predictions: Mapping[str, pd.DataFrame],
     *,
     minimum_cross_section: int,
+    model_comparisons: Sequence[ModelComparisonSpec] = (
+        ModelComparisonSpec("xgboost", "lightgbm"),
+        ModelComparisonSpec("xgboost", "ridge"),
+    ),
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     by_model: dict[str, pd.DataFrame] = {}
@@ -138,15 +158,20 @@ def derive_model_daily_metrics(
             )
         by_model[model] = pd.DataFrame(model_rows).set_index("date")
         rows.extend(model_rows)
-    for comparator in ("lightgbm", "ridge"):
-        left = by_model["xgboost"]
-        right = by_model[comparator]
+    for comparison in model_comparisons:
+        missing = {comparison.candidate, comparison.baseline} - set(by_model)
+        if missing:
+            raise ValueError(
+                f"model comparison {comparison.comparison_id} references missing models: {sorted(missing)}"
+            )
+        left = by_model[comparison.candidate]
+        right = by_model[comparison.baseline]
         if not left.index.equals(right.index):
-            raise ValueError(f"xgboost and {comparator} daily metrics do not align")
+            raise ValueError(f"{comparison.candidate} and {comparison.baseline} daily metrics do not align")
         delta = pd.DataFrame(
             {
                 "date": left.index,
-                "model": f"xgboost_minus_{comparator}",
+                "model": comparison.comparison_id,
                 "valid_count": np.minimum(left["valid_count"], right["valid_count"]),
                 "ic": left["ic"] - right["ic"],
                 "rank_ic": left["rank_ic"] - right["rank_ic"],
@@ -429,11 +454,18 @@ def build_regime_diagnostics(
     spec: RegimeSpec,
     fold_assignments: Mapping[pd.Timestamp, str],
     minimum_cross_section: int = 50,
+    required_models: Sequence[str] = ("ridge", "lightgbm", "xgboost"),
+    model_comparisons: Sequence[ModelComparisonSpec] = (
+        ModelComparisonSpec("xgboost", "lightgbm"),
+        ModelComparisonSpec("xgboost", "ridge"),
+    ),
 ) -> RegimeDiagnosticArtifacts:
-    normalized_predictions = normalize_model_predictions(predictions, labels)
+    normalized_predictions = normalize_model_predictions(predictions, labels, required_models=required_models)
     composites = build_oriented_composites(features, taxonomy, spec)
     model_daily = derive_model_daily_metrics(
-        normalized_predictions, minimum_cross_section=minimum_cross_section
+        normalized_predictions,
+        minimum_cross_section=minimum_cross_section,
+        model_comparisons=model_comparisons,
     )
     return RegimeDiagnosticArtifacts(
         labels=regime_labels,

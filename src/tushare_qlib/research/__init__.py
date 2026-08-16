@@ -11,6 +11,7 @@ from .explanation_study import run_explanation_diagnose
 from .study import run_alpha_diagnose
 from .synthesis_study import run_phase1_synthesis
 from .phase2_contract import Phase2Contract, load_phase2_contract, write_phase2_contract_lock
+from .phase3_contract import Phase3Contract, load_phase3_contract, write_phase3_contract_lock
 
 __all__ = [
     "FailureAttributionSpec",
@@ -26,4 +27,7 @@ __all__ = [
     "Phase2Contract",
     "load_phase2_contract",
     "write_phase2_contract_lock",
+    "Phase3Contract",
+    "load_phase3_contract",
+    "write_phase3_contract_lock",
 ]
