@@ -659,7 +659,7 @@ def derive_model_explanation_summary(
             },
         },
         "xgbPrimaryMechanism": mechanism,
-        "stableSignalStructure": not h3_supported and np.isfinite(top_jaccard),
+        "stableSignalStructure": bool(not h3_supported and np.isfinite(top_jaccard)),
         "foldRelationshipStability": "UNSTABLE" if h3_supported else "STABLE",
         "regimeImportanceDrift": (
             "INPUT_PARTIAL"
