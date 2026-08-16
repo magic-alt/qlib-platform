@@ -227,6 +227,25 @@ def parser() -> argparse.ArgumentParser:
     phase2_holdout.add_argument("--final-release", required=True)
     phase2_holdout.add_argument("--calendar", required=True)
     phase2_holdout.add_argument("--output", required=True)
+    phase3_validate = sub.add_parser("phase3-validate")
+    phase3_validate.add_argument("--phase2-acceptance", required=True)
+    phase3_validate.add_argument("--phase2-evidence", required=True)
+    phase3_validate.add_argument(
+        "--contract",
+        default="configs/research/ashare_phase3_v1.yaml",
+    )
+    phase3_validate.add_argument("--output", required=True)
+    phase3_plan = sub.add_parser("phase3-plan")
+    phase3_plan.add_argument("--contract-lock", required=True)
+    phase3_plan.add_argument("--output", required=True)
+    phase3_diagnose = sub.add_parser("phase3-diagnose")
+    phase3_diagnose.add_argument("--contract-lock", required=True)
+    phase3_diagnose.add_argument("--evidence", required=True)
+    phase3_diagnose.add_argument(
+        "--regimes",
+        default="configs/regimes/ashare_regime_v1.yaml",
+    )
+    phase3_diagnose.add_argument("--output", required=True)
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -1084,6 +1103,49 @@ def main() -> None:
             final_release_manifest=args.final_release,
             trading_calendar=calendar,
             output=args.output,
+        )
+        print(path)
+        return
+
+    if args.command == "phase3-validate":
+        from .research.phase3_contract import write_phase3_contract_lock
+
+        path = write_phase3_contract_lock(
+            phase2_acceptance=args.phase2_acceptance,
+            phase2_evidence=args.phase2_evidence,
+            contract_path=args.contract,
+            output=args.output,
+        )
+        lock = json.loads(path.read_text(encoding="utf-8"))
+        print(
+            json.dumps(
+                {
+                    "programId": lock["programId"],
+                    "state": lock["state"],
+                    "diagnosisOnly": lock["diagnosisOnly"],
+                    "lock": str(path),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.command == "phase3-plan":
+        from .research.phase3_program import write_phase3_experiment_plan
+
+        path = write_phase3_experiment_plan(contract_lock=args.contract_lock, output=args.output)
+        print(path)
+        return
+
+    if args.command == "phase3-diagnose":
+        from .research.phase3_diagnostics import run_phase3_diagnose
+
+        path = run_phase3_diagnose(
+            settings,
+            contract_lock=args.contract_lock,
+            evidence_index=args.evidence,
+            regime_path=args.regimes,
+            output_root=args.output,
         )
         print(path)
         return

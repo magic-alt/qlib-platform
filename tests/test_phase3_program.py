@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from tushare_qlib.research.phase3_contract import write_phase3_contract_lock
+from tushare_qlib.research.phase3_program import write_phase3_experiment_plan
+
+from tests._phase3_helpers import phase3_entry_fixture
+
+
+def test_phase3_plan_stops_at_d04_and_never_creates_candidates(tmp_path: Path):
+    acceptance, evidence = phase3_entry_fixture(tmp_path)
+    lock = write_phase3_contract_lock(
+        phase2_acceptance=acceptance,
+        phase2_evidence=evidence,
+        contract_path="configs/research/ashare_phase3_v1.yaml",
+        output=tmp_path / "phase3-lock.json",
+    )
+    path = write_phase3_experiment_plan(contract_lock=lock, output=tmp_path / "plan.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert payload["executionOrder"] == ["P3-D00", "P3-D01", "P3-D02", "P3-D03", "P3-D04"]
+    assert all(item["requiresRetraining"] is False for item in payload["workstreams"])
+    assert all(item["producesFormalCandidate"] is False for item in payload["workstreams"])
+    assert payload["confirmationHypotheses"] == []
+    assert payload["finalHoldoutAccessAllowed"] is False
+    assert payload["publishingAuthorized"] is False
+
+
+def test_phase3_plan_is_immutable(tmp_path: Path):
+    acceptance, evidence = phase3_entry_fixture(tmp_path)
+    lock = write_phase3_contract_lock(
+        phase2_acceptance=acceptance,
+        phase2_evidence=evidence,
+        contract_path="configs/research/ashare_phase3_v1.yaml",
+        output=tmp_path / "phase3-lock.json",
+    )
+    output = tmp_path / "plan.json"
+    write_phase3_experiment_plan(contract_lock=lock, output=output)
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    payload["publishingAuthorized"] = True
+    output.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        write_phase3_experiment_plan(contract_lock=lock, output=output)
+    except ValueError as exc:
+        assert "differs" in str(exc)
+    else:
+        raise AssertionError("tampered Phase 3 plan was accepted")
