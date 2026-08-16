@@ -115,6 +115,9 @@ def parser() -> argparse.ArgumentParser:
     rr.add_argument("--checkpoint-namespace", default="default")
     rr.add_argument("--feature-set")
     rr.add_argument("--selected-technical", action="append", default=[])
+    rr.add_argument("--hypothesis-id")
+    rr.add_argument("--hypothesis-role", choices=["candidate", "baseline"], default="candidate")
+    rr.add_argument("--contract-lock")
     pb = sub.add_parser("backtest-predictions")
     pb.add_argument("predictions")
     pb.add_argument("--benchmark")
@@ -478,15 +481,40 @@ def main() -> None:
     # package, so a stale optional QLIB_REPO does not mask a valid editable
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
-    if args.command == "research-run" and args.feature_set:
+    if args.command == "research-run" and (args.feature_set or args.hypothesis_id):
         experiment = settings.data.setdefault("experiment", {})
         if not isinstance(experiment, dict):
             raise ValueError("experiment config must be a mapping")
         alpha = experiment.setdefault("alpha", {})
         if not isinstance(alpha, dict):
             raise ValueError("experiment.alpha config must be a mapping")
-        alpha["feature_set"] = args.feature_set
-        alpha["selected_technical"] = list(args.selected_technical)
+        if args.hypothesis_id:
+            if args.feature_set or args.selected_technical:
+                raise ValueError(
+                    "--hypothesis-id cannot be combined with --feature-set or --selected-technical"
+                )
+            if not args.contract_lock:
+                raise ValueError("--hypothesis-id requires --contract-lock")
+            if args.mode == "walk-forward":
+                raise ValueError(
+                    "formal Phase 2 hypotheses must be executed as the frozen rolling-OOS folds; "
+                    "generic walk-forward includes final holdout and is forbidden"
+                )
+            from .research.phase2_hypotheses import bind_phase2_hypothesis
+
+            binding = bind_phase2_hypothesis(
+                args.contract_lock,
+                args.hypothesis_id,
+                args.hypothesis_role,
+            )
+            alpha["feature_set"] = binding.feature_set_id
+            alpha["selected_technical"] = []
+            experiment["phase2_hypothesis"] = binding.to_manifest()
+        else:
+            if args.contract_lock:
+                raise ValueError("--contract-lock is only valid with --hypothesis-id")
+            alpha["feature_set"] = args.feature_set
+            alpha["selected_technical"] = list(args.selected_technical)
 
     if args.command in {
         "dataset-list",

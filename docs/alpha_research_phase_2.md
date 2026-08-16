@@ -82,6 +82,24 @@ example:
 A7 additionally requires one `--selected-technical NAME` argument per frozen
 cluster representative. The processor refuses an unsealed empty A7.
 
+The A0–A7 runs are mechanism ablations, not formal hypothesis evidence. Each
+H001–H106 primary test is a separate, frozen nested Ridge pair. Bind every run
+to the contract definition instead of manually selecting a broad feature set:
+
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline_phase2.yaml research-run \
+  --mode fixed --stage release --hypothesis-id H104 --hypothesis-role candidate \
+  --contract-lock /path/to/phase2_contract_lock.json \
+  --model-profile configs/model_profiles/ridge_golden_v1.yaml \
+  --dataset-ref DATASET_VERSION_ID
+```
+
+Repeat the same frozen fold with `--hypothesis-role baseline`. Formal
+hypothesis runs reject XGBoost, manual feature-set overrides, and generic
+`--mode walk-forward`, because that command includes the sealed final holdout.
+H001–H005 each add only their registered characteristic to fixed controls;
+H101–H106 each add only one registered interaction to its two main effects.
+
 ## Acceptance
 
 The primary family reports HAC t-statistics, BH q-values, empirical-Bayes local
@@ -112,13 +130,15 @@ DataReleaseId, DatasetVersion, FeatureSnapshot partitions, LabelSpec, fold
 calendar, research experiment and feature-set checksums, model profile, and
 PredictionSnapshot/portfolio reuse. It rejects promotion-authorized artifacts,
 regime rules, any final-holdout evidence, a partial or duplicated hypothesis
-family, and P2 ablation drift.
+family, P2 ablation drift, hypothesis-definition drift, broad ablations used as
+formal tests, and candidate PredictionSnapshot reuse across hypotheses.
 
-All 11 oriented daily RankIC series enter one date-by-hypothesis matrix before
-HAC, BH-FDR, local FDR, or Romano–Wolf is computed. Robustness metrics are also
-derived by the collector: coverage uses canonical eligible label keys; fold and
-252-session minima use oriented daily RankIC; leave-one-year retention is the
-minimum leave-one-year-out mean divided by the full-sample mean; turnover
+All 11 paired candidate-minus-baseline daily RankIC series enter one
+date-by-hypothesis matrix before HAC, BH-FDR, local FDR, or Romano–Wolf is
+computed. Candidate and baseline dates must match exactly. Robustness metrics
+are also derived by the collector: coverage uses canonical eligible label keys;
+fold and 252-session minima use oriented daily RankIC; leave-one-year retention
+is the minimum leave-one-year-out mean divided by the full-sample mean; turnover
 increase is the candidate mean daily turnover minus the baseline; stressed net
 spread is mean candidate return minus benchmark and the registered cost
 multiple. The resulting artifact is immutable and remains research-only.

@@ -18,6 +18,7 @@ from ..research_gate import derive_daily_signal_diagnostics
 from ..store import sha256_file
 from .phase2_contract import MultipleTestingSpec, assert_workstream_allowed, load_phase2_lock
 from .phase2_features import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
+from .phase2_hypotheses import hypothesis_definition_sha256, hypothesis_feature_set
 from .phase2_statistics import multiple_testing_table, nested_ridge_increment
 
 
@@ -238,6 +239,9 @@ def _validate_run_manifests(
     split_profile_id: str,
     expected_feature_set: str,
     expected_model: str,
+    expected_hypothesis_id: str | None = None,
+    expected_hypothesis_role: str | None = None,
+    expected_hypothesis_definition_sha256: str | None = None,
 ) -> tuple[list[dict[str, Any]], tuple[tuple[str, str, str], ...], list[dict[str, str]]]:
     spec = feature_set(expected_feature_set)
     manifests: list[dict[str, Any]] = []
@@ -266,6 +270,24 @@ def _validate_run_manifests(
         drift = [key for key, value in expected.items() if experiment.get(key) != value]
         if drift:
             raise ValueError(f"run research contract drift: {drift}")
+        if expected_hypothesis_id is not None:
+            hypothesis_expected = {
+                "hypothesis_id": expected_hypothesis_id,
+                "hypothesis_role": expected_hypothesis_role,
+                "hypothesis_definition_sha256": expected_hypothesis_definition_sha256,
+            }
+            if any(experiment.get(key) != value for key, value in hypothesis_expected.items()):
+                raise ValueError("run hypothesis binding drift")
+            manifest_hypothesis = _mapping(manifest.get("phase2Hypothesis"), "run Phase 2 hypothesis binding")
+            if (
+                manifest_hypothesis.get("hypothesisId") != expected_hypothesis_id
+                or manifest_hypothesis.get("role") != expected_hypothesis_role
+                or manifest_hypothesis.get("hypothesisDefinitionSha256")
+                != expected_hypothesis_definition_sha256
+            ):
+                raise ValueError("run hypothesis manifest drift")
+        elif manifest.get("phase2Hypothesis") not in (None, {}):
+            raise ValueError("ablation run cannot carry a formal hypothesis binding")
         dataset = _mapping(manifest.get("dataset"), "run dataset")
         if (
             dataset.get("datasetId") != data_release_id
@@ -596,6 +618,7 @@ def collect_phase2_evidence(
     daily_family: dict[str, pd.Series] = {}
     staged: list[dict[str, Any]] = []
     candidate_ids: set[str] = set()
+    candidate_snapshot_ids: set[str] = set()
     for raw in candidates_raw:
         item = _mapping(raw, "Phase 2 candidate")
         candidate_id = str(item.get("candidateId") or "").strip()
@@ -605,8 +628,14 @@ def collect_phase2_evidence(
         candidate_ids.add(candidate_id)
         if str(item.get("regimeRule") or "") != "none":
             raise ValueError("phase2-collect runs before regime overlays")
+        hypothesis = hypotheses[hypothesis_id]
+        definition_sha256 = hypothesis_definition_sha256(hypothesis)
+        candidate_spec = hypothesis_feature_set(hypothesis_id, "candidate")
+        baseline_spec = hypothesis_feature_set(hypothesis_id, "baseline")
         feature_set_id = str(item.get("featureSet") or "")
         model = str(item.get("model") or "").lower()
+        if feature_set_id != candidate_spec.feature_set_id or model != "ridge":
+            raise ValueError(f"candidate {candidate_id} is not the registered nested Ridge test")
         spec = feature_set(feature_set_id)
         expected_design = {
             "alphaPack": spec.source_pack,
@@ -623,6 +652,9 @@ def collect_phase2_evidence(
             split_profile_id=str(contract.get("split_profile") or ""),
             expected_feature_set=feature_set_id,
             expected_model=model,
+            expected_hypothesis_id=hypothesis_id,
+            expected_hypothesis_role="candidate",
+            expected_hypothesis_definition_sha256=definition_sha256,
         )
         if folds != canonical_folds:
             raise ValueError(f"candidate {candidate_id} fold calendar drift")
@@ -637,6 +669,10 @@ def collect_phase2_evidence(
         )
         _validate_aggregate_snapshot(frame, run_manifests, f"candidate {candidate_id}")
         frame = _align_snapshot_labels(frame, labels, f"candidate {candidate_id}")
+        candidate_snapshot_id = str(snapshot.get("snapshotId") or "")
+        if not candidate_snapshot_id or candidate_snapshot_id in candidate_snapshot_ids:
+            raise ValueError("different hypotheses cannot reuse a candidate PredictionSnapshot")
+        candidate_snapshot_ids.add(candidate_snapshot_id)
         if not frame.index.isin(benchmark.index).all():
             raise ValueError(f"candidate {candidate_id} is outside the benchmark factor panel")
         baseline_path = _resolve(base, item.get("baselinePredictionSnapshot"), "baseline PredictionSnapshot")
@@ -646,12 +682,18 @@ def collect_phase2_evidence(
             feature_snapshot_id=feature_snapshot_id,
             label_spec_id=str(contract.get("label_spec") or ""),
         )
+        if baseline_snapshot.get("snapshotId") == snapshot.get("snapshotId"):
+            raise ValueError(f"candidate {candidate_id} reuses its baseline PredictionSnapshot")
         baseline_contract = _mapping(
             baseline_snapshot.get("contract"), "baseline PredictionSnapshot contract"
         )
         baseline_feature_set = str(item.get("baselineFeatureSet") or "")
         baseline_model = str(item.get("baselineModel") or "").lower()
-        if baseline_contract.get("feature_set_id") != baseline_feature_set:
+        if (
+            baseline_feature_set != baseline_spec.feature_set_id
+            or baseline_model != "ridge"
+            or baseline_contract.get("feature_set_id") != baseline_feature_set
+        ):
             raise ValueError(f"candidate {candidate_id} baseline feature-set drift")
         baseline_runs, baseline_folds, baseline_run_lineage = _validate_run_manifests(
             _paths(
@@ -666,6 +708,9 @@ def collect_phase2_evidence(
             split_profile_id=str(contract.get("split_profile") or ""),
             expected_feature_set=baseline_feature_set,
             expected_model=baseline_model,
+            expected_hypothesis_id=hypothesis_id,
+            expected_hypothesis_role="baseline",
+            expected_hypothesis_definition_sha256=definition_sha256,
         )
         if baseline_folds != canonical_folds:
             raise ValueError(f"candidate {candidate_id} baseline fold calendar drift")
@@ -674,6 +719,8 @@ def collect_phase2_evidence(
         direction = str(hypotheses[hypothesis_id]["direction"])
         daily = _daily_rank_ic(frame, direction)
         baseline_daily = _daily_rank_ic(baseline_frame, direction)
+        if not daily.index.equals(baseline_daily.index):
+            raise ValueError(f"candidate {candidate_id} candidate/baseline daily RankIC date drift")
         _assign_folds(pd.DatetimeIndex(daily.index), folds)
         label_dates = pd.DatetimeIndex(labels.index.get_level_values("datetime")).normalize()
         eligible_date_mask = np.zeros(len(labels), dtype=bool)
@@ -703,7 +750,7 @@ def collect_phase2_evidence(
             testing=testing,
             stressed_cost_multiple=float(contract["robustness"]["stressed_cost_multiple"]),
         )
-        daily_family[hypothesis_id] = daily
+        daily_family[hypothesis_id] = daily - baseline_daily
         staged.append(
             {
                 "candidateId": candidate_id,
@@ -788,6 +835,7 @@ def collect_phase2_evidence(
             "familySize": len(hypotheses),
             "dateCount": len(family),
             "computedOnce": True,
+            "testTarget": "candidate_minus_baseline_daily_rank_ic",
             "table": testing_table.reset_index().to_dict(orient="records"),
         },
         "candidates": sorted(candidates, key=lambda item: str(item["candidateId"])),

@@ -17,22 +17,29 @@ from tushare_qlib.prediction_snapshot import (
 from tushare_qlib.research.phase2_collector import collect_phase2_evidence
 from tushare_qlib.research.phase2_contract import write_phase2_contract_lock
 from tushare_qlib.research.phase2_features import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
+from tushare_qlib.research.phase2_hypotheses import hypothesis_definition_sha256
 from tushare_qlib.research.phase2_program import write_incremental_acceptance
 from tushare_qlib.store import sha256_file
 
 
 HYPOTHESIS_FEATURE_SETS = {
-    "H001": "A1",
-    "H002": "LVR1",
-    "H003": "VP1",
-    "H004": "A4",
-    "H005": "A5",
-    "H101": "I1",
-    "H102": "I1",
-    "H103": "I1",
-    "H104": "I1",
-    "H105": "I1",
-    "H106": "I1",
+    hypothesis_id: (
+        f"{hypothesis_id}_CANDIDATE",
+        f"{hypothesis_id}_BASELINE",
+    )
+    for hypothesis_id in (
+        "H001",
+        "H002",
+        "H003",
+        "H004",
+        "H005",
+        "H101",
+        "H102",
+        "H103",
+        "H104",
+        "H105",
+        "H106",
+    )
 }
 
 
@@ -193,6 +200,9 @@ def _run_manifest(
     feature_snapshot_id: str,
     feature_set_id: str,
     model: str,
+    hypothesis_id: str | None = None,
+    hypothesis_role: str | None = None,
+    hypothesis_definition_sha: str | None = None,
 ) -> Path:
     experiment = {
         "data_release_id": release_id,
@@ -204,6 +214,22 @@ def _run_manifest(
         "model_profile_id": f"{model}_profile_v1",
         "experiment_id": f"exp_{name}",
     }
+    phase2_hypothesis = None
+    if hypothesis_id is not None:
+        experiment.update(
+            {
+                "hypothesis_id": hypothesis_id,
+                "hypothesis_role": hypothesis_role,
+                "hypothesis_definition_sha256": hypothesis_definition_sha,
+                "hypothesis_binding_sha256": f"binding_{name}",
+            }
+        )
+        phase2_hypothesis = {
+            "hypothesisId": hypothesis_id,
+            "role": hypothesis_role,
+            "hypothesisDefinitionSha256": hypothesis_definition_sha,
+            "hypothesisBindingSha256": f"binding_{name}",
+        }
     manifest = {
         "schemaVersion": "2.0",
         "runKind": "phase2_walk_forward",
@@ -215,6 +241,7 @@ def _run_manifest(
         },
         "researchExperimentId": experiment["experiment_id"],
         "researchExperiment": experiment,
+        "phase2Hypothesis": phase2_hypothesis,
         "predictionSnapshot": snapshot,
         "runtime": {"modelFamily": model, "modelProfile": f"{model}_profile_v1"},
         "promotion": {"promotionAuthorized": False},
@@ -285,38 +312,6 @@ def _evidence_fixture(tmp_path: Path) -> tuple[Path, Path]:
         columns=benchmark_columns,
     ).to_parquet(benchmark_path)
 
-    baseline_scores = pd.Series(rng.normal(size=len(index)), index=index)
-    baseline_snapshot_path, baseline_snapshot = _snapshot(
-        tmp_path,
-        "baseline",
-        baseline_scores,
-        label,
-        release_id=release_id,
-        feature_snapshot_id=feature_snapshot_id,
-        feature_set_id="A0",
-        model="ridge",
-    )
-    baseline_run = _run_manifest(
-        tmp_path,
-        "baseline",
-        baseline_snapshot_path,
-        baseline_snapshot,
-        dates,
-        release_id=release_id,
-        dataset_version=dataset_version,
-        feature_snapshot_id=feature_snapshot_id,
-        feature_set_id="A0",
-        model="ridge",
-    )
-    baseline_portfolio = _portfolio(
-        tmp_path,
-        "baseline",
-        baseline_snapshot,
-        dates,
-        dataset_version=dataset_version,
-        turnover=0.05,
-    )
-
     ablations: dict[str, object] = {}
     for position, (experiment_id, (feature_set_id, model)) in enumerate(EXPERIMENT_MATRIX.items(), start=1):
         scores = label + pd.Series(
@@ -347,7 +342,10 @@ def _evidence_fixture(tmp_path: Path) -> tuple[Path, Path]:
         ablations[experiment_id] = {"runManifests": [str(run_path)]}
 
     candidates: list[dict[str, object]] = []
-    for position, (hypothesis_id, feature_set_id) in enumerate(HYPOTHESIS_FEATURE_SETS.items(), start=1):
+    hypotheses = {item["hypothesis_id"]: item for item in lock["contract"]["hypotheses"]}
+    for position, (hypothesis_id, feature_sets) in enumerate(HYPOTHESIS_FEATURE_SETS.items(), start=1):
+        feature_set_id, baseline_feature_set_id = feature_sets
+        definition_sha = hypothesis_definition_sha256(hypotheses[hypothesis_id])
         scores = label + pd.Series(
             np.random.default_rng(500 + position).normal(scale=1.5, size=len(index)), index=index
         )
@@ -372,6 +370,9 @@ def _evidence_fixture(tmp_path: Path) -> tuple[Path, Path]:
             feature_snapshot_id=feature_snapshot_id,
             feature_set_id=feature_set_id,
             model="ridge",
+            hypothesis_id=hypothesis_id,
+            hypothesis_role="candidate",
+            hypothesis_definition_sha=definition_sha,
         )
         portfolio_path = _portfolio(
             tmp_path,
@@ -380,6 +381,42 @@ def _evidence_fixture(tmp_path: Path) -> tuple[Path, Path]:
             dates,
             dataset_version=dataset_version,
             turnover=0.10,
+        )
+        baseline_scores = label + pd.Series(
+            np.random.default_rng(700 + position).normal(scale=1.8, size=len(index)), index=index
+        )
+        baseline_snapshot_path, baseline_snapshot = _snapshot(
+            tmp_path,
+            f"{hypothesis_id}-baseline",
+            baseline_scores,
+            label,
+            release_id=release_id,
+            feature_snapshot_id=feature_snapshot_id,
+            feature_set_id=baseline_feature_set_id,
+            model="ridge",
+        )
+        baseline_run = _run_manifest(
+            tmp_path,
+            f"{hypothesis_id}-baseline",
+            baseline_snapshot_path,
+            baseline_snapshot,
+            dates,
+            release_id=release_id,
+            dataset_version=dataset_version,
+            feature_snapshot_id=feature_snapshot_id,
+            feature_set_id=baseline_feature_set_id,
+            model="ridge",
+            hypothesis_id=hypothesis_id,
+            hypothesis_role="baseline",
+            hypothesis_definition_sha=definition_sha,
+        )
+        baseline_portfolio = _portfolio(
+            tmp_path,
+            f"{hypothesis_id}-baseline",
+            baseline_snapshot,
+            dates,
+            dataset_version=dataset_version,
+            turnover=0.05,
         )
         candidates.append(
             {
@@ -393,7 +430,7 @@ def _evidence_fixture(tmp_path: Path) -> tuple[Path, Path]:
                 "runManifests": [str(run_path)],
                 "predictionSnapshot": str(snapshot_path),
                 "baselinePredictionSnapshot": str(baseline_snapshot_path),
-                "baselineFeatureSet": "A0",
+                "baselineFeatureSet": baseline_feature_set_id,
                 "baselineModel": "ridge",
                 "baselineRunManifests": [str(baseline_run)],
                 "portfolioManifest": str(portfolio_path),
@@ -429,6 +466,7 @@ def test_collector_builds_one_complete_family_and_phase2_accept_consumes_it(tmp_
     assert payload["multipleTesting"]["family"] == list(HYPOTHESIS_FEATURE_SETS)
     assert payload["multipleTesting"]["familySize"] == 11
     assert payload["multipleTesting"]["computedOnce"] is True
+    assert payload["multipleTesting"]["testTarget"] == "candidate_minus_baseline_daily_rank_ic"
     assert payload["selectionUsesFinalHoldout"] is False
     assert payload["publishingAuthorized"] is False
     assert len(payload["lineage"]["ablationExperiments"]) == 10
@@ -460,7 +498,7 @@ def test_collector_rejects_incomplete_family_and_final_holdout(tmp_path: Path):
     h102 = next(item for item in evidence["candidates"] if item["hypothesisId"] == "H102")
     h101["predictionSnapshot"] = h102["predictionSnapshot"]
     evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
-    with pytest.raises(ValueError, match="run PredictionSnapshots"):
+    with pytest.raises(ValueError, match="PredictionSnapshot contract drift"):
         collect_phase2_evidence(
             contract_lock=lock_path,
             evidence_index=evidence_path,
