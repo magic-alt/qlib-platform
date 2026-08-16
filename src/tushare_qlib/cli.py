@@ -205,6 +205,10 @@ def parser() -> argparse.ArgumentParser:
     phase2_data_accept = sub.add_parser("phase2-data-accept")
     phase2_data_accept.add_argument("--evidence", required=True)
     phase2_data_accept.add_argument("--output", required=True)
+    phase2_collect = sub.add_parser("phase2-collect")
+    phase2_collect.add_argument("--contract-lock", required=True)
+    phase2_collect.add_argument("--evidence", required=True)
+    phase2_collect.add_argument("--output", required=True)
     phase2_accept = sub.add_parser("phase2-accept")
     phase2_accept.add_argument("--contract-lock", required=True)
     phase2_accept.add_argument("--candidates", required=True)
@@ -986,6 +990,17 @@ def main() -> None:
         if not isinstance(checks, dict):
             raise ValueError("Phase 2 DataRelease evidence must contain a checks mapping")
         path = write_data_release_v2_acceptance(settings, evidence=checks, output=args.output)
+        print(path)
+        return
+
+    if args.command == "phase2-collect":
+        from .research.phase2_collector import collect_phase2_evidence
+
+        path = collect_phase2_evidence(
+            contract_lock=args.contract_lock,
+            evidence_index=args.evidence,
+            output=args.output,
+        )
         print(path)
         return
 
