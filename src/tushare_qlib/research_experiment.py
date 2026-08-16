@@ -38,13 +38,28 @@ class ResearchExperimentSpec:
     portfolio_policy_id: str
     portfolio_policy_sha256: str
     benchmark: str
+    hypothesis_id: str | None = None
+    hypothesis_role: str | None = None
+    hypothesis_definition_sha256: str | None = None
+    hypothesis_binding_sha256: str | None = None
 
     @property
     def experiment_id(self) -> str:
-        return "exp_" + sha256_json(asdict(self))
+        return "exp_" + sha256_json({key: value for key, value in asdict(self).items() if value is not None})
 
     def to_manifest(self) -> dict[str, Any]:
-        return {**asdict(self), "experiment_id": self.experiment_id}
+        payload = {key: value for key, value in asdict(self).items() if value is not None}
+        return {**payload, "experiment_id": self.experiment_id}
+
+    def hypothesis_manifest(self) -> dict[str, str] | None:
+        if self.hypothesis_id is None:
+            return None
+        return {
+            "hypothesisId": self.hypothesis_id,
+            "role": str(self.hypothesis_role),
+            "hypothesisDefinitionSha256": str(self.hypothesis_definition_sha256),
+            "hypothesisBindingSha256": str(self.hypothesis_binding_sha256),
+        }
 
     @classmethod
     def resolve(
@@ -86,12 +101,39 @@ class ResearchExperimentSpec:
         alpha_config = experiment.get("alpha", {})
         alpha_config = alpha_config if isinstance(alpha_config, Mapping) else {}
         feature_set_id = str(alpha_config.get("feature_set") or alpha_pack.pack_id)
+        hypothesis_config = experiment.get("phase2_hypothesis", {})
+        hypothesis_config = hypothesis_config if isinstance(hypothesis_config, Mapping) else {}
+        hypothesis_id = str(hypothesis_config.get("hypothesisId") or "").strip() or None
+        hypothesis_role = str(hypothesis_config.get("role") or "").strip() or None
+        hypothesis_definition_sha256 = (
+            str(hypothesis_config.get("hypothesisDefinitionSha256") or "").strip() or None
+        )
+        hypothesis_binding_sha256 = (
+            str(hypothesis_config.get("hypothesisBindingSha256") or "").strip() or None
+        )
         if alpha_pack.processor_recipe == "phase2_feature_set_v1":
             from .research.phase2_features import feature_set
 
             feature_set_sha256 = feature_set(feature_set_id).fingerprint
         else:
             feature_set_sha256 = alpha_pack.fingerprint
+        if hypothesis_id is not None:
+            required = {
+                "hypothesis_role": hypothesis_role,
+                "hypothesis_definition_sha256": hypothesis_definition_sha256,
+                "hypothesis_binding_sha256": hypothesis_binding_sha256,
+            }
+            if missing := sorted(key for key, value in required.items() if not value):
+                raise ValueError(f"Phase 2 hypothesis binding is incomplete: {missing}")
+            if alpha_pack.processor_recipe != "phase2_feature_set_v1":
+                raise ValueError("Phase 2 hypothesis runs require the Phase 2 alpha pack")
+            from .research.phase2_hypotheses import hypothesis_feature_set
+
+            expected = hypothesis_feature_set(hypothesis_id, str(hypothesis_role))
+            if feature_set_id != expected.feature_set_id:
+                raise ValueError("Phase 2 hypothesis feature-set binding drift")
+            if runtime.profile.family != "ridge":
+                raise ValueError("formal Phase 2 hypothesis runs require Ridge")
         return cls(
             data_release_id=canonical.dataset.dataset_id,
             alpha_pack_id=alpha_pack.pack_id,
@@ -107,4 +149,8 @@ class ResearchExperimentSpec:
             portfolio_policy_id=portfolio_policy_id,
             portfolio_policy_sha256=sha256_json(canonical.strategy.__dict__),
             benchmark=benchmark,
+            hypothesis_id=hypothesis_id,
+            hypothesis_role=hypothesis_role,
+            hypothesis_definition_sha256=hypothesis_definition_sha256,
+            hypothesis_binding_sha256=hypothesis_binding_sha256,
         )

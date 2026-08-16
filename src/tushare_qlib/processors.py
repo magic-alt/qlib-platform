@@ -172,9 +172,10 @@ class Phase2FeatureSetProcessor(Processor):
         self.spec = feature_set(feature_set_id)
         if self.spec.source_pack != "ashare_alpha_phase2_v1":
             raise ValueError(f"{feature_set_id} is not a Phase 2 superset feature set")
-        if self.spec.include_selected_technical and not self.selected_technical:
+        include_selected_technical = bool(getattr(self.spec, "include_selected_technical", False))
+        if include_selected_technical and not self.selected_technical:
             raise ValueError("A7 requires a frozen non-empty selected_technical list")
-        if not self.spec.include_selected_technical and self.selected_technical:
+        if not include_selected_technical and self.selected_technical:
             raise ValueError("selected_technical is allowed only for its registered feature set")
         if self.minimum_residual_cross_section < 5:
             raise ValueError("minimum_residual_cross_section must be at least five")
@@ -281,19 +282,21 @@ class Phase2FeatureSetProcessor(Processor):
             for name in self.selected_technical:
                 normalized[name] = self._rank_z(block[name])
 
-            selected: list[str] = []
-            for family in self.spec.families:
-                if family in BENCHMARK_FAMILIES:
-                    selected.extend(BENCHMARK_FAMILIES[family])
-                elif family == "FundamentalMomentum":
-                    selected.append("FUNDAMENTAL_MOMENTUM")
-                elif family == "ResidualLowRisk":
-                    selected.append("LOWVOL_RESIDUAL")
-                else:
-                    raise ValueError(f"unsupported Phase 2 family in {self.feature_set_id}: {family}")
-            selected.extend(self.selected_technical)
-            if self.spec.include_interactions:
-                selected.extend(INTERACTIONS)
+            explicit_features = getattr(self.spec, "features", ())
+            selected: list[str] = list(explicit_features)
+            if not explicit_features:
+                for family in self.spec.families:
+                    if family in BENCHMARK_FAMILIES:
+                        selected.extend(BENCHMARK_FAMILIES[family])
+                    elif family == "FundamentalMomentum":
+                        selected.append("FUNDAMENTAL_MOMENTUM")
+                    elif family == "ResidualLowRisk":
+                        selected.append("LOWVOL_RESIDUAL")
+                    else:
+                        raise ValueError(f"unsupported Phase 2 family in {self.feature_set_id}: {family}")
+                selected.extend(self.selected_technical)
+                if self.spec.include_interactions:
+                    selected.extend(INTERACTIONS)
             selected = list(dict.fromkeys(selected))
             blocks.append(normalized[selected])
 

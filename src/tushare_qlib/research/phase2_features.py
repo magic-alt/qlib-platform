@@ -65,6 +65,35 @@ class FeatureSetSpec:
         return {**asdict(self), "featureSetSha256": self.fingerprint}
 
 
+@dataclass(frozen=True)
+class HypothesisFeatureSetSpec:
+    feature_set_id: str
+    hypothesis_id: str
+    role: str
+    features: tuple[str, ...]
+    embedded_controls: tuple[str, ...] = ()
+    source_pack: str = "ashare_alpha_phase2_v1"
+
+    @property
+    def fingerprint(self) -> str:
+        return sha256_json(asdict(self))
+
+    def to_manifest(self) -> dict[str, object]:
+        return {**asdict(self), "featureSetSha256": self.fingerprint}
+
+    @property
+    def families(self) -> tuple[str, ...]:
+        return ()
+
+    @property
+    def include_selected_technical(self) -> bool:
+        return False
+
+    @property
+    def include_interactions(self) -> bool:
+        return False
+
+
 FEATURE_SETS: dict[str, FeatureSetSpec] = {
     "A0": FeatureSetSpec("A0", "alpha158_pit_v1", ("Alpha158",)),
     "A1": FeatureSetSpec("A1", "ashare_alpha_phase2_v1", ("Value",)),
@@ -97,6 +126,106 @@ FEATURE_SETS: dict[str, FeatureSetSpec] = {
     ),
 }
 
+
+def _hypothesis_pair(
+    hypothesis_id: str,
+    baseline: tuple[str, ...],
+    added: str,
+    *,
+    embedded_controls: tuple[str, ...] = (),
+) -> tuple[HypothesisFeatureSetSpec, HypothesisFeatureSetSpec]:
+    return (
+        HypothesisFeatureSetSpec(
+            f"{hypothesis_id}_BASELINE",
+            hypothesis_id,
+            "baseline",
+            baseline,
+            embedded_controls,
+        ),
+        HypothesisFeatureSetSpec(
+            f"{hypothesis_id}_CANDIDATE",
+            hypothesis_id,
+            "candidate",
+            (*baseline, added),
+            embedded_controls,
+        ),
+    )
+
+
+_HYPOTHESIS_PAIRS = (
+    _hypothesis_pair(
+        "H001",
+        (
+            "SIZE_COMPOSITE",
+            "PROFITABILITY_COMPOSITE",
+            "LOWVOL_COMPOSITE",
+            "LIQUIDITY_COMPOSITE",
+        ),
+        "EARNINGS_YIELD",
+    ),
+    _hypothesis_pair(
+        "H002",
+        ("SIZE_COMPOSITE", "VALUE_COMPOSITE", "PROFITABILITY_COMPOSITE"),
+        "LOWVOL_RESIDUAL",
+        embedded_controls=("INDUSTRY_L1_CODE",),
+    ),
+    _hypothesis_pair(
+        "H003",
+        ("SIZE_COMPOSITE", "VALUE_COMPOSITE", "LOWVOL_COMPOSITE", "LIQUIDITY_COMPOSITE"),
+        "GROSS_PROFIT_ASSETS",
+    ),
+    _hypothesis_pair(
+        "H004",
+        ("SIZE_COMPOSITE", "VALUE_COMPOSITE", "LOWVOL_COMPOSITE", "LIQUIDITY_COMPOSITE"),
+        "OPERATING_PROFIT_ASSETS",
+    ),
+    _hypothesis_pair(
+        "H005",
+        (
+            "SIZE_COMPOSITE",
+            "VALUE_COMPOSITE",
+            "PROFITABILITY_COMPOSITE",
+            "LOWVOL_COMPOSITE",
+            "LIQUIDITY_COMPOSITE",
+        ),
+        "FUNDAMENTAL_MOMENTUM",
+    ),
+    _hypothesis_pair(
+        "H101",
+        ("VALUE_COMPOSITE", "VOLATILITY_COMPOSITE"),
+        "VALUE_X_VOLATILITY",
+    ),
+    _hypothesis_pair(
+        "H102",
+        ("VALUE_COMPOSITE", "SIZE_COMPOSITE"),
+        "VALUE_X_SIZE",
+    ),
+    _hypothesis_pair(
+        "H103",
+        ("PROFITABILITY_COMPOSITE", "VALUE_COMPOSITE"),
+        "PROFITABILITY_X_VALUE",
+    ),
+    _hypothesis_pair(
+        "H104",
+        ("PROFITABILITY_COMPOSITE", "LOWVOL_COMPOSITE"),
+        "PROFITABILITY_X_LOWVOL",
+    ),
+    _hypothesis_pair(
+        "H105",
+        ("MOMENTUM_COMPOSITE", "VOLATILITY_COMPOSITE"),
+        "MOMENTUM_X_VOLATILITY",
+    ),
+    _hypothesis_pair(
+        "H106",
+        ("LIQUIDITY_COMPOSITE", "VOLATILITY_COMPOSITE"),
+        "LIQUIDITY_X_VOLATILITY",
+    ),
+)
+
+HYPOTHESIS_FEATURE_SETS: dict[str, HypothesisFeatureSetSpec] = {
+    spec.feature_set_id: spec for pair in _HYPOTHESIS_PAIRS for spec in pair
+}
+
 EXPERIMENT_MATRIX: dict[str, tuple[str, str]] = {
     "P2-01": ("A1", "ridge"),
     "P2-02": ("A2", "ridge"),
@@ -120,9 +249,9 @@ INTERACTIONS: dict[str, tuple[str, str]] = {
 }
 
 
-def feature_set(feature_set_id: str) -> FeatureSetSpec:
+def feature_set(feature_set_id: str) -> FeatureSetSpec | HypothesisFeatureSetSpec:
     try:
-        return FEATURE_SETS[feature_set_id]
+        return FEATURE_SETS.get(feature_set_id) or HYPOTHESIS_FEATURE_SETS[feature_set_id]
     except KeyError as exc:
         raise ValueError(f"unknown Phase 2 feature set: {feature_set_id}") from exc
 

@@ -891,6 +891,7 @@ def train_backtest_select(
                 "canonicalConfig": canonical.to_manifest(),
                 "researchExperimentId": experiment_spec.experiment_id,
                 "researchExperiment": experiment_spec.to_manifest(),
+                "phase2Hypothesis": experiment_spec.hypothesis_manifest(),
                 "predictionSnapshot": prediction_snapshot,
                 "lineage": lineage,
                 "promotion": {
@@ -1146,6 +1147,7 @@ def train_backtest_select(
             "canonicalConfig": canonical.to_manifest(),
             "researchExperimentId": experiment_spec.experiment_id,
             "researchExperiment": experiment_spec.to_manifest(),
+            "phase2Hypothesis": experiment_spec.hypothesis_manifest(),
             "predictionSnapshot": prediction_snapshot,
             "portfolioPolicySha256": sha256_json(canonical.to_manifest()["portfolio"]),
             "lineage": lineage,

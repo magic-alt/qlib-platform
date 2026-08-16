@@ -10,6 +10,7 @@ from tushare_qlib.research.phase2_features import (
     BENCHMARK_FAMILIES,
     EXPERIMENT_MATRIX,
     FEATURE_SETS,
+    HYPOTHESIS_FEATURE_SETS,
     build_benchmark_factors,
     build_explicit_interactions,
     residualize_lowvol,
@@ -162,6 +163,10 @@ def test_phase2_processor_isolates_registered_feature_sets():
     value = Phase2FeatureSetProcessor("A1")(factors)
     value_profitability = Phase2FeatureSetProcessor("VP1")(factors)
     residual = Phase2FeatureSetProcessor("LVR1", minimum_residual_cross_section=5)(factors)
+    h003_baseline = Phase2FeatureSetProcessor("H003_BASELINE")(factors)
+    h003_candidate = Phase2FeatureSetProcessor("H003_CANDIDATE")(factors)
+    h104_baseline = Phase2FeatureSetProcessor("H104_BASELINE")(factors)
+    h104_candidate = Phase2FeatureSetProcessor("H104_CANDIDATE")(factors)
 
     assert list(value["feature"]) == ["EARNINGS_YIELD", "BOOK_TO_PRICE", "DIVIDEND_YIELD"]
     assert set(value_profitability["feature"]) == {
@@ -169,5 +174,14 @@ def test_phase2_processor_isolates_registered_feature_sets():
         *BENCHMARK_FAMILIES["Profitability"],
     }
     assert list(residual["feature"]) == ["LOWVOL_RESIDUAL"]
+    assert list(h003_candidate["feature"]) == [
+        *h003_baseline["feature"].columns,
+        "GROSS_PROFIT_ASSETS",
+    ]
+    assert list(h104_candidate["feature"]) == [
+        *h104_baseline["feature"].columns,
+        "PROFITABILITY_X_LOWVOL",
+    ]
+    assert len(HYPOTHESIS_FEATURE_SETS) == 22
     with pytest.raises(ValueError, match="selected_technical"):
         Phase2FeatureSetProcessor("A7")
