@@ -90,6 +90,39 @@ with explicit reason codes unless it passes coverage, oriented RankIC, positive
 folds, worst fold and worst 252-session window, leave-one-year-out robustness,
 positive nested-Ridge increment, turnover, and 1.5× cost gates.
 
+Do not assemble `candidate_metrics.json` by hand. After all registered runs are
+complete, create a `phase2_evidence_index_v1` that contains paths only: the
+DataRelease manifest, DatasetVersion, FeatureSnapshot, canonical rolling-OOS
+labels, benchmark factor panel, P2-01 through P2-10 run manifests, and exactly
+one primary evidence bundle for each of H001 through H106. Each hypothesis
+bundle names its immutable run manifests, candidate and baseline
+PredictionSnapshots, baseline feature set/model and run manifests, and
+predictions-only candidate and baseline portfolio manifests. Paths may be
+absolute or relative to the evidence index.
+
+```bash
+.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-collect \
+  --contract-lock /path/to/phase2_contract_lock.json \
+  --evidence /path/to/phase2_evidence_index.json \
+  --output /path/to/candidate_metrics.json
+```
+
+The collector verifies the DataRelease profile and component schemas,
+DataReleaseId, DatasetVersion, FeatureSnapshot partitions, LabelSpec, fold
+calendar, research experiment and feature-set checksums, model profile, and
+PredictionSnapshot/portfolio reuse. It rejects promotion-authorized artifacts,
+regime rules, any final-holdout evidence, a partial or duplicated hypothesis
+family, and P2 ablation drift.
+
+All 11 oriented daily RankIC series enter one date-by-hypothesis matrix before
+HAC, BH-FDR, local FDR, or Romano–Wolf is computed. Robustness metrics are also
+derived by the collector: coverage uses canonical eligible label keys; fold and
+252-session minima use oriented daily RankIC; leave-one-year retention is the
+minimum leave-one-year-out mean divided by the full-sample mean; turnover
+increase is the candidate mean daily turnover minus the baseline; stressed net
+spread is mean candidate return minus benchmark and the registered cost
+multiple. The resulting artifact is immutable and remains research-only.
+
 ```bash
 .venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-accept \
   --contract-lock /path/to/phase2_contract_lock.json \
