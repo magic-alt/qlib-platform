@@ -224,7 +224,8 @@ class Extractor:
                 min(start, available_start).strftime("%Y%m%d"), max(end, available_end).strftime("%Y%m%d")
             )
         mask = (cal["is_open"] == 1) & (cal["cal_date"] >= start) & (cal["cal_date"] <= end)
-        return [str(value) for value in cal.loc[mask, "cal_date"].dt.strftime("%Y%m%d").tolist()]
+        dates = pd.to_datetime(cal.loc[mask, "cal_date"], errors="raise")
+        return dates.drop_duplicates().sort_values().dt.strftime("%Y%m%d").tolist()
 
     def fetch_day(self, trade_date: str, force: bool = False) -> None:
         fetched: dict[str, pd.DataFrame] = {}
