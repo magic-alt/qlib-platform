@@ -34,6 +34,9 @@ dist/
 .vscode/
 .qoder
 
+# Repository-local Git worktree containers
+.worktrees/
+
 data
 mlruns/
 tmp/

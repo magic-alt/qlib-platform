@@ -214,7 +214,7 @@ def parser() -> argparse.ArgumentParser:
     phase2_collect.add_argument("--output", required=True)
     phase2_accept = sub.add_parser("phase2-accept")
     phase2_accept.add_argument("--contract-lock", required=True)
-    phase2_accept.add_argument("--candidates", required=True)
+    phase2_accept.add_argument("--candidate-metrics", "--candidates", dest="candidate_metrics", required=True)
     phase2_accept.add_argument("--output", required=True)
     phase2_select = sub.add_parser("phase2-select")
     phase2_select.add_argument("--contract-lock", required=True)
@@ -230,6 +230,7 @@ def parser() -> argparse.ArgumentParser:
     phase3_validate = sub.add_parser("phase3-validate")
     phase3_validate.add_argument("--phase2-acceptance", required=True)
     phase3_validate.add_argument("--phase2-evidence", required=True)
+    phase3_validate.add_argument("--phase2-data-acceptance", required=True)
     phase3_validate.add_argument(
         "--contract",
         default="configs/research/ashare_phase3_v1.yaml",
@@ -240,6 +241,7 @@ def parser() -> argparse.ArgumentParser:
     phase3_plan.add_argument("--output", required=True)
     phase3_diagnose = sub.add_parser("phase3-diagnose")
     phase3_diagnose.add_argument("--contract-lock", required=True)
+    phase3_diagnose.add_argument("--plan", required=True)
     phase3_diagnose.add_argument("--evidence", required=True)
     phase3_diagnose.add_argument(
         "--regimes",
@@ -1054,15 +1056,9 @@ def main() -> None:
     if args.command == "phase2-accept":
         from .research.phase2_program import write_incremental_acceptance
 
-        source = Path(args.candidates).expanduser().resolve()
-        candidates = json.loads(source.read_text(encoding="utf-8"))
-        if isinstance(candidates, dict):
-            candidates = candidates.get("candidates")
-        if not isinstance(candidates, list):
-            raise ValueError("Phase 2 candidate input must be a JSON list")
         path = write_incremental_acceptance(
             contract_lock=args.contract_lock,
-            candidates=candidates,
+            candidate_metrics=args.candidate_metrics,
             output=args.output,
         )
         print(path)
@@ -1113,6 +1109,7 @@ def main() -> None:
         path = write_phase3_contract_lock(
             phase2_acceptance=args.phase2_acceptance,
             phase2_evidence=args.phase2_evidence,
+            phase2_data_acceptance=args.phase2_data_acceptance,
             contract_path=args.contract,
             output=args.output,
         )
@@ -1143,6 +1140,7 @@ def main() -> None:
         path = run_phase3_diagnose(
             settings,
             contract_lock=args.contract_lock,
+            plan_path=args.plan,
             evidence_index=args.evidence,
             regime_path=args.regimes,
             output_root=args.output,

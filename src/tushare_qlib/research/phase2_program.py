@@ -23,6 +23,20 @@ _XGB_GRID = (
     {"max_depth": 10, "eta": 0.05, "min_child_weight": 10},
 )
 
+PHASE2_INCREMENTAL_CANDIDATE_FAMILY = (
+    "H001",
+    "H002",
+    "H003",
+    "H004",
+    "H005",
+    "H101",
+    "H102",
+    "H103",
+    "H104",
+    "H105",
+    "H106",
+)
+
 
 def _write_immutable(payload: dict[str, Any], output: str | Path, identity_key: str) -> Path:
     payload[identity_key] = sha256_json(payload)
@@ -139,12 +153,61 @@ def write_phase2_experiment_plan(*, contract_lock: str | Path, output: str | Pat
 def write_incremental_acceptance(
     *,
     contract_lock: str | Path,
-    candidates: Sequence[Mapping[str, object]],
+    candidates: Sequence[Mapping[str, object]] | None = None,
+    candidate_metrics: str | Path | None = None,
     output: str | Path,
 ) -> Path:
     source = Path(contract_lock).expanduser().resolve()
     lock = load_phase2_lock(source)
     assert_workstream_allowed(lock, "INCREMENTAL_ACCEPTANCE")
+    collector_binding: dict[str, object] | None = None
+    if candidate_metrics is not None:
+        if candidates is not None:
+            raise ValueError("provide candidate_metrics or candidates, not both")
+        metrics_path = Path(candidate_metrics).expanduser().resolve()
+        raw_metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        if not isinstance(raw_metrics, Mapping):
+            raise ValueError("Phase 2 candidate metrics must be a JSON object")
+        if raw_metrics.get("schemaVersion") != "phase2_candidate_metrics_v1":
+            raise ValueError("unsupported Phase 2 candidate metrics schema")
+        recorded_collector_sha = str(raw_metrics.get("collectorSha256") or "")
+        actual_collector_sha = sha256_json(
+            {key: value for key, value in raw_metrics.items() if key != "collectorSha256"}
+        )
+        if recorded_collector_sha != actual_collector_sha:
+            raise ValueError("Phase 2 candidate metrics checksum mismatch")
+        metrics_lock = raw_metrics.get("contractLock")
+        if not isinstance(metrics_lock, Mapping) or metrics_lock.get("lockSha256") != lock["lockSha256"]:
+            raise ValueError("Phase 2 candidate metrics contract lock mismatch")
+        evidence_binding = raw_metrics.get("evidenceIndex")
+        if not isinstance(evidence_binding, Mapping):
+            raise ValueError("Phase 2 candidate metrics evidence binding is missing")
+        evidence_raw = str(evidence_binding.get("path") or "").strip()
+        if not evidence_raw:
+            raise ValueError("Phase 2 candidate metrics evidence path is missing")
+        evidence_source = Path(evidence_raw).expanduser()
+        evidence_path = (
+            evidence_source if evidence_source.is_absolute() else metrics_path.parent / evidence_source
+        ).resolve()
+        if not evidence_path.is_file() or sha256_file(evidence_path) != evidence_binding.get("sha256"):
+            raise ValueError("Phase 2 candidate metrics evidence checksum mismatch")
+        raw_candidates = raw_metrics.get("candidates")
+        if not isinstance(raw_candidates, Sequence) or isinstance(raw_candidates, (str, bytes)):
+            raise ValueError("Phase 2 candidate metrics candidates must be a sequence")
+        candidates = [item for item in raw_candidates if isinstance(item, Mapping)]
+        if len(candidates) != len(raw_candidates):
+            raise ValueError("Phase 2 candidate metrics contains an invalid candidate")
+        collector_binding = {
+            "path": str(metrics_path),
+            "sha256": sha256_file(metrics_path),
+            "collectorSha256": recorded_collector_sha,
+            "evidenceIndex": {
+                "path": str(evidence_path),
+                "sha256": evidence_binding["sha256"],
+            },
+        }
+    if candidates is None:
+        raise ValueError("Phase 2 acceptance requires candidate metrics")
     registered = {str(item["hypothesis_id"]) for item in lock["contract"].get("hypotheses", ())}
     testing = lock["contract"]["multiple_testing"]
     robustness = lock["contract"]["robustness"]
@@ -181,6 +244,14 @@ def write_incremental_acceptance(
                 **{name: raw[name] for name in design_fields},
             }
         )
+    if collector_binding is not None:
+        actual_family = tuple(sorted(seen))
+        if actual_family != PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+            raise ValueError(
+                "Phase 2 candidate metrics must contain exactly the frozen incremental candidate family"
+            )
+        if any(str(item["candidateId"]) != str(item["hypothesisId"]) for item in rows):
+            raise ValueError("Phase 2 candidate IDs must match their frozen hypothesis IDs")
     payload: dict[str, Any] = {
         "schemaVersion": "phase2_incremental_acceptance_v1",
         "programId": lock["programId"],
@@ -190,4 +261,6 @@ def write_incremental_acceptance(
         "selectionUsesFinalHoldout": False,
         "publishingAuthorized": False,
     }
+    if collector_binding is not None:
+        payload["candidateMetrics"] = collector_binding
     return _write_immutable(payload, output, "acceptanceSha256")

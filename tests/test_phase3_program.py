@@ -4,16 +4,18 @@ import json
 from pathlib import Path
 
 from tushare_qlib.research.phase3_contract import write_phase3_contract_lock
-from tushare_qlib.research.phase3_program import write_phase3_experiment_plan
+from tushare_qlib.lineage import sha256_json
+from tushare_qlib.research.phase3_program import load_phase3_plan, write_phase3_experiment_plan
 
 from tests._phase3_helpers import phase3_entry_fixture
 
 
 def test_phase3_plan_stops_at_d04_and_never_creates_candidates(tmp_path: Path):
-    acceptance, evidence = phase3_entry_fixture(tmp_path)
+    acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path)
     lock = write_phase3_contract_lock(
         phase2_acceptance=acceptance,
         phase2_evidence=evidence,
+        phase2_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_phase3_v1.yaml",
         output=tmp_path / "phase3-lock.json",
     )
@@ -29,10 +31,11 @@ def test_phase3_plan_stops_at_d04_and_never_creates_candidates(tmp_path: Path):
 
 
 def test_phase3_plan_is_immutable(tmp_path: Path):
-    acceptance, evidence = phase3_entry_fixture(tmp_path)
+    acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path)
     lock = write_phase3_contract_lock(
         phase2_acceptance=acceptance,
         phase2_evidence=evidence,
+        phase2_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_phase3_v1.yaml",
         output=tmp_path / "phase3-lock.json",
     )
@@ -48,3 +51,27 @@ def test_phase3_plan_is_immutable(tmp_path: Path):
         assert "differs" in str(exc)
     else:
         raise AssertionError("tampered Phase 3 plan was accepted")
+
+
+def test_phase3_plan_rejects_design_lock_rebinding(tmp_path: Path):
+    acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path)
+    lock = write_phase3_contract_lock(
+        phase2_acceptance=acceptance,
+        phase2_evidence=evidence,
+        phase2_data_acceptance=data_acceptance,
+        contract_path="configs/research/ashare_phase3_v1.yaml",
+        output=tmp_path / "phase3-lock.json",
+    )
+    lock_payload = json.loads(lock.read_text(encoding="utf-8"))
+    plan = write_phase3_experiment_plan(contract_lock=lock, output=tmp_path / "plan.json")
+    payload = json.loads(plan.read_text(encoding="utf-8"))
+    payload["contractLock"]["lockSha256"] = "different-lock"
+    payload["planSha256"] = sha256_json({key: value for key, value in payload.items() if key != "planSha256"})
+    plan.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        load_phase3_plan(plan, contract_lock_sha256=lock_payload["lockSha256"])
+    except ValueError as exc:
+        assert "different design lock" in str(exc)
+    else:
+        raise AssertionError("rebound Phase 3 plan was accepted")

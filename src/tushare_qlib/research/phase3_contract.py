@@ -13,6 +13,8 @@ from ..lineage import git_revision, sha256_json
 from ..prediction_snapshot import load_prediction_snapshot
 from ..store import sha256_file
 from .phase2_features import EXPERIMENT_MATRIX, feature_set
+from .phase2_data_acceptance import REQUIRED_V2_ACCEPTANCE_CHECKS
+from .phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
 from .regime import load_regime_spec
 
 
@@ -204,6 +206,8 @@ def load_phase3_contract(path: str | Path) -> Phase3Contract:
         topk=_positive_int(diagnostics_raw.get("topK"), "topK"),
         age_bucket_upper_sessions=age_buckets,
     )
+    if diagnostics.minimum_cross_section < 2 * diagnostics.topk:
+        raise ValueError("minimumCrossSection must be at least 2 * topK")
 
     final_holdout = _mapping(raw.get("finalHoldout"), "finalHoldout")
     if (
@@ -260,14 +264,19 @@ def _validate_phase2_acceptance(path: Path, predecessor_program: str) -> dict[st
     if acceptance.get("programId") != predecessor_program:
         raise ValueError("Phase 2 acceptance program does not match Phase 3 predecessor")
     candidates = _sequence(acceptance.get("candidates"), "Phase 2 acceptance candidates")
-    if not candidates:
-        raise ValueError("Phase 3-D requires the completed Phase 2 candidate family")
-    accepted = sum(
-        bool(_mapping(item, "Phase 2 acceptance candidate").get("gatePass")) for item in candidates
-    )
+    candidate_rows = [_mapping(item, "Phase 2 acceptance candidate") for item in candidates]
+    candidate_ids = tuple(sorted(str(item.get("candidateId") or "") for item in candidate_rows))
+    hypothesis_ids = tuple(sorted(str(item.get("hypothesisId") or "") for item in candidate_rows))
+    if (
+        candidate_ids != PHASE2_INCREMENTAL_CANDIDATE_FAMILY
+        or hypothesis_ids != PHASE2_INCREMENTAL_CANDIDATE_FAMILY
+        or any(item.get("candidateId") != item.get("hypothesisId") for item in candidate_rows)
+    ):
+        raise ValueError("Phase 3-D requires exactly the frozen Phase 2 candidate family")
+    accepted = sum(bool(item.get("gatePass")) for item in candidate_rows)
     if int(acceptance.get("acceptedCount", -1)) != 0 or accepted != 0:
         raise ValueError("Phase 3-D immutable entry condition requires Phase 2 acceptedCount=0")
-    if any(_mapping(item, "Phase 2 acceptance candidate").get("status") != "REJECTED" for item in candidates):
+    if any(item.get("status") != "REJECTED" for item in candidate_rows):
         raise ValueError("Phase 3-D requires every Phase 2 candidate to remain REJECTED")
     if (
         acceptance.get("selectionUsesFinalHoldout") is not False
@@ -275,6 +284,117 @@ def _validate_phase2_acceptance(path: Path, predecessor_program: str) -> dict[st
     ):
         raise ValueError("Phase 2 acceptance does not preserve holdout/publishing isolation")
     return acceptance
+
+
+def _validate_phase2_acceptance_provenance(
+    acceptance_path: Path,
+    acceptance: Mapping[str, Any],
+    evidence_path: Path,
+) -> dict[str, Any]:
+    binding = _mapping(acceptance.get("candidateMetrics"), "Phase 2 candidate-metrics binding")
+    metrics_path = _resolve(acceptance_path.parent, binding.get("path"), "Phase 2 candidate metrics")
+    if sha256_file(metrics_path) != binding.get("sha256"):
+        raise ValueError("Phase 2 candidate-metrics file checksum mismatch")
+    metrics = _load_json(metrics_path, "Phase 2 candidate metrics")
+    if metrics.get("schemaVersion") != "phase2_candidate_metrics_v1":
+        raise ValueError("unsupported Phase 2 candidate-metrics schema")
+    if metrics.get("programId") != acceptance.get("programId"):
+        raise ValueError("Phase 2 acceptance/collector program mismatch")
+    metrics_lock = _mapping(metrics.get("contractLock"), "collector contract-lock binding")
+    if metrics_lock.get("lockSha256") != acceptance.get("contractLockSha256"):
+        raise ValueError("Phase 2 acceptance/collector contract-lock mismatch")
+    recorded = str(metrics.get("collectorSha256") or "")
+    actual = sha256_json({key: value for key, value in metrics.items() if key != "collectorSha256"})
+    if recorded != actual or recorded != binding.get("collectorSha256"):
+        raise ValueError("Phase 2 candidate-metrics collector checksum mismatch")
+    evidence_binding = _mapping(metrics.get("evidenceIndex"), "collector evidence binding")
+    if evidence_binding.get("sha256") != sha256_file(evidence_path):
+        raise ValueError("Phase 2 collector is not bound to the supplied evidence index")
+    acceptance_evidence = _mapping(binding.get("evidenceIndex"), "acceptance evidence binding")
+    if acceptance_evidence.get("sha256") != evidence_binding.get("sha256"):
+        raise ValueError("Phase 2 acceptance/collector evidence binding mismatch")
+    collector_candidates = {
+        str(item.get("candidateId") or ""): item
+        for item in (
+            _mapping(raw, "Phase 2 collector candidate")
+            for raw in _sequence(metrics.get("candidates"), "Phase 2 collector candidates")
+        )
+    }
+    acceptance_candidates = {
+        str(item.get("candidateId") or ""): item
+        for item in (
+            _mapping(raw, "Phase 2 acceptance candidate")
+            for raw in _sequence(acceptance.get("candidates"), "Phase 2 acceptance candidates")
+        )
+    }
+    if tuple(sorted(collector_candidates)) != PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+        raise ValueError("Phase 2 collector does not contain the frozen candidate family")
+    frozen_fields = (
+        "candidateId",
+        "hypothesisId",
+        "metrics",
+        "alphaPack",
+        "featureSet",
+        "model",
+        "portfolio",
+        "regimeRule",
+    )
+    for candidate_id in PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+        collector_row = collector_candidates[candidate_id]
+        acceptance_row = acceptance_candidates[candidate_id]
+        if any(collector_row.get(field) != acceptance_row.get(field) for field in frozen_fields):
+            raise ValueError(f"Phase 2 acceptance candidate differs from collector: {candidate_id}")
+    return {
+        "path": str(metrics_path),
+        "sha256": sha256_file(metrics_path),
+        "collectorSha256": recorded,
+        "evidenceIndexSha256": evidence_binding["sha256"],
+    }
+
+
+def _validate_data_release_acceptance(
+    path: Path,
+    *,
+    data_release_id: str,
+    manifest_sha256: str,
+) -> dict[str, Any]:
+    acceptance = _load_json(path, "Phase 2 DataRelease-v2 acceptance")
+    if acceptance.get("schemaVersion") != "phase2_data_release_acceptance_v1":
+        raise ValueError("unsupported Phase 2 DataRelease-v2 acceptance schema")
+    recorded = str(acceptance.get("acceptanceSha256") or "")
+    actual = sha256_json({key: value for key, value in acceptance.items() if key != "acceptanceSha256"})
+    if recorded != actual:
+        raise ValueError("Phase 2 DataRelease-v2 acceptance checksum mismatch")
+    if (
+        acceptance.get("dataReleaseId") != data_release_id
+        or acceptance.get("manifestSha256") != manifest_sha256
+        or acceptance.get("profile") != "ashare_qlib_research_v2"
+    ):
+        raise ValueError("Phase 2 DataRelease-v2 acceptance does not match the locked DataRelease")
+    checks = _mapping(acceptance.get("checks"), "DataRelease-v2 acceptance checks")
+    if set(checks) != set(REQUIRED_V2_ACCEPTANCE_CHECKS):
+        raise ValueError("Phase 2 DataRelease-v2 acceptance must contain exactly eight required checks")
+    for name in REQUIRED_V2_ACCEPTANCE_CHECKS:
+        check = _mapping(checks[name], name)
+        artifact_sha = str(check.get("artifactSha256") or "").lower()
+        if check.get("status") != "PASS":
+            raise ValueError("Phase 2 DataRelease-v2 acceptance contains a non-PASS check")
+        if len(artifact_sha) != 64 or any(character not in "0123456789abcdef" for character in artifact_sha):
+            raise ValueError("Phase 2 DataRelease-v2 acceptance contains an invalid artifact hash")
+    if (
+        acceptance.get("passed") is not True
+        or acceptance.get("publishingAuthorized") is not False
+        or acceptance.get("scope") != "NARROW_V2_DELTA_ACCEPTANCE"
+        or acceptance.get("fullInfrastructureRecertificationRun") is not False
+    ):
+        raise ValueError("Phase 2 DataRelease-v2 acceptance state is invalid")
+    return {
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "acceptanceSha256": recorded,
+        "dataReleaseId": data_release_id,
+        "manifestSha256": manifest_sha256,
+    }
 
 
 def _contains_final_holdout(manifest: Mapping[str, Any]) -> bool:
@@ -463,6 +583,10 @@ def load_phase3_lock(path: str | Path) -> dict[str, Any]:
     entry = _mapping(lock.get("entryCondition"), "Phase 3 entry condition")
     if entry.get("phase2AcceptedCount") != 0 or entry.get("state") != "PHASE2_COMPLETE_REJECTED":
         raise ValueError("Phase 3 design lock does not preserve its rejected Phase 2 entry condition")
+    for key in ("phase2Acceptance", "phase2CandidateMetrics", "phase2Evidence", "dataReleaseAcceptance"):
+        provenance = _mapping(entry.get(key), f"Phase 3 entry condition {key}")
+        if not str(provenance.get("sha256") or ""):
+            raise ValueError(f"Phase 3 design lock is missing {key} provenance")
     isolation = _mapping(lock.get("isolation"), "Phase 3 isolation")
     if (
         isolation.get("finalHoldoutArtifactsAllowed") is not False
@@ -477,11 +601,13 @@ def write_phase3_contract_lock(
     *,
     phase2_acceptance: str | Path,
     phase2_evidence: str | Path,
+    phase2_data_acceptance: str | Path,
     contract_path: str | Path,
     output: str | Path,
 ) -> Path:
     acceptance_path = Path(phase2_acceptance).expanduser().resolve()
     evidence_path = Path(phase2_evidence).expanduser().resolve()
+    data_acceptance_path = Path(phase2_data_acceptance).expanduser().resolve()
     contract_source = Path(contract_path).expanduser().resolve()
     contract = load_phase3_contract(contract_source)
     acceptance = _validate_phase2_acceptance(acceptance_path, contract.predecessor_program)
@@ -490,6 +616,9 @@ def write_phase3_contract_lock(
         raise ValueError(f"unsupported Phase 2 evidence index: {evidence.get('schemaVersion')}")
     if evidence.get("finalHoldout") is not False:
         raise ValueError("Phase 2 evidence index must set finalHoldout=false")
+    candidate_metrics_binding = _validate_phase2_acceptance_provenance(
+        acceptance_path, acceptance, evidence_path
+    )
     contract_lock_sha = str(evidence.get("contractLockSha256") or "")
     if not contract_lock_sha or acceptance.get("contractLockSha256") != contract_lock_sha:
         raise ValueError("Phase 2 acceptance/evidence contract lock mismatch")
@@ -514,6 +643,17 @@ def write_phase3_contract_lock(
     dataset_version_id = str(evidence.get("datasetVersionId") or "").strip()
     if not data_release_id or not dataset_version_id:
         raise ValueError("Phase 2 evidence is missing DataRelease or DatasetVersion identity")
+    data_acceptance_binding = _validate_data_release_acceptance(
+        data_acceptance_path,
+        data_release_id=data_release_id,
+        manifest_sha256=recorded_release_sha,
+    )
+
+    experiments = _mapping(evidence.get("ablationExperiments"), "Phase 2 ablation experiments")
+    for anchor in contract.anchors:
+        anchor_evidence = _mapping(experiments.get(anchor.experiment_id), f"anchor {anchor.anchor_id}")
+        if anchor_evidence.get("portfolioManifest"):
+            raise ValueError("Phase 3-D prohibits unbound optional portfolio evidence")
 
     feature_reference = _resolve(base, evidence.get("featureSnapshot"), "FeatureSnapshot")
     feature_manifest_path = (
@@ -593,11 +733,13 @@ def write_phase3_contract_lock(
                 "sha256": sha256_file(acceptance_path),
                 "acceptanceSha256": acceptance["acceptanceSha256"],
             },
+            "phase2CandidateMetrics": candidate_metrics_binding,
             "phase2Evidence": {
                 "path": str(evidence_path),
                 "sha256": sha256_file(evidence_path),
                 "contractLockSha256": contract_lock_sha,
             },
+            "dataReleaseAcceptance": data_acceptance_binding,
         },
         "contract": contract.to_manifest(),
         "lineage": {
