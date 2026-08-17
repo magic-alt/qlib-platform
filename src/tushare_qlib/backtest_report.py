@@ -690,6 +690,24 @@ def _runtime_rows(manifest: Mapping[str, Any]) -> list[tuple[str, str]]:
     ]
 
 
+def _configuration_rows(manifest: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """Render the optional, human-readable backtest configuration in a manifest."""
+
+    configuration = manifest.get("reportConfiguration", {})
+    if not isinstance(configuration, Mapping):
+        return []
+    rows: list[tuple[str, str]] = []
+    for key, value in configuration.items():
+        if isinstance(value, (list, tuple)):
+            text = ", ".join(str(item) for item in value)
+        elif isinstance(value, Mapping):
+            text = "; ".join(f"{name}={item}" for name, item in value.items())
+        else:
+            text = str(value)
+        rows.append((str(key), text))
+    return rows
+
+
 def _timing_rows(timings: object) -> list[tuple[str, str]]:
     if not isinstance(timings, Mapping):
         return []
@@ -781,6 +799,16 @@ def _write_markdown(
         ),
         "",
     ]
+    configuration_rows = _configuration_rows(data.manifest)
+    if configuration_rows:
+        lines.extend(
+            [
+                "## 回测设定与配置",
+                "",
+                _markdown_table(["项目", "内容"], configuration_rows),
+                "",
+            ]
+        )
     runtime_rows = _runtime_rows(data.manifest)
     timing_rows = _timing_rows(data.manifest.get("timings"))
     if runtime_rows or timing_rows:
@@ -1004,6 +1032,19 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
         ),
         Spacer(1, 3 * mm),
     ]
+    configuration_rows = _configuration_rows(data.manifest)
+    if configuration_rows:
+        story.extend(
+            [
+                Paragraph("回测设定与配置", heading),
+                Spacer(1, 2 * mm),
+                _pdf_table(
+                    [["项目", "内容"]] + [[key, value] for key, value in configuration_rows],
+                    [75 * mm, 185 * mm],
+                ),
+                Spacer(1, 3 * mm),
+            ]
+        )
     runtime_rows = _runtime_rows(data.manifest)
     timing_rows = _timing_rows(data.manifest.get("timings"))
     if runtime_rows or timing_rows:
@@ -1125,7 +1166,18 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
                 story.append(_pdf_table(rows, [85 * mm, 35 * mm, 50 * mm, 35 * mm]))
 
     trades = _trade_rows(data.audit)
+    displayed_trades = trades.tail(50)
     story.extend([PageBreak(), Paragraph("逐笔委托与成交", heading), Spacer(1, 2 * mm)])
+    if len(trades) > len(displayed_trades):
+        story.extend(
+            [
+                Paragraph(
+                    f"本页展示最近 {len(displayed_trades)} 笔交易；完整 {len(trades)} 笔明细见 Markdown 与 strategy_audit.parquet。",
+                    body,
+                ),
+                Spacer(1, 2 * mm),
+            ]
+        )
     trade_rows = [
         ["日期", "折", "股票", "计划", "实际", "请求", "成交", "成交价", "成交额", "成本", "状态", "原因"]
     ]
@@ -1145,25 +1197,25 @@ def _write_pdf(data: RunData, artifacts: ReportArtifacts, metrics: Mapping[str, 
                 str(row.execution_status),
                 str(row.action_reason),
             ]
-            for row in trades.itertuples(index=False)
+            for row in displayed_trades.itertuples(index=False)
         ]
     )
     story.append(
         _pdf_table(
             trade_rows,
             [
-                21 * mm,
-                21 * mm,
-                38 * mm,
-                16 * mm,
-                16 * mm,
+                17 * mm,
+                10 * mm,
+                29 * mm,
+                12 * mm,
+                12 * mm,
+                17 * mm,
+                17 * mm,
+                17 * mm,
                 22 * mm,
-                22 * mm,
-                20 * mm,
-                28 * mm,
-                24 * mm,
-                22 * mm,
-                40 * mm,
+                17 * mm,
+                17 * mm,
+                37 * mm,
             ],
             small=True,
         )
