@@ -20,10 +20,9 @@ dataset alias、lineage 和 research run；生产模式以 `DataRelease → Qlib
 > **Research Infrastructure: CERTIFIED**
 
 基础设施验证阶段已经冻结；认证范围、默认问题归因和重新打开认证的条件见
-[`docs/research_infrastructure_certification.md`](docs/research_infrastructure_certification.md)。当前正式研究任务是
-Phase 1 的诊断与确定性 synthesis 已冻结为历史研究记录。当前开发主线是
-[`Alpha Research Phase 2：China-specific Alpha Discovery & Incremental Validation`](docs/alpha_research_phase_2.md)，
-并由本机真实 Phase 1 manifest 的 primary recommendation 严格路由。在认证不变量没有出现反证时，
+[`docs/research_infrastructure_certification.md`](docs/research_infrastructure_certification.md)。Phase 1 的诊断与确定性 synthesis 已冻结为历史研究记录。
+当前正式研究任务是 [`Alpha Research Phase 3：Temporal Alpha Stability & Regime Diagnosis`](docs/alpha_research_phase_3.md)，
+并由本机真实 Phase 2 acceptance 与 Phase 3 设计锁定；在认证不变量没有出现反证时，
 弱策略结果默认进入 Alpha、模型、regime 或组合构造研究，而不是重新归因于已通过验收的基础设施。
 
 ## 1. 安装
@@ -358,3 +357,4 @@ Qlib 的最高晋级状态仍为 `RESEARCH_PROMOTED`。LEAN validation、Paper �
 - 示例手续费只是可配置假设，不代表任何券商的真实费率。
 - 生产回测建议按历史费用制度分段，而不是用单一费率覆盖全部年份。
 - 正常发布使用 `dataset-build`（全量）或 `daily-sync`（日常增量/修复）；低层 `dump-update` 仅用于受控恢复。
+

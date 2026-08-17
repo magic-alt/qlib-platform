@@ -2,7 +2,7 @@
 
 ## `alpha158_pit_v1` stability and failure-mechanism diagnosis
 
-- **Status:** ACTIVE
+- **Status:** COMPLETED (historical reference)
 - **Infrastructure prerequisite:** `Research Infrastructure: CERTIFIED`
 - **Primary baseline:** XGBoost
 - **Comparators:** Ridge and LightGBM

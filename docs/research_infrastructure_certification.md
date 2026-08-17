@@ -2,7 +2,7 @@
 
 ## Decision
 
-As of 2026-08-15, the research infrastructure baseline is:
+As of 2026-08-17, the research infrastructure baseline is:
 
 > **Research Infrastructure: CERTIFIED**
 
@@ -66,5 +66,6 @@ research diagnosis.
 
 ## Next phase
 
-The active research program is [Alpha Research Phase 1](alpha_research_phase_1.md): stability and
-failure-mechanism diagnosis for `alpha158_pit_v1`.
+The active research program is [Alpha Research Phase 3](alpha_research_phase_3.md): temporal alpha stability and
+regime diagnosis on top of rejected Phase 2 candidates.
+

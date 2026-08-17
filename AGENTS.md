@@ -2,7 +2,6 @@
 
 ## Project Structure & Module Organization
 - `src/tushare_qlib/`: Python package (main pipeline, CLI, data processing, model workflow).
-- `src/tushare_qlib/qmt_gateway/`: loopback-only, read-only QMT broker gateway and its OpenAPI contract.
 - `tests/`: pytest test suites (`test_*.py`).
 - `scripts/`: utility entry scripts.
 - `configs/`: pipeline and workflow YAML files.
@@ -16,7 +15,7 @@
 - Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
 - In PowerShell, define `$RepoPython = '.\.venv\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m tushare_qlib --config configs/pipeline.yaml <command>`.
 - Install core development dependencies: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev]"`.
-- Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[all,dev]"`; QMT gateway work: `<repo-python> -m pip install -e ".[qmt-gateway,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
+- Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[all,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
 - Pipeline example: `<repo-python> -m tushare_qlib --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.
 - Qlib workflow run: use the venv-local `qrun` launcher (`.\.venv\Scripts\qrun.exe` on Windows; `.venv/bin/qrun` on macOS/Linux) with `configs/workflow_lightgbm.yaml` (requires `QLIB_DATA_URI`).
 - Tests: `<repo-python> -m pytest` (discovers `tests/test_*.py`).
@@ -36,7 +35,7 @@
 - Add/extend tests under `tests/` with file names like `test_<feature>.py`.
 - Run targeted tests with `<repo-python> -m pytest tests/test_normalize.py` before broad runs.
 - Before a PR, run the local equivalents of CI quality gates: ruff, mypy, `validate-qrun-contract`, `pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60`, and `project-audit --root . --output <temporary-path>`.
-- For QMT gateway/API changes, update `openapi.yaml`, `docs/qmt_gateway.md`, and gateway/adapter tests together.
+- For execution-boundary updates, update `docs/architecture_boundary.md`, `docs/qmt_gateway.md`, and boundary tests together.
 
 ## Git Workflow: Trunk-Based Development
 - Use `main` plus short-lived task branches. A branch represents one task, never one computer.
@@ -66,6 +65,8 @@
 
 ## Security & Configuration Tips
 - Never commit secrets (`TUSHARE_TOKEN`, `.env`, raw API credentials).
-- QMT gateway code must remain loopback-only and read-only: do not add order submission, cancellation, replacement, or HTTP write endpoints.
+- Execution-state modules for broker/order state are intentionally out-of-repo: do not add order submission, cancellation, replacement, ledger, or broker-state writes here.
 - Validate date windows before running full rebuilds; production jobs should run idempotent checks and data-completeness guards.
 - Treat `backfill`, `stage-*`, `dump-*`, `daily-sync`, `production-*`, `model-deploy`, `model-rollback`, and scheduled-task installation/removal as state-changing operations. Run them only with explicit user authorization and report affected outputs.
+
+
