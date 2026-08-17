@@ -44,6 +44,13 @@ def test_settings_extends_base_and_appends_qlib_fields(tmp_path: Path):
     assert settings.qlib_include_fields == ("close", "volume", "total_assets_pit")
 
 
+def test_settings_treats_omitted_extra_fields_as_empty():
+    settings = Settings.__new__(Settings)
+    object.__setattr__(settings, "data", {"qlib": {"include_fields": ["close"]}})
+
+    assert settings.qlib_include_fields == ("close",)
+
+
 def test_settings_rejects_extends_cycle(tmp_path: Path):
     first = tmp_path / "first.yaml"
     second = tmp_path / "second.yaml"

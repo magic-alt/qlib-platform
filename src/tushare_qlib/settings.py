@@ -261,8 +261,8 @@ class Settings:
     @property
     def qlib_include_fields(self) -> tuple[str, ...]:
         qlib = _require_mapping(self.data.get("qlib", {}), "qlib")
-        base = qlib.get("include_fields", ())
-        extra = qlib.get("include_fields_extra", ())
+        base = qlib.get("include_fields", [])
+        extra = qlib.get("include_fields_extra", [])
         if not isinstance(base, list) or not isinstance(extra, list):
             raise ValueError("qlib include_fields and include_fields_extra must be lists")
         return tuple(dict.fromkeys(str(value) for value in [*base, *extra]))

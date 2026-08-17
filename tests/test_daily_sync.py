@@ -10,6 +10,7 @@ import pytest
 from tushare_qlib.client import FetchResult
 from tushare_qlib.corporate_actions import CorporateActionStore
 from tushare_qlib.daily_sync import DailySyncService, SingleInstanceLock
+from tushare_qlib.extract import Extractor
 from tushare_qlib.kline_export import build_kline
 from tushare_qlib import qlib_export
 from tushare_qlib.settings import Paths, Settings
@@ -113,6 +114,23 @@ def test_check_only_detects_changes_without_promoting_raw(tmp_path: Path):
     assert manifest["status"] == "checked"
     assert manifest["changed_trade_dates"] == ["20260807", "20260810"]
     assert not PartitionStore(settings.paths.raw).exists("daily", "20260810")
+
+
+def test_open_dates_orders_descending_provider_calendar(tmp_path: Path):
+    settings = _settings(tmp_path)
+    calendar = pd.DataFrame(
+        {
+            "cal_date": pd.to_datetime(["2026-08-10", "2026-08-09", "2026-08-07"]),
+            "is_open": [1, 0, 1],
+        }
+    )
+    calendar.to_parquet(settings.paths.metadata / "trade_calendar.parquet", index=False)
+
+    extractor = object.__new__(Extractor)
+    extractor.settings = settings
+    dates = extractor.open_dates("20260807", "20260810")
+
+    assert dates == ["20260807", "20260810"]
 
 
 def test_dividend_failure_does_not_promote_market_data(tmp_path: Path):
