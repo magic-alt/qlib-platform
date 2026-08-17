@@ -132,6 +132,8 @@ PredictionSnapshot/portfolio reuse. It rejects promotion-authorized artifacts,
 regime rules, any final-holdout evidence, a partial or duplicated hypothesis
 family, P2 ablation drift, hypothesis-definition drift, broad ablations used as
 formal tests, and candidate PredictionSnapshot reuse across hypotheses.
+Candidate IDs must exactly equal the frozen hypothesis IDs
+`H001–H005/H101–H106`; aliases and suffixes are rejected.
 
 All 11 paired candidate-minus-baseline daily RankIC series enter one
 date-by-hypothesis matrix before HAC, BH-FDR, local FDR, or Romano–Wolf is
@@ -146,9 +148,13 @@ multiple. The resulting artifact is immutable and remains research-only.
 ```bash
 .venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-accept \
   --contract-lock /path/to/phase2_contract_lock.json \
-  --candidates /path/to/candidate_metrics.json \
+  --candidate-metrics /path/to/candidate_metrics.json \
   --output /path/to/phase2_acceptance.json
 ```
+
+`phase2-accept` consumes the collector object itself, verifies its
+`collectorSha256`, contract lock and evidence-index SHA-256, and carries those bindings into the
+acceptance artifact. A raw candidate list is not a valid CLI input.
 
 Accepted objects are still `RESEARCH_CANDIDATE`, not selected securities or
 production strategies.

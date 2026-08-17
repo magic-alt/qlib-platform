@@ -420,7 +420,7 @@ def _evidence_fixture(tmp_path: Path) -> tuple[Path, Path]:
         )
         candidates.append(
             {
-                "candidateId": f"{hypothesis_id}-primary",
+                "candidateId": hypothesis_id,
                 "hypothesisId": hypothesis_id,
                 "alphaPack": feature_set(feature_set_id).source_pack,
                 "featureSet": feature_set_id,
@@ -474,11 +474,12 @@ def test_collector_builds_one_complete_family_and_phase2_accept_consumes_it(tmp_
 
     acceptance = write_incremental_acceptance(
         contract_lock=lock_path,
-        candidates=payload["candidates"],
+        candidate_metrics=output,
         output=tmp_path / "acceptance.json",
     )
     accepted = json.loads(acceptance.read_text(encoding="utf-8"))
     assert len(accepted["candidates"]) == 11
+    assert accepted["candidateMetrics"]["collectorSha256"] == payload["collectorSha256"]
 
 
 def test_collector_rejects_incomplete_family_and_final_holdout(tmp_path: Path):
@@ -532,3 +533,16 @@ def test_phase2_collect_cli_requires_contract_evidence_and_output():
         ]
     )
     assert args.command == "phase2-collect"
+
+    acceptance = parser().parse_args(
+        [
+            "phase2-accept",
+            "--contract-lock",
+            "lock.json",
+            "--candidate-metrics",
+            "candidate-metrics.json",
+            "--output",
+            "acceptance.json",
+        ]
+    )
+    assert acceptance.candidate_metrics == "candidate-metrics.json"

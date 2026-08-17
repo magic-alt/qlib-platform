@@ -31,6 +31,7 @@ from .regime_study import (
 )
 from .phase3_contract import load_phase3_lock
 from .phase3_decay import derive_model_age_decay
+from .phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
 
 
 PHASE3_DIAGNOSTICS_SCHEMA = "phase3_diagnostics_v1"
@@ -456,49 +457,6 @@ def _fold_assignments(
     return result
 
 
-def _optional_portfolio_excess(
-    evidence_path: Path,
-    evidence: Mapping[str, Any],
-    contract_anchors: Sequence[Mapping[str, Any]],
-) -> dict[str, pd.Series]:
-    experiments = _mapping(evidence.get("ablationExperiments"), "Phase 2 ablations")
-    result: dict[str, pd.Series] = {}
-    for anchor in contract_anchors:
-        item = _mapping(experiments.get(anchor["experiment_id"]), "anchor evidence")
-        raw_path = item.get("portfolioManifest")
-        if not raw_path:
-            continue
-        unresolved = Path(str(raw_path)).expanduser()
-        manifest_path = (
-            unresolved if unresolved.is_absolute() else evidence_path.parent / unresolved
-        ).resolve()
-        manifest = _load_json(manifest_path, "anchor portfolio manifest")
-        if manifest.get("runKind") != "predictions_only_backtest":
-            raise ValueError("Phase 3 anchor portfolio evidence must be predictions-only")
-        artifacts = [
-            value
-            for value in manifest.get("artifacts", ())
-            if isinstance(value, Mapping) and value.get("name") == "portfolio_report.parquet"
-        ]
-        if len(artifacts) != 1:
-            raise ValueError("anchor portfolio evidence requires one portfolio report")
-        report_path = Path(str(artifacts[0].get("localPath") or "")).expanduser().resolve()
-        report = pd.read_parquet(report_path)
-        if not isinstance(report.index, pd.DatetimeIndex):
-            if "trade_date" not in report:
-                raise ValueError("anchor portfolio report requires dated rows")
-            report = report.set_index("trade_date")
-        report.index = pd.to_datetime(report.index, errors="raise").normalize()
-        if not {"return", "bench", "cost"}.issubset(report):
-            raise ValueError("anchor portfolio report is missing return/bench/cost")
-        result[str(anchor["anchor_id"])] = (
-            pd.to_numeric(report["return"], errors="coerce")
-            - pd.to_numeric(report["bench"], errors="coerce")
-            - pd.to_numeric(report["cost"], errors="coerce")
-        )
-    return result
-
-
 def _artifact(path: Path, rows: int | None = None) -> dict[str, object]:
     result: dict[str, object] = {"name": path.name, "path": path.name, "sha256": sha256_file(path)}
     if rows is not None:
@@ -601,7 +559,7 @@ def _write_report(path: Path, summary: Mapping[str, Any]) -> None:
         [
             "",
             "`topk_spread` is a forward-label diagnostic proxy, not a realized portfolio return. "
-            "`portfolio_excess_return` remains unavailable unless a bound predictions-only portfolio report is supplied.",
+            "`portfolio_excess_return` remains unavailable because Phase 3-D prohibits external portfolio evidence.",
             "",
             "Regime tables are descriptive discovery evidence. They do not define or approve a Phase 3-C hypothesis.",
             "",
@@ -610,16 +568,118 @@ def _write_report(path: Path, summary: Mapping[str, Any]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _validate_existing(root: Path, lock_sha256: str) -> Path:
+def _expected_artifact_names(lock: Mapping[str, Any]) -> set[str]:
+    diagnostics = _mapping(_mapping(lock.get("contract"), "contract").get("diagnostics"), "diagnostics")
+    return {
+        "daily_model_metrics.parquet",
+        "failure_windows.parquet",
+        "regime_labels.parquet",
+        "regime_model_metrics.parquet",
+        "regime_transition_metrics.parquet",
+        "training_age_decay.parquet",
+        "anchor_predictions_index.json",
+        "phase3_diagnostics_report.json",
+        "phase3_diagnostics_report.md",
+        *(f"rolling_{int(window)}_rank_ic.parquet" for window in diagnostics["rolling_windows"]),
+    }
+
+
+def _validate_existing(
+    root: Path,
+    *,
+    lock: Mapping[str, Any],
+    lock_path: Path,
+    plan: Mapping[str, Any],
+    plan_path: Path,
+) -> Path:
+    if not root.is_dir():
+        raise ValueError("existing Phase 3 output is not a directory")
     manifest_path = root / PHASE3_MANIFEST_NAME
     manifest = _load_json(manifest_path, "existing Phase 3 evidence index")
-    if manifest.get("contractLockSha256") != lock_sha256:
+    recorded_evidence_sha = str(manifest.get("evidenceSha256") or "")
+    actual_evidence_sha = sha256_json(
+        {key: value for key, value in manifest.items() if key != "evidenceSha256"}
+    )
+    if recorded_evidence_sha != actual_evidence_sha:
+        raise ValueError("existing Phase 3 evidence-index checksum mismatch")
+    if (
+        manifest.get("schemaVersion") != PHASE3_EVIDENCE_INDEX_SCHEMA
+        or manifest.get("programId") != lock.get("programId")
+        or manifest.get("contractLockSha256") != lock.get("lockSha256")
+        or manifest.get("studyType") != "ALPHA_STABILITY_REGIME_RESEARCH_DIAGNOSIS_ONLY"
+    ):
         raise ValueError("existing Phase 3 diagnosis uses a different design lock")
-    for raw in manifest.get("artifacts", ()):
-        artifact = _mapping(raw, "Phase 3 artifact")
+    contract_binding = _mapping(manifest.get("contractLock"), "Phase 3 contract-lock binding")
+    if contract_binding.get("sha256") != sha256_file(lock_path) or contract_binding.get(
+        "lockSha256"
+    ) != lock.get("lockSha256"):
+        raise ValueError("existing Phase 3 contract-lock binding mismatch")
+    plan_binding = _mapping(manifest.get("diagnosticPlan"), "Phase 3 diagnostic-plan binding")
+    if plan_binding.get("sha256") != sha256_file(plan_path) or plan_binding.get("planSha256") != plan.get(
+        "planSha256"
+    ):
+        raise ValueError("existing Phase 3 diagnostic-plan binding mismatch")
+    if (
+        manifest.get("state") != "PHASE3_DIAGNOSIS_COMPLETE"
+        or tuple(manifest.get("completedWorkstreams", ())) != PHASE3_EXECUTION_ORDER
+        or manifest.get("diagnosisOnly") is not True
+        or manifest.get("formalCandidates") != []
+        or manifest.get("formalCandidateCount") != 0
+        or manifest.get("confirmationState") != "NOT_STARTED"
+        or manifest.get("finalHoldoutAccessed") is not False
+        or manifest.get("selectionUsesFinalHoldout") is not False
+        or manifest.get("publishingAuthorized") is not False
+    ):
+        raise ValueError("existing Phase 3 diagnosis isolation state drift")
+    locked_entry = _mapping(lock.get("entryCondition"), "entry condition")
+    if manifest.get("phase2Evidence") != locked_entry.get("phase2Evidence"):
+        raise ValueError("existing Phase 3 Phase 2 evidence binding mismatch")
+    locked_lineage = _mapping(lock.get("lineage"), "design-lock lineage")
+    locked_release = _mapping(locked_lineage.get("dataRelease"), "locked DataRelease")
+    locked_feature = _mapping(locked_lineage.get("featureSnapshot"), "locked FeatureSnapshot")
+    locked_regime = _mapping(locked_lineage.get("regimeSpec"), "locked regime spec")
+    expected_lineage = {
+        "dataReleaseId": locked_release.get("dataReleaseId"),
+        "dataReleaseManifestSha256": locked_release.get("manifestSha256"),
+        "datasetVersionId": locked_lineage.get("datasetVersionId"),
+        "featureSnapshotId": locked_feature.get("featureSnapshotId"),
+        "regimeSemanticSha256": locked_regime.get("semanticSha256"),
+        "sourceCodeCommit": locked_lineage.get("sourceCodeCommit"),
+        "sourceCodeDirty": False,
+    }
+    if manifest.get("lineage") != expected_lineage:
+        raise ValueError("existing Phase 3 lineage drift")
+    raw_artifacts = manifest.get("artifacts")
+    if not isinstance(raw_artifacts, list):
+        raise ValueError("existing Phase 3 artifact index must be a list")
+    artifacts = [_mapping(raw, "Phase 3 artifact") for raw in raw_artifacts]
+    names = [str(item.get("name") or "") for item in artifacts]
+    paths = [str(item.get("path") or "") for item in artifacts]
+    expected = _expected_artifact_names(lock)
+    if (
+        set(names) != expected
+        or set(paths) != expected
+        or len(names) != len(expected)
+        or any(name != path for name, path in zip(names, paths, strict=True))
+    ):
+        raise ValueError("existing Phase 3 artifact set is incomplete or unexpected")
+    for artifact in artifacts:
         target = (root / str(artifact.get("path") or "")).resolve()
         if target.parent != root or not target.is_file() or sha256_file(target) != artifact.get("sha256"):
             raise ValueError(f"existing Phase 3 artifact checksum mismatch: {target}")
+        if target.suffix == ".parquet" and int(artifact.get("rows", -1)) != len(pd.read_parquet(target)):
+            raise ValueError(f"existing Phase 3 artifact row-count mismatch: {target}")
+    anchor_index = _load_json(root / "anchor_predictions_index.json", "anchor predictions index")
+    if (
+        anchor_index.get("schemaVersion") != PHASE3_DIAGNOSTICS_SCHEMA
+        or anchor_index.get("anchors") != locked_lineage.get("anchors")
+        or anchor_index.get("finalHoldout") is not False
+        or anchor_index.get("publishingAuthorized") is not False
+    ):
+        raise ValueError("existing Phase 3 anchor index state drift")
+    summary = _load_json(root / "phase3_diagnostics_report.json", "Phase 3 diagnostics summary")
+    if summary != manifest.get("summary"):
+        raise ValueError("existing Phase 3 summary differs from the evidence index")
     return manifest_path
 
 
@@ -627,14 +687,20 @@ def run_phase3_diagnose(
     settings: Settings,
     *,
     contract_lock: str | Path,
+    plan_path: str | Path,
     evidence_index: str | Path,
     regime_path: str | Path,
     output_root: str | Path,
 ) -> Path:
     lock_path = Path(contract_lock).expanduser().resolve()
+    plan_source = Path(plan_path).expanduser().resolve()
     evidence_path = Path(evidence_index).expanduser().resolve()
     regime_source = Path(regime_path).expanduser().resolve()
     lock = load_phase3_lock(lock_path)
+    plan = load_phase3_plan(plan_source, contract_lock_sha256=str(lock["lockSha256"]))
+    plan_lock = _mapping(plan.get("contractLock"), "diagnostic-plan contract lock")
+    if plan.get("programId") != lock.get("programId") or plan_lock.get("sha256") != sha256_file(lock_path):
+        raise ValueError("Phase 3 diagnostic plan does not bind the supplied design-lock file")
     locked_evidence = _mapping(
         _mapping(lock["entryCondition"], "entry condition").get("phase2Evidence"),
         "locked Phase 2 evidence",
@@ -660,7 +726,6 @@ def run_phase3_diagnose(
         if not target.is_file() or sha256_file(target) != expected:
             raise ValueError(f"Phase 3 implementation drift: {name}")
 
-    evidence = _load_json(evidence_path, "Phase 2 evidence index")
     predictions = _load_anchor_predictions(lock)
     contract = _mapping(lock["contract"], "Phase 3 contract")
     anchors = [dict(_mapping(value, "anchor")) for value in contract["anchors"]]
@@ -672,7 +737,7 @@ def run_phase3_diagnose(
         for value in contract["comparisons"]
     ]
     diagnostics = _mapping(contract.get("diagnostics"), "diagnostics")
-    portfolio_excess = _optional_portfolio_excess(evidence_path, evidence, anchors)
+    portfolio_excess: dict[str, pd.Series] = {}
     daily = derive_daily_stability_metrics(
         predictions,
         topk=int(diagnostics["topk"]),
@@ -750,7 +815,7 @@ def run_phase3_diagnose(
 
     output = Path(output_root).expanduser().resolve()
     if output.exists():
-        return _validate_existing(output, str(lock["lockSha256"]))
+        return _validate_existing(output, lock=lock, lock_path=lock_path, plan=plan, plan_path=plan_source)
     output.parent.mkdir(parents=True, exist_ok=True)
     building = Path(tempfile.mkdtemp(prefix=f".{output.name}.", dir=output.parent))
     try:
@@ -804,6 +869,11 @@ def run_phase3_diagnose(
                 "lockSha256": lock["lockSha256"],
             },
             "contractLockSha256": lock["lockSha256"],
+            "diagnosticPlan": {
+                "path": str(plan_source),
+                "sha256": sha256_file(plan_source),
+                "planSha256": plan["planSha256"],
+            },
             "phase2Evidence": locked_evidence,
             "lineage": {
                 "dataReleaseId": release.data_release_id,
@@ -835,7 +905,9 @@ def run_phase3_diagnose(
             os.replace(building, output)
         except OSError:
             if output.exists():
-                return _validate_existing(output, str(lock["lockSha256"]))
+                return _validate_existing(
+                    output, lock=lock, lock_path=lock_path, plan=plan, plan_path=plan_source
+                )
             raise
         return output / PHASE3_MANIFEST_NAME
     finally:

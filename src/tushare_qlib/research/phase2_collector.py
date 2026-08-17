@@ -625,6 +625,8 @@ def collect_phase2_evidence(
         hypothesis_id = str(item.get("hypothesisId") or "").strip()
         if not candidate_id or candidate_id in candidate_ids:
             raise ValueError("candidate IDs must be unique and non-empty")
+        if candidate_id != hypothesis_id:
+            raise ValueError("candidate IDs must exactly match the frozen hypothesis family")
         candidate_ids.add(candidate_id)
         if str(item.get("regimeRule") or "") != "none":
             raise ValueError("phase2-collect runs before regime overlays")

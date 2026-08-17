@@ -46,7 +46,7 @@ diagnostics:
   rollingWindows: [63, 126, 252]
   transitionWindows: [20, 63]
   minimumRegimeSessions: 63
-  minimumCrossSection: 50
+  minimumCrossSection: 60
   topK: 30
   ageBucketUpperSessions: [21, 42, 63, 126]
 

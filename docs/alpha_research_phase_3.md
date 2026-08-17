@@ -1,8 +1,10 @@
 # Alpha Research Phase 3 — Stability and Regime Diagnosis
 
 Phase 3 changes the research question from factor expansion to temporal alpha stability. Its immutable
-entry condition is a completed Phase 2 acceptance artifact with `acceptedCount=0`, every Phase 2
-candidate still marked `REJECTED`, and both holdout selection and publishing disabled.
+entry condition is a completed Phase 2 acceptance artifact containing exactly
+`H001–H005/H101–H106`, with `acceptedCount=0`, every candidate still marked `REJECTED`, and both
+holdout selection and publishing disabled. The acceptance must be hash-bound to the candidate-metrics
+collector and the exact Phase 2 evidence index that produced it.
 
 This first implementation is Phase 3-D only. It covers P3-D00 through P3-D04 and cannot register a
 formal hypothesis, produce a Research Candidate, select a model, run P2-R01 through P2-R03, or open the
@@ -37,9 +39,10 @@ holdout remains sealed.
 
 ## P3-D00 through P3-D04
 
-- P3-D00 freezes the Phase 2 acceptance and evidence SHA-256 values, contract-lock identity,
-  DataRelease, DatasetVersion, FeatureSnapshot, labels, anchor PredictionSnapshots, regime spec,
-  source commit, and diagnostic implementation hashes.
+- P3-D00 freezes the Phase 2 acceptance, candidate-metrics collector, evidence index, and formal
+  eight-check DataRelease-v2 acceptance SHA-256 values, contract-lock identity, DataRelease,
+  DatasetVersion, FeatureSnapshot, labels, anchor PredictionSnapshots, regime spec, source commit,
+  and diagnostic implementation hashes.
 - P3-D01 derives daily IC, RankIC, TopK forward-label spread, TopK turnover, rolling 63/126/252-session
   stability, and contiguous negative rolling-RankIC failure episodes.
 - P3-D02 applies the existing causal regime engine and derives model-by-dimension-by-state diagnostics.
@@ -50,9 +53,9 @@ holdout remains sealed.
   training-window experiment.
 
 `topk_spread` uses the embedded five-day forward labels and is a diagnostic signal spread, not a
-realized portfolio P&L series. If an anchor evidence entry supplies a bound predictions-only portfolio
-manifest, Phase 3 also records net portfolio excess return. Otherwise the portfolio field is explicitly
-`INPUT_UNAVAILABLE`; it is never synthesized from labels.
+realized portfolio P&L series. Phase 3-D prohibits external portfolio manifests because they are not
+part of the frozen PredictionSnapshot/DataRelease evidence chain. Portfolio excess return is therefore
+explicitly `INPUT_UNAVAILABLE`; it is never synthesized from labels.
 
 ## Commands
 
@@ -66,6 +69,7 @@ $RepoPython -m tushare_qlib \
   phase3-validate \
   --phase2-acceptance /path/to/phase2_acceptance.json \
   --phase2-evidence /path/to/phase2_evidence_index_v1.json \
+  --phase2-data-acceptance /path/to/phase2_data_release_acceptance.json \
   --contract configs/research/ashare_phase3_v1.yaml \
   --output /path/to/phase3_design_lock.json
 
@@ -79,15 +83,18 @@ $RepoPython -m tushare_qlib \
   --config configs/pipeline_phase2.yaml \
   phase3-diagnose \
   --contract-lock /path/to/phase3_design_lock.json \
+  --plan /path/to/phase3_plan.json \
   --evidence /path/to/phase2_evidence_index_v1.json \
   --regimes configs/regimes/ashare_regime_v1.yaml \
   --output /path/to/phase3_evidence/diagnosis_v1
 ```
 
 `phase3-validate` records the current source revision; `phase3-diagnose` requires that revision to be
-clean, committed, and identical to the lock. It also rechecks every locked input and implementation hash before reading predictions. The diagnosis writes
-an immutable directory; rerunning against an existing directory succeeds only when its manifest and
-every artifact checksum still match.
+clean, committed, and identical to the lock. It also requires the immutable plan, checks its
+`planSha256` and design-lock binding, then rechecks every locked input and implementation hash before
+reading predictions. The diagnosis writes an immutable directory; rerunning against an existing
+directory succeeds only when its evidence-index checksum, exact artifact set, row counts, state and
+holdout/publishing fields, plan binding, and every artifact checksum still match.
 
 ## Diagnostic evidence bundle
 
@@ -109,7 +116,7 @@ phase3_diagnostics_report.md
 phase3_evidence_index.json
 ```
 
-The evidence index records artifact SHA-256 values and lineage, ends in
+The evidence index records the plan SHA-256, artifact SHA-256 values and lineage, ends in
 `PHASE3_DIAGNOSIS_COMPLETE`, and explicitly records `confirmationState=NOT_STARTED`, an empty formal
 candidate list, and no final-holdout access.
 

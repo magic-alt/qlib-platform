@@ -10,6 +10,54 @@ from ..store import sha256_file
 from .phase3_contract import load_phase3_lock
 
 
+PHASE3_PLAN_SCHEMA = "phase3_diagnostic_plan_v1"
+PHASE3_EXECUTION_ORDER = ("P3-D00", "P3-D01", "P3-D02", "P3-D03", "P3-D04")
+
+
+def load_phase3_plan(path: str | Path, *, contract_lock_sha256: str | None = None) -> dict[str, Any]:
+    source = Path(path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"Phase 3 diagnostic plan is missing: {source}")
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != PHASE3_PLAN_SCHEMA:
+        raise ValueError("unsupported Phase 3 diagnostic plan")
+    recorded = str(payload.get("planSha256") or "")
+    actual = sha256_json({key: value for key, value in payload.items() if key != "planSha256"})
+    if recorded != actual:
+        raise ValueError("Phase 3 diagnostic plan checksum mismatch")
+    lock = payload.get("contractLock")
+    if not isinstance(lock, dict) or not str(lock.get("lockSha256") or ""):
+        raise ValueError("Phase 3 diagnostic plan contract-lock binding is missing")
+    if contract_lock_sha256 is not None and lock.get("lockSha256") != contract_lock_sha256:
+        raise ValueError("Phase 3 diagnostic plan uses a different design lock")
+    if tuple(payload.get("executionOrder", ())) != PHASE3_EXECUTION_ORDER:
+        raise ValueError("Phase 3 diagnostic plan execution order drift")
+    workstreams = payload.get("workstreams")
+    if not isinstance(workstreams, list) or len(workstreams) != len(PHASE3_EXECUTION_ORDER):
+        raise ValueError("Phase 3 diagnostic plan workstream set drift")
+    if (
+        tuple(item.get("workstreamId") for item in workstreams if isinstance(item, dict))
+        != PHASE3_EXECUTION_ORDER
+    ):
+        raise ValueError("Phase 3 diagnostic plan workstream set drift")
+    if any(
+        item.get("requiresRetraining") is not False or item.get("producesFormalCandidate") is not False
+        for item in workstreams
+        if isinstance(item, dict)
+    ):
+        raise ValueError("Phase 3 diagnostic plan authorizes retraining or candidates")
+    if (
+        payload.get("stateBefore") != "PHASE3_DESIGN_LOCKED"
+        or payload.get("stateAfter") != "PHASE3_DIAGNOSIS_COMPLETE"
+        or payload.get("diagnosisOnly") is not True
+        or payload.get("confirmationHypotheses") != []
+        or payload.get("finalHoldoutAccessAllowed") is not False
+        or payload.get("publishingAuthorized") is not False
+    ):
+        raise ValueError("Phase 3 diagnostic plan isolation state drift")
+    return payload
+
+
 def _write_immutable(payload: dict[str, Any], output: str | Path, identity_key: str) -> Path:
     payload[identity_key] = sha256_json(payload)
     target = Path(output).expanduser().resolve()
@@ -68,7 +116,7 @@ def write_phase3_experiment_plan(*, contract_lock: str | Path, output: str | Pat
         },
     ]
     payload: dict[str, Any] = {
-        "schemaVersion": "phase3_diagnostic_plan_v1",
+        "schemaVersion": PHASE3_PLAN_SCHEMA,
         "programId": lock["programId"],
         "contractLock": {
             "path": str(source),

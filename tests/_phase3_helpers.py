@@ -22,7 +22,7 @@ ANCHORS = {
 }
 
 
-def phase3_entry_fixture(tmp_path: Path) -> tuple[Path, Path]:
+def phase3_entry_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     contract_lock_sha = "phase2-contract-lock-test"
     candidates = [
@@ -39,20 +39,9 @@ def phase3_entry_fixture(tmp_path: Path) -> tuple[Path, Path]:
             "portfolio": "topk_dropout_v1",
             "regimeRule": "none",
         }
-        for number in range(1, 12)
+        for number in (1, 2, 3, 4, 5, 101, 102, 103, 104, 105, 106)
     ]
-    acceptance = {
-        "schemaVersion": "phase2_incremental_acceptance_v1",
-        "programId": "ashare_alpha_research_phase2_v1",
-        "contractLockSha256": contract_lock_sha,
-        "candidates": candidates,
-        "acceptedCount": 0,
-        "selectionUsesFinalHoldout": False,
-        "publishingAuthorized": False,
-    }
-    acceptance["acceptanceSha256"] = sha256_json(acceptance)
     acceptance_path = tmp_path / "phase2-acceptance.json"
-    acceptance_path.write_text(json.dumps(acceptance, sort_keys=True), encoding="utf-8")
 
     release_identity = {
         "schemaVersion": "2.0",
@@ -174,4 +163,60 @@ def phase3_entry_fixture(tmp_path: Path) -> tuple[Path, Path]:
     }
     evidence_path = tmp_path / "phase2-evidence.json"
     evidence_path.write_text(json.dumps(evidence, sort_keys=True), encoding="utf-8")
-    return acceptance_path, evidence_path
+    candidate_metrics = {
+        "schemaVersion": "phase2_candidate_metrics_v1",
+        "programId": "ashare_alpha_research_phase2_v1",
+        "contractLock": {"lockSha256": contract_lock_sha},
+        "evidenceIndex": {"path": str(evidence_path), "sha256": sha256_file(evidence_path)},
+        "candidates": candidates,
+    }
+    candidate_metrics["collectorSha256"] = sha256_json(candidate_metrics)
+    candidate_metrics_path = tmp_path / "phase2-candidate-metrics.json"
+    candidate_metrics_path.write_text(json.dumps(candidate_metrics, sort_keys=True), encoding="utf-8")
+    acceptance = {
+        "schemaVersion": "phase2_incremental_acceptance_v1",
+        "programId": "ashare_alpha_research_phase2_v1",
+        "contractLockSha256": contract_lock_sha,
+        "candidateMetrics": {
+            "path": str(candidate_metrics_path),
+            "sha256": sha256_file(candidate_metrics_path),
+            "collectorSha256": candidate_metrics["collectorSha256"],
+            "evidenceIndex": {
+                "path": str(evidence_path),
+                "sha256": sha256_file(evidence_path),
+            },
+        },
+        "candidates": candidates,
+        "acceptedCount": 0,
+        "selectionUsesFinalHoldout": False,
+        "publishingAuthorized": False,
+    }
+    acceptance["acceptanceSha256"] = sha256_json(acceptance)
+    acceptance_path.write_text(json.dumps(acceptance, sort_keys=True), encoding="utf-8")
+    data_acceptance = {
+        "schemaVersion": "phase2_data_release_acceptance_v1",
+        "dataReleaseId": release_id,
+        "manifestSha256": release["manifestSha256"],
+        "profile": "ashare_qlib_research_v2",
+        "checks": {
+            name: {"status": "PASS", "artifactSha256": sha256_json({"check": name})}
+            for name in (
+                "PIT_LEAKAGE",
+                "PIT_INDUSTRY",
+                "PIT_FUNDAMENTALS",
+                "DATASET_BUILD",
+                "FEATURE_SNAPSHOT_CHECKSUM",
+                "LABEL_TIMING",
+                "RIDGE_DETERMINISTIC",
+                "MINI_QLIB_LEAN_E2E",
+            )
+        },
+        "passed": True,
+        "scope": "NARROW_V2_DELTA_ACCEPTANCE",
+        "fullInfrastructureRecertificationRun": False,
+        "publishingAuthorized": False,
+    }
+    data_acceptance["acceptanceSha256"] = sha256_json(data_acceptance)
+    data_acceptance_path = tmp_path / "phase2-data-acceptance.json"
+    data_acceptance_path.write_text(json.dumps(data_acceptance, sort_keys=True), encoding="utf-8")
+    return acceptance_path, evidence_path, data_acceptance_path
