@@ -89,6 +89,35 @@ $RepoPython -m tushare_qlib \
   --output /path/to/phase3_evidence/diagnosis_v1
 ```
 
+## Cross-machine read-only verification
+
+After a completed D00–D04 bundle exists, create its portable evidence package outside the source checkout:
+
+```bash
+$RepoPython -m tushare_qlib \
+  --config configs/pipeline.yaml \
+  phase3-portable-export \
+  --contract-lock /path/to/phase3_design_lock.json \
+  --plan /path/to/phase3_plan.json \
+  --diagnosis /path/to/phase3_evidence/diagnosis_v1 \
+  --contract configs/research/ashare_phase3_v1.yaml \
+  --data-root /path/to/quant-data-root \
+  --output /portable-storage/phase3_evidence_v1
+```
+
+Move the resulting directory without changing its contents. On a clean checkout at the source commit, run:
+
+```bash
+$RepoPython -m tushare_qlib \
+  --config configs/pipeline.yaml \
+  phase3-portable-verify \
+  --package /relocated/phase3_evidence_v1
+```
+
+The verifier performs no retraining and does not run D00–D04. It only recomputes the package inventory,
+Phase 2/DataRelease/FeatureSnapshot/PredictionSnapshot bindings, implementation hashes, diagnosis artifact
+checksums and isolation state. It rejects symlinks, path escapes, missing or extra files, a different source
+commit, any final-holdout access, candidate creation or publishing authorization.
 `phase3-validate` records the current source revision; `phase3-diagnose` requires that revision to be
 clean, committed, and identical to the lock. It also requires the immutable plan, checks its
 `planSha256` and design-lock binding, then rechecks every locked input and implementation hash before

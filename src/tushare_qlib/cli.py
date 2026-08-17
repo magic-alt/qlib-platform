@@ -248,6 +248,15 @@ def parser() -> argparse.ArgumentParser:
         default="configs/regimes/ashare_regime_v1.yaml",
     )
     phase3_diagnose.add_argument("--output", required=True)
+    phase3_export = sub.add_parser("phase3-portable-export")
+    phase3_export.add_argument("--contract-lock", required=True)
+    phase3_export.add_argument("--plan", required=True)
+    phase3_export.add_argument("--diagnosis", required=True)
+    phase3_export.add_argument("--contract", default="configs/research/ashare_phase3_v1.yaml")
+    phase3_export.add_argument("--data-root", required=True)
+    phase3_export.add_argument("--output", required=True)
+    phase3_verify = sub.add_parser("phase3-portable-verify")
+    phase3_verify.add_argument("--package", required=True)
 
     tp = sub.add_parser("build-target-portfolio")
     tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
@@ -1148,6 +1157,25 @@ def main() -> None:
         print(path)
         return
 
+    if args.command == "phase3-portable-export":
+        from .research.phase3_portability import export_phase3_portable_evidence
+
+        path = export_phase3_portable_evidence(
+            contract_lock=args.contract_lock,
+            plan_path=args.plan,
+            diagnosis=args.diagnosis,
+            contract_path=args.contract,
+            data_root=args.data_root,
+            output=args.output,
+        )
+        print(path)
+        return
+
+    if args.command == "phase3-portable-verify":
+        from .research.phase3_portability import verify_phase3_portable_evidence
+
+        print(json.dumps(verify_phase3_portable_evidence(args.package), ensure_ascii=False, sort_keys=True))
+        return
     if args.command == "backtest-predictions":
         from .prediction_backtest import backtest_predictions
 
