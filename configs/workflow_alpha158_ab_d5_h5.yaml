@@ -1,13 +1,10 @@
-# Run from the repository root with a resolved immutable dataset:
-#   $env:QLIB_DATA_URI = '<resolved immutable Qlib dataset path>'
-#   & .\.venv\Scripts\qrun.exe configs\workflow_lightgbm.yaml
-
+# Orthogonal portfolio ablation C: fixed Alpha158 model/data chain, D5/H5/V5.
 sys:
   path:
     - ./src
 
 qlib_init:
-  provider_uri: "{{ QLIB_DATA_URI }}"
+  provider_uri: "D:/Project/qlib-platform/data/qlib/versions/efae3ba4b0588b256531e9db7ee0e51d6f7eb70e7f40fd778f73750230921370"
   region: cn
   kernels: 4
   joblib_backend: loky
@@ -22,8 +19,6 @@ data_handler_config: &data_handler_config
   fit_start_time: "2018-10-01"
   fit_end_time: "2024-12-27"
   instruments: *market
-  # Match the 5-day TopkDropout holding horizon: buy at T+1 and
-  # measure the return through T+6.
   label:
     - ["Ref($close, -6)/Ref($close, -1) - 1"]
     - ["LABEL0"]
@@ -40,17 +35,13 @@ data_handler_config: &data_handler_config
     - class: ProcessInfSingleThread
       module_path: tushare_qlib.processors
     - class: RobustZScoreNorm
-      kwargs:
-        fields_group: feature
-        clip_outlier: true
+      kwargs: {fields_group: feature, clip_outlier: true}
     - class: Fillna
-      kwargs:
-        fields_group: feature
+      kwargs: {fields_group: feature}
   learn_processors:
     - class: DropnaLabel
     - class: CSRankNorm
-      kwargs:
-        fields_group: label
+      kwargs: {fields_group: label}
 
 task:
   model:
@@ -85,14 +76,10 @@ task:
   record:
     - class: SignalRecord
       module_path: qlib.workflow.record_temp
-      kwargs:
-        model: <MODEL>
-        dataset: <DATASET>
+      kwargs: {model: <MODEL>, dataset: <DATASET>}
     - class: SigAnaRecord
       module_path: qlib.workflow.record_temp
-      kwargs:
-        ana_long_short: true
-        ann_scaler: 252
+      kwargs: {ana_long_short: true, ann_scaler: 252}
     - class: ASharePortAnaRecord
       module_path: tushare_qlib.workflow_records
       kwargs:
@@ -102,19 +89,16 @@ task:
             module_path: qlib.contrib.strategy
             kwargs:
               signal: <PRED>
-              # Long-only A-share cash strategy: hold at most 10 names and replace at most 3 per day.
               topk: 10
               n_drop: 5
-              hold_thresh: 1
+              hold_thresh: 5
               only_tradable: true
               forbid_all_trade_at_limit: true
               risk_degree: 0.95
           executor:
             class: SimulatorExecutor
             module_path: qlib.backtest.executor
-            kwargs:
-              time_per_step: day
-              generate_portfolio_metrics: true
+            kwargs: {time_per_step: day, generate_portfolio_metrics: true}
           backtest:
             start_time: "2025-07-11"
             end_time: "2026-08-10"
@@ -123,10 +107,8 @@ task:
             exchange_kwargs:
               limit_threshold: ["$is_limit_up > 0", "$is_limit_down > 0"]
               deal_price: open
-              volume_threshold: [current, "$volume * 0.10"]
+              volume_threshold: [current, "$volume * 0.05"]
               trade_unit: 100
-              # A-share cash equity: 1 bp commission, no minimum commission.
               open_cost: 0.0001
-              # Sell cost = 1 bp commission + 5 bp stamp duty.
               close_cost: 0.0006
               min_cost: 0

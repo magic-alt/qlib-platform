@@ -385,6 +385,10 @@ def backtest_predictions(
         timings_path.write_text(json.dumps(timing_payload, indent=2), encoding="utf-8")
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         if artifact_level == "full":
+            from .p0_baseline import write_p0_artifacts
+
+            write_p0_artifacts(output)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             with timings.measure("report_seconds"):
                 write_backtest_report(settings, output)
             timing_payload = timings.to_dict()

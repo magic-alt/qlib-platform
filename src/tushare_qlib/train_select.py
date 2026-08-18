@@ -1129,6 +1129,16 @@ def train_backtest_select(
             if artifact_level == "full"
             else []
         )
+        latest_strategy_state: dict[str, object] | None = None
+        if not audit.empty and "signal_date" in audit:
+            latest_decision = audit.loc[
+                audit["signal_date"].astype(str) == latest.strftime("%Y-%m-%d")
+            ].copy()
+            if not latest_decision.empty:
+                from .strategy_contract import strategy_contract_from_audit_decision
+
+                latest_decision["risk_degree"] = topk_policy.risk_degree
+                latest_strategy_state = strategy_contract_from_audit_decision(latest_decision)
         manifest = {
             "schemaVersion": "2.0",
             "externalRunId": model_id,
@@ -1185,6 +1195,7 @@ def train_backtest_select(
                 "topkDropout": topk_policy.__dict__,
             },
             "metrics": {**metrics, **gate_metrics},
+            "latestStrategyState": latest_strategy_state,
             "artifacts": [
                 {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
                 {"name": pred_snapshot_path.name, "localPath": str(pred_snapshot_path)},
@@ -1199,7 +1210,7 @@ def train_backtest_select(
         }
         if promoted:
             assert output is not None and path is not None
-            manifest["latestTargets"] = {
+            manifest["modelTopkCandidates"] = {
                 "artifactType": ArtifactType.MODEL_TOPK.value,
                 "schemaVersion": "2.0",
                 "signalDate": latest.strftime("%Y-%m-%d"),
@@ -1219,6 +1230,10 @@ def train_backtest_select(
 
         DatasetRegistry(settings.registry_path).register_research_manifest(manifest_path)
         if artifact_level == "full":
+            from .p0_baseline import write_p0_artifacts
+
+            write_p0_artifacts(artifact_dir)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             with timings.measure("report_seconds"):
                 write_backtest_report(settings, artifact_dir)
         timing_payload = timings.to_dict()
