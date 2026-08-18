@@ -1,0 +1,97 @@
+# Official Qlib LightGBM / Alpha158 benchmark, adapted to the immutable local dataset.
+# Run from repository root:
+#   .venv/bin/qrun workflow_local_lightgbm.yaml -e csi300_lgb_alpha158
+sys:
+    path:
+        - ./src
+
+qlib_init:
+    provider_uri: "/Users/kaermax/lean-platform/data/derived/qlib/ds_3ecbca9539a7586a2a73633a8ed7dbc1d2624667a97c371e951058b1c14faa23/versions/a70ee699aa5c8d13732ef139cdbf915e3aece37cad23b486c4a6f4e74e58875e"
+    region: cn
+
+market: &market csi300
+benchmark: &benchmark SH000300
+
+data_handler_config: &data_handler_config
+    start_time: 2016-05-03
+    end_time: 2026-08-10
+    fit_start_time: 2016-05-03
+    fit_end_time: 2022-12-30
+    instruments: *market
+
+port_analysis_config: &port_analysis_config
+    strategy:
+        class: TopkDropoutStrategy
+        module_path: qlib.contrib.strategy
+        kwargs:
+            signal: <PRED>
+            topk: 10
+            n_drop: 5
+            hold_thresh: 1
+            only_tradable: true
+            forbid_all_trade_at_limit: true
+            risk_degree: 0.95
+    executor:
+        class: SimulatorExecutor
+        module_path: qlib.backtest.executor
+        kwargs:
+            time_per_step: day
+            generate_portfolio_metrics: true
+    backtest:
+        start_time: 2025-01-02
+        # Qlib's daily executor needs the next session to settle the final order.
+        end_time: 2026-08-07
+        account: 500000
+        benchmark: *benchmark
+        exchange_kwargs:
+            # Dataset-provided daily limit flags handle 5%, 10%, and 20% A-share limits.
+            limit_threshold: ["$is_limit_up > 0", "$is_limit_down > 0"]
+            deal_price: open
+            volume_threshold: [current, "$volume * 0.05"]
+            trade_unit: 100
+            # Commission: 1 bp, no minimum; sell side includes 0.05% stamp duty.
+            open_cost: 0.0001
+            close_cost: 0.0006
+            min_cost: 0
+
+task:
+    model:
+        class: LGBModel
+        module_path: qlib.contrib.model.gbdt
+        kwargs:
+            loss: mse
+            colsample_bytree: 0.8879
+            learning_rate: 0.2
+            subsample: 0.8789
+            lambda_l1: 205.6999
+            lambda_l2: 580.9768
+            max_depth: 8
+            num_leaves: 210
+            num_threads: 20
+    dataset:
+        class: DatasetH
+        module_path: qlib.data.dataset
+        kwargs:
+            handler:
+                class: Alpha158
+                module_path: qlib.contrib.data.handler
+                kwargs: *data_handler_config
+            segments:
+                train: [2016-05-03, 2022-12-30]
+                valid: [2023-01-03, 2024-12-31]
+                test: [2025-01-02, 2026-08-10]
+    record:
+        - class: SignalRecord
+          module_path: qlib.workflow.record_temp
+          kwargs:
+            model: <MODEL>
+            dataset: <DATASET>
+        - class: SigAnaRecord
+          module_path: qlib.workflow.record_temp
+          kwargs:
+            ana_long_short: False
+            ann_scaler: 252
+        - class: ASharePortAnaRecord
+          module_path: tushare_qlib.workflow_records
+          kwargs:
+            config: *port_analysis_config

@@ -140,6 +140,11 @@ def _write_run(settings: Settings, *, holdings: bool = True) -> Path:
             "totalSeconds": 6.0,
         },
         "execution": {"benchmark": "SH000300", "dealPrice": "open"},
+        "reportConfiguration": {
+            "股票池": "CSI300",
+            "持仓数 / 每日换出": "10 / 5",
+            "手续费": "买入万一；卖出万六（含印花税万五）",
+        },
         "artifacts": artifacts,
         "latestTargets": {"targets": [{"instrument": "SZ000001", "targetWeight": 0.5, "score": 0.12}]},
     }
@@ -217,11 +222,13 @@ def test_report_writes_markdown_pdf_charts_and_transaction_appendix(tmp_path: Pa
     assert "平安银行 (SZ000001)" in markdown
     assert "浦发银行 (SH600000)" in markdown
     assert "运行环境与阶段耗时" in markdown
+    assert "回测设定与配置" in markdown
     assert "lightgbm_auto" in markdown
     assert "模型训练" in markdown
     reader = PdfReader(str(artifacts.pdf_path))
     assert len(reader.pages) >= 7
     assert "回测报告" in reader.pages[0].extract_text()
+    assert "回测设定与配置" in reader.pages[0].extract_text()
 
 
 def test_report_loads_legacy_mlflow_position_snapshot(tmp_path: Path):
