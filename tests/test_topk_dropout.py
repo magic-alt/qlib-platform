@@ -110,6 +110,79 @@ def test_rank_buffer_holds_inside_exit_rank_and_replaces_breach():
     assert decision.loc[decision["target_action"].eq("BUY")].shape[0] == 1
 
 
+def test_rank_buffer_target_size_decouples_slots_from_entry_rank():
+    # target_size=4 leaves only 2 open slots (retained S05+S35) even though
+    # entry_rank=20 would otherwise admit up to max_replacements=5 names.
+    # The old coupling (slots = entry_rank - retained) would have allowed 5.
+    scores = pd.Series({f"S{rank:02d}": 100 - rank for rank in range(1, 46)})
+    positions = pd.DataFrame(
+        {
+            "instrument": ["S05", "S35", "S45"],
+            "quantity": [100, 100, 100],
+            "holding_days": [10, 10, 10],
+        }
+    )
+    decision = rank_buffer_decision(
+        scores,
+        positions,
+        _quotes(list(scores.index)),
+        policy=RankBufferPolicy(
+            target_size=4,
+            entry_rank=20,
+            exit_rank=40,
+            max_replacements=5,
+            hold_thresh=1,
+        ),
+    ).set_index("instrument")
+
+    assert decision.at["S45", "target_action"] == "SELL"
+    # retained = S05, S35 -> exactly two open slots up to target_size=4.
+    buys = decision.loc[decision["target_action"].eq("BUY")]
+    assert len(buys) == 2
+    assert buys.index.tolist() == ["S01", "S02"]
+
+
+def test_rank_buffer_emits_full_audit_column_set():
+    scores = pd.Series({f"S{rank:02d}": 100 - rank for rank in range(1, 26)})
+    positions = pd.DataFrame({"instrument": ["S03", "S22"], "quantity": [100, 100], "holding_days": [3, 3]})
+    decision = rank_buffer_decision(
+        scores,
+        positions,
+        _quotes(list(scores.index)),
+        policy=RankBufferPolicy(target_size=10, entry_rank=10, exit_rank=20, hold_thresh=1),
+    )
+
+    for column in (
+        "is_model_topk",
+        "holding_days",
+        "candidate_tradable",
+        "buy_tradable",
+        "sell_tradable",
+        "is_buy_candidate",
+        "is_sell_candidate",
+        "action_order",
+    ):
+        assert column in decision.columns
+    assert decision.loc[decision["target_action"].eq("SELL"), "action_reason"].eq("EXIT_RANK_BREACH").all()
+    assert decision.loc[decision["target_action"].eq("BUY"), "action_reason"].eq("ENTRY_RANK").all()
+
+
+def test_rank_buffer_non_tradable_buy_is_blocked_not_selected():
+    scores = pd.Series({f"S{rank:02d}": 100 - rank for rank in range(1, 26)})
+    positions = pd.DataFrame({"instrument": ["S02", "S22"], "quantity": [100, 100], "holding_days": [3, 3]})
+    decision = rank_buffer_decision(
+        scores,
+        positions,
+        _quotes(list(scores.index), limited_up={"S01"}),
+        policy=RankBufferPolicy(target_size=10, entry_rank=10, exit_rank=20, hold_thresh=1),
+    ).set_index("instrument")
+
+    assert decision.at["S01", "target_action"] == "HOLD"
+    assert decision.at["S01", "action_reason"] == "NOT_TRADABLE_BUY"
+    # S03 becomes the first tradable entrant instead.
+    assert decision.loc[decision["target_action"].eq("BUY")].index.tolist()[:1] == ["S03"]
+
+
 def test_live_buy_sell_sets_match_official_qlib_topk_dropout(monkeypatch):
     # Qlib's strategy package imports the unrelated convex optimizer eagerly.
     # Stub only that optimizer so this parity test exercises the official

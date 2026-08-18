@@ -1,0 +1,26 @@
+# Portfolio Policy V2.1 - Rank Buffer first candidate (Alpha158 / CSI300).
+#
+# Target10 / Entry10 / Exit20 / Replace3 / Hold1 implements
+# "fast escape + slow churn": holdings inside exit_rank are retained regardless
+# of daily rank churn; only an exit-rank breach triggers a sell, capped at
+# maxReplacements per day; open slots up to targetSize are refilled from names
+# ranked within entryRank.
+#
+# This is a NEW research asset. The frozen Phase 2 config
+# (configs/portfolio/rank_buffer_phase2_v1.yaml) is intentionally unchanged.
+schema: rank_buffer_alpha158_v1
+
+targetSize: 10
+entryRank: 10
+exitRank: 20
+
+maxReplacements: 3
+holdThresholdSessions: 1
+
+onlyTradable: true
+forbidAllTradeAtLimit: true
+riskDegree: 0.95
+
+# Execution mirrors the frozen TopkDropout exchange settings.
+dealPrice: open
+participation: 0.05

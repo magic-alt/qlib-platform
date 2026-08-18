@@ -4,6 +4,7 @@ from pathlib import Path
 
 from tushare_qlib.canonical_config import DatasetSpec, PortfolioSpec, StrategySpec
 from tushare_qlib.settings import Paths, Settings
+from tushare_qlib.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 def _settings(tmp_path: Path, data: dict[str, object]) -> Settings:
@@ -30,6 +31,49 @@ def test_strategy_spec_is_the_single_source_for_topk_parameters(tmp_path: Path):
 
     assert (configured.topk, configured.n_drop, configured.hold_thresh) == (40, 3, 10)
     assert (overridden.topk, overridden.n_drop, overridden.hold_thresh) == (25, 3, 10)
+    assert isinstance(configured.to_policy(), TopkDropoutPolicy)
+
+
+def test_strategy_spec_resolves_rank_buffer_policy(tmp_path: Path):
+    settings = _settings(
+        tmp_path,
+        {
+            "strategy": {
+                "policy": "rank_buffer_v1",
+                "rank_buffer": {
+                    "target_size": 10,
+                    "entry_rank": 10,
+                    "exit_rank": 20,
+                    "max_replacements": 3,
+                    "hold_thresh": 1,
+                    "risk_degree": 0.95,
+                },
+            },
+        },
+    )
+
+    spec = StrategySpec.from_settings(settings)
+    overridden = StrategySpec.from_settings(settings, topk_override=12, n_drop_override=2)
+
+    assert spec.policy == "rank_buffer_v1"
+    policy = spec.to_policy()
+    assert isinstance(policy, RankBufferPolicy)
+    assert (policy.target_size, policy.entry_rank, policy.exit_rank) == (10, 10, 20)
+    assert (policy.max_replacements, policy.hold_thresh, policy.risk_degree) == (3, 1, 0.95)
+    # The topk CLI override maps to the rank-buffer target size.
+    assert overridden.to_policy().target_size == 12
+    assert overridden.to_policy().max_replacements == 2
+
+
+def test_strategy_spec_rejects_unknown_policy(tmp_path: Path):
+    settings = _settings(tmp_path, {"strategy": {"policy": "not_a_policy"}})
+
+    try:
+        StrategySpec.from_settings(settings)
+    except ValueError as exc:
+        assert "unknown strategy policy" in str(exc)
+    else:  # pragma: no cover - defensive
+        raise AssertionError("unknown strategy policy must be rejected")
 
 
 def test_dataset_spec_records_lean_pit_universe(tmp_path: Path):

@@ -27,7 +27,9 @@ from .failure_attribution import (
 from .portfolio_attribution import (
     build_daily_holdings_conversion,
     build_daily_portfolio_bridge,
+    derive_benchmark_diagnostics,
     derive_cost_sensitivity,
+    derive_rolling_benchmark_diagnostics,
     summarize_portfolio_bridge,
 )
 from .regime_study import REGIME_STUDY_SCHEMA, _load_model_predictions
@@ -552,6 +554,8 @@ def run_attribution_diagnose(
     portfolio_frames: list[pd.DataFrame] = []
     cost_frames: list[pd.DataFrame] = []
     turnover_frames: list[pd.DataFrame] = []
+    benchmark_frames: list[pd.DataFrame] = []
+    rolling_benchmark_frames: list[pd.DataFrame] = []
     for portfolio_run in run_inputs:
         report = pd.read_parquet(portfolio_run.report_path)
         holdings = pd.read_parquet(portfolio_run.holdings_path)
@@ -581,6 +585,24 @@ def run_attribution_diagnose(
                 spec=spec,
             )
         )
+        benchmark_frames.append(
+            derive_benchmark_diagnostics(
+                daily_portfolio,
+                regime_labels,
+                run_name=portfolio_run.name,
+                model=portfolio_run.model,
+                variant=portfolio_run.variant,
+                spec=spec,
+            )
+        )
+        rolling_benchmark_frames.append(
+            derive_rolling_benchmark_diagnostics(
+                daily_portfolio,
+                run_name=portfolio_run.name,
+                model=portfolio_run.model,
+                variant=portfolio_run.variant,
+            )
+        )
         if portfolio_run.model == "xgboost" and portfolio_run.variant == "baseline":
             cost_frames.append(
                 derive_cost_sensitivity(
@@ -605,6 +627,8 @@ def run_attribution_diagnose(
     portfolio = pd.concat(portfolio_frames, ignore_index=True)
     cost = pd.concat(cost_frames, ignore_index=True)
     turnover = pd.concat(turnover_frames, ignore_index=True)
+    benchmark = pd.concat(benchmark_frames, ignore_index=True)
+    rolling_benchmark = pd.concat(rolling_benchmark_frames, ignore_index=True)
     summary = derive_failure_summary(signal, overlap, portfolio, cost, spec=spec)
     summary_frame = _summary_frame(summary)
     frames = {
@@ -614,6 +638,8 @@ def run_attribution_diagnose(
         "portfolio_attribution.parquet": portfolio,
         "turnover_attribution.parquet": turnover,
         "cost_sensitivity.parquet": cost,
+        "benchmark_diagnostics.parquet": benchmark,
+        "rolling_benchmark_diagnostics.parquet": rolling_benchmark,
         "portfolio_sensitivity.parquet": portfolio.loc[
             portfolio["scope_type"].isin(["ALL_OOS", "FOLD"])
         ].reset_index(drop=True),

@@ -74,20 +74,67 @@ class TopkDropoutPolicy:
 
 @dataclass(frozen=True)
 class RankBufferPolicy:
-    entry_rank: int = 20
-    exit_rank: int = 40
-    max_replacements: int = 5
-    hold_thresh: int = 5
+    """Pre-registered buy/hold rank spread with a distinct target position count.
+
+    ``target_size`` is the desired number of holdings and is decoupled from
+    ``entry_rank``: the latter only governs candidate eligibility.  A policy can
+    therefore express ``target_size=10`` while allowing ``entry_rank=15`` names
+    to enter, which was impossible when the target was implicit in ``entry_rank``.
+    """
+
+    target_size: int = 10
+    entry_rank: int = 10
+    exit_rank: int = 20
+    max_replacements: int = 3
+    hold_thresh: int = 1
     only_tradable: bool = True
     forbid_all_trade_at_limit: bool = True
+    risk_degree: float = 0.95
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, object] | None) -> "RankBufferPolicy":
+        data = data or {}
+        return cls(
+            target_size=int(str(data.get("target_size", data.get("targetSize", cls.target_size)))),
+            entry_rank=int(str(data.get("entry_rank", data.get("entryRank", cls.entry_rank)))),
+            exit_rank=int(str(data.get("exit_rank", data.get("exitRank", cls.exit_rank)))),
+            max_replacements=int(
+                str(
+                    data.get(
+                        "max_replacements",
+                        data.get("maxReplacements", cls.max_replacements),
+                    )
+                )
+            ),
+            hold_thresh=int(
+                str(
+                    data.get(
+                        "hold_thresh",
+                        data.get("holdThresholdSessions", cls.hold_thresh),
+                    )
+                )
+            ),
+            only_tradable=bool(data.get("only_tradable", data.get("onlyTradable", cls.only_tradable))),
+            forbid_all_trade_at_limit=bool(
+                data.get(
+                    "forbid_all_trade_at_limit",
+                    data.get("forbidAllTradeAtLimit", cls.forbid_all_trade_at_limit),
+                )
+            ),
+            risk_degree=float(str(data.get("risk_degree", data.get("riskDegree", cls.risk_degree)))),
+        )
 
     def validate(self) -> None:
+        if self.target_size <= 0:
+            raise ValueError("target_size must be positive")
         if self.entry_rank <= 0 or self.exit_rank <= self.entry_rank:
             raise ValueError("rank buffer requires 0 < entry_rank < exit_rank")
         if self.max_replacements <= 0:
             raise ValueError("max_replacements must be positive")
         if self.hold_thresh < 0:
             raise ValueError("hold_thresh must be non-negative")
+        if not 0 < self.risk_degree <= 1:
+            raise ValueError("risk_degree must be in (0, 1]")
 
 
 def _normalise_scores(scores: pd.Series | pd.DataFrame) -> pd.Series:
@@ -308,7 +355,13 @@ def rank_buffer_decision(
     signal_date: str | pd.Timestamp | None = None,
     trade_date: str | pd.Timestamp | None = None,
 ) -> pd.DataFrame:
-    """Apply a pre-registered buy/hold rank spread without an optimizer."""
+    """Apply a pre-registered buy/hold rank spread without an optimizer.
+
+    Holdings inside ``exit_rank`` are retained regardless of day-to-day rank
+    churn; only an exit-rank breach triggers a sell, subject to
+    ``max_replacements``, ``hold_thresh`` and tradability.  Open slots up to
+    ``target_size`` are refilled from names ranked within ``entry_rank``.
+    """
 
     policy = policy or RankBufferPolicy()
     policy.validate()
@@ -354,8 +407,9 @@ def rank_buffer_decision(
         else:
             sells.append(instrument)
     retained = [str(value) for value in current_list if str(value) not in set(sells)]
-    slots = max(0, policy.entry_rank - len(retained))
+    slots = max(0, policy.target_size - len(retained))
     buys: list[str] = []
+    blocked_buy: dict[str, str] = {}
     for instrument in ranked.index:
         name = str(instrument)
         if len(buys) >= min(slots, policy.max_replacements) or int(ranks[name]) > policy.entry_rank:
@@ -364,16 +418,26 @@ def rank_buffer_decision(
             continue
         if bool(flags.at[name, "buy_tradable"]):
             buys.append(name)
+        else:
+            blocked_buy[name] = "NOT_TRADABLE_BUY"
     relevant = sorted(set(current_list) | set(ranked.head(policy.exit_rank).index))
+    sell_set = set(sells)
+    buy_set = set(buys)
+    entry_set = set(ranked.head(policy.entry_rank).index)
+    sell_order = {str(instrument): idx for idx, instrument in enumerate(sells)}
+    buy_order = {str(instrument): idx for idx, instrument in enumerate(buys)}
     rows: list[dict[str, object]] = []
     for instrument in relevant:
         is_current = instrument in set(current_list)
-        if instrument in sells:
+        days = int(holding_days.get(instrument, 0))
+        if instrument in sell_set:
             action, reason = "SELL", "EXIT_RANK_BREACH"
-        elif instrument in buys:
-            action, reason = "BUY", "ENTRY_RANK_AND_OPEN_SLOT"
+        elif instrument in buy_set:
+            action, reason = "BUY", "ENTRY_RANK"
         elif instrument in blocked_sell:
             action, reason = "HOLD", blocked_sell[instrument]
+        elif instrument in blocked_buy:
+            action, reason = "HOLD", blocked_buy[instrument]
         elif is_current:
             action, reason = "HOLD", "INSIDE_HOLD_BUFFER"
         else:
@@ -385,9 +449,17 @@ def rank_buffer_decision(
                 "instrument": instrument,
                 "score": float(score.get(instrument, np.nan)),
                 "score_rank": int(ranks[instrument]) if instrument in ranks else pd.NA,
+                "is_model_topk": instrument in entry_set,
                 "is_current_position": is_current,
+                "holding_days": days if is_current else pd.NA,
+                "candidate_tradable": bool(flags.at[instrument, "candidate_tradable"]),
+                "buy_tradable": bool(flags.at[instrument, "buy_tradable"]),
+                "sell_tradable": bool(flags.at[instrument, "sell_tradable"]),
+                "is_buy_candidate": instrument in buy_set,
+                "is_sell_candidate": instrument in sell_set,
                 "target_action": action,
                 "action_reason": reason,
+                "action_order": sell_order.get(instrument, buy_order.get(instrument, pd.NA)),
             }
         )
     action_order = {"SELL": 0, "BUY": 1, "HOLD": 2}
@@ -395,7 +467,7 @@ def rank_buffer_decision(
     return (
         pd.DataFrame(rows)
         .assign(_action_rank=action_rank)
-        .sort_values(["_action_rank", "score_rank", "instrument"], na_position="last")
+        .sort_values(["_action_rank", "action_order", "score_rank", "instrument"], na_position="last")
         .drop(columns="_action_rank")
         .reset_index(drop=True)
     )

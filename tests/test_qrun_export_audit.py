@@ -33,3 +33,36 @@ def test_qrun_export_retains_negative_direction_sell_orders() -> None:
     assert audit["actual_action"].tolist() == ["BUY", "SELL"]
     assert audit["filled_value"].sum() == 2_600.0
     assert audit["trade_cost"].sum() == 3.0
+
+
+def test_qrun_export_reads_nested_execution_metadata() -> None:
+    path = Path(__file__).parents[1] / "scripts" / "export_qrun_backtest_report.py"
+    spec = importlib.util.spec_from_file_location("qrun_report_export", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    workflow = {
+        "task": {
+            "record": [
+                {
+                    "class": "ASharePortAnaRecord",
+                    "kwargs": {
+                        "config": {
+                            "strategy": {"kwargs": {"topk": 10, "n_drop": 3, "hold_thresh": 1}},
+                            "backtest": {
+                                "benchmark": "SH000300",
+                                "exchange_kwargs": {"deal_price": "open"},
+                            },
+                        }
+                    },
+                }
+            ]
+        }
+    }
+
+    portfolio = module._portfolio_config(workflow)
+    backtest = module._nested(portfolio, "backtest")
+
+    assert backtest["benchmark"] == "SH000300"
+    assert module._nested(backtest, "exchange_kwargs")["deal_price"] == "open"

@@ -122,9 +122,9 @@ def _load_workflow_config(path: Path) -> dict[str, Any]:
     return value
 
 
-def _report_configuration(workflow: Mapping[str, Any]) -> dict[str, str]:
+def _portfolio_config(workflow: Mapping[str, Any]) -> Mapping[str, Any]:
     records = _nested(workflow, "task").get("record", [])
-    portfolio = next(
+    return next(
         (
             _nested(record, "kwargs", "config")
             for record in records
@@ -133,6 +133,10 @@ def _report_configuration(workflow: Mapping[str, Any]) -> dict[str, str]:
         ),
         {},
     )
+
+
+def _report_configuration(workflow: Mapping[str, Any]) -> dict[str, str]:
+    portfolio = _portfolio_config(workflow)
     strategy = _nested(portfolio, "strategy", "kwargs")
     backtest = _nested(portfolio, "backtest")
     exchange = _nested(backtest, "exchange_kwargs")
@@ -186,6 +190,9 @@ def export_report_bundle(
         _required_artifact(artifact_dir, "portfolio_analysis/indicators_normal_1day_obj.pkl")
     )
     predictions = pd.read_pickle(_required_artifact(artifact_dir, "pred.pkl"))
+    labels = pd.read_pickle(_required_artifact(artifact_dir, "label.pkl"))
+    predictions.to_parquet(output_dir / "oos_predictions.parquet")
+    labels.to_parquet(output_dir / "oos_labels.parquet")
     report.to_parquet(output_dir / "portfolio_report.parquet")
     holdings = export_holding_snapshots(positions)
     holdings.to_parquet(output_dir / "holdings.parquet", index=False)
@@ -194,7 +201,9 @@ def export_report_bundle(
     workflow_copy = output_dir / "workflow_config.yaml"
     shutil.copy2(workflow_path, workflow_copy)
 
-    strategy = _nested(_nested(workflow, "port_analysis_config"), "strategy", "kwargs")
+    portfolio_config = _portfolio_config(workflow)
+    strategy = _nested(portfolio_config, "strategy", "kwargs")
+    backtest = _nested(portfolio_config, "backtest")
     topk = int(strategy.get("topk", 0))
     latest_date = predictions.index.get_level_values("datetime").max()
     latest_scores = (
@@ -215,6 +224,8 @@ def export_report_bundle(
     artifacts = [
         {"name": name, "localPath": str(output_dir / name)}
         for name in (
+            "oos_predictions.parquet",
+            "oos_labels.parquet",
             "portfolio_report.parquet",
             "holdings.parquet",
             "strategy_audit.parquet",
@@ -228,10 +239,8 @@ def export_report_bundle(
         "model": {"name": "LightGBM Alpha158"},
         "runtime": {"modelFamily": "lightgbm", "resolvedDevice": "cpu", "versions": versions},
         "execution": {
-            "benchmark": _nested(_nested(workflow, "port_analysis_config"), "backtest").get("benchmark"),
-            "dealPrice": _nested(
-                _nested(workflow, "port_analysis_config"), "backtest", "exchange_kwargs"
-            ).get("deal_price"),
+            "benchmark": backtest.get("benchmark"),
+            "dealPrice": _nested(backtest, "exchange_kwargs").get("deal_price"),
         },
         "reportConfiguration": _report_configuration(workflow),
         "artifacts": artifacts,

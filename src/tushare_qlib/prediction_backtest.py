@@ -90,14 +90,13 @@ def _portfolio_config(
     start_time: str,
     end_time: str,
 ) -> dict[str, object]:
+    from .strategy_factory import build_qlib_strategy_config, resolve_strategy_policy
+
+    resolved = resolve_strategy_policy(policy)
     research = settings.data.get("research", {})
     research = research if isinstance(research, Mapping) else {}
     return {
-        "strategy": {
-            "class": "TopkDropoutStrategy",
-            "module_path": "qlib.contrib.strategy",
-            "kwargs": {"signal": "<PRED>", **policy.__dict__},
-        },
+        "strategy": build_qlib_strategy_config(resolved),
         "executor": {
             "class": "SimulatorExecutor",
             "module_path": "qlib.backtest.executor",
@@ -239,7 +238,7 @@ def backtest_predictions(
     portfolio_identity = {
         "sourcePredictionsSha256": source_sha,
         "datasetFingerprint": _dataset_id(settings),
-        "strategy": asdict(strategy),
+        "strategy": asdict(strategy.to_policy()),
         "benchmark": benchmark or "SH000300",
         "benchmarkSha256": (
             sha256_file(settings.paths.metadata / "benchmarks" / "SH000300.parquet")
@@ -344,8 +343,8 @@ def backtest_predictions(
                 "snapshotId": source_snapshot.get("snapshotId") if source_snapshot else None,
                 "snapshotContract": source_snapshot.get("contract") if source_snapshot else None,
             },
-            "strategy": asdict(strategy),
-            "strategyFingerprint": sha256_json(asdict(strategy))[:24],
+            "strategy": {"policy": strategy.policy, **asdict(strategy.to_policy())},
+            "strategyFingerprint": sha256_json(asdict(strategy.to_policy()))[:24],
             "portfolioFingerprint": portfolio_fingerprint,
             "execution": {
                 "benchmark": benchmark or "SH000300",
@@ -359,7 +358,12 @@ def backtest_predictions(
                         end_time=end_time,
                     ),
                 )["backtest"]["exchange_kwargs"]["deal_price"],
-                "topkDropout": asdict(strategy),
+                "strategyPolicy": strategy.policy,
+                **(
+                    {"rankBuffer": asdict(strategy.to_policy())}
+                    if strategy.policy == "rank_buffer_v1"
+                    else {"topkDropout": asdict(strategy.to_policy())}
+                ),
             },
             "promotion": {
                 "status": "RESEARCH_ONLY",

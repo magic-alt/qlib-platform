@@ -1,0 +1,48 @@
+schemaVersion: "1.0"
+name: portfolio_refresh_validation_v1
+purpose: >-
+  Pre-registered portfolio-construction validation after the 2025-07-11 to
+  2026-08-10 diagnostics sample established the stale-portfolio mechanism.
+
+portfolioDiagnosticsSample:
+  start: "2025-07-11"
+  end: "2026-08-10"
+  selectionStatus: consumed_for_portfolio_development
+  finalHoldoutStatus: not_an_untouched_holdout
+
+validation:
+  method: rolling_walk_forward
+  selectionSample: validation_only
+  model: frozen_prediction_snapshot
+
+fastRefreshBaselines:
+  - id: d3_h1
+    policy: {topk: 10, n_drop: 3, hold_thresh: 1}
+  - id: d5_h1
+    policy: {topk: 10, n_drop: 5, hold_thresh: 1}
+  - id: d5_h5_low_turnover
+    policy: {topk: 10, n_drop: 5, hold_thresh: 5}
+
+rankBufferCandidate:
+  id: k10_entry10_exit25_drop3_h1
+  targetTopk: 10
+  entryRank: 10
+  exitRank: 25
+  maxDailyReplacements: 3
+  minimumHoldDays: 1
+
+costStressExtraBps: [0.0, 1.0, 2.0, 3.0, 5.0, 10.0]
+
+enhancedIndexPhase:
+  unlockAfter: rank_buffer_validation_complete
+  candidates:
+    - topk: 20
+    - topk: 30
+  constraints:
+    maxSingleNameWeight: 0.08
+    maxAbsoluteSectorActiveWeight: 0.05
+    maxAbsoluteBetaActiveExposure: 0.10
+
+modelLayer:
+  status: locked
+  reopenAfter: portfolio_validation_and_cost_robustness_complete

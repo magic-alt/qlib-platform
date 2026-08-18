@@ -22,7 +22,7 @@ portfolioPolicies:
     topk: 30
     n_drop: 3
     hold_thresh: 5
-costStressExtraBps: [0.0, 0.5, 1.0, 2.0, 5.0]
+costStressExtraBps: [0.0, 1.0, 2.0, 3.0, 5.0, 10.0]
 labelSpecs:
   - id: return_5d_t1_v1
     priceField: close

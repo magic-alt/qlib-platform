@@ -6,7 +6,41 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .topk_dropout import TopkDropoutPolicy, topk_dropout_decision
+from .topk_dropout import (
+    RankBufferPolicy,
+    TopkDropoutPolicy,
+    rank_buffer_decision,
+    topk_dropout_decision,
+)
+
+
+def build_strategy_decision(
+    scores: pd.Series,
+    positions: pd.DataFrame,
+    quotes: pd.DataFrame | None,
+    *,
+    policy: TopkDropoutPolicy | RankBufferPolicy,
+    signal_date: pd.Timestamp,
+    trade_date: pd.Timestamp,
+) -> pd.DataFrame:
+    """Dispatch the decision replay to the policy's own decision function."""
+    if isinstance(policy, RankBufferPolicy):
+        return rank_buffer_decision(
+            scores,
+            positions,
+            quotes,
+            policy=policy,
+            signal_date=signal_date,
+            trade_date=trade_date,
+        )
+    return topk_dropout_decision(
+        scores,
+        positions,
+        quotes,
+        policy=policy,
+        signal_date=signal_date,
+        trade_date=trade_date,
+    )
 
 
 def _position_frame(position: Any) -> pd.DataFrame:
@@ -43,13 +77,16 @@ def _orders_match_or_tie_equivalent(
     scores: pd.Series,
     *,
     positions: pd.DataFrame | None = None,
-    policy: TopkDropoutPolicy | None = None,
+    policy: TopkDropoutPolicy | RankBufferPolicy | None = None,
 ) -> bool:
     """Treat substitutions at an exactly tied Topk cutoff as equivalent."""
     if (set(planned.values()) | set(requested.values())) - {"BUY", "SELL"}:
         return False
     if planned == requested:
         return True
+    if policy is not None and not isinstance(policy, TopkDropoutPolicy):
+        # Rank-buffer decisions are rank-ordered, so any divergence is real.
+        return False
     for action in ("BUY", "SELL"):
         planned_codes = sorted(code for code, value in planned.items() if value == action)
         requested_codes = sorted(code for code, value in requested.items() if value == action)
@@ -99,14 +136,15 @@ def build_strategy_audit(
     indicators: Any,
     quote_status: pd.DataFrame,
     *,
-    policy: TopkDropoutPolicy,
+    policy: TopkDropoutPolicy | RankBufferPolicy,
     strict: bool = True,
 ) -> pd.DataFrame:
-    """Reconstruct TopkDropout decisions and attach Qlib's actual fills.
+    """Reconstruct strategy decisions and attach Qlib's actual fills.
 
     The Qlib recorder persists end-of-day positions plus its per-order indicator.
     Combining those with the previous trading step's cross-sectional signal makes
-    the distinction between target action and actual execution explicit.
+    the distinction between target action and actual execution explicit.  Both
+    the TopkDropout and RankBuffer policies share the same audit columns.
     """
 
     if not isinstance(scores.index, pd.MultiIndex) or "datetime" not in scores.index.names:
@@ -140,9 +178,10 @@ def build_strategy_audit(
             # Qlib treats a date without quote records as fully suspended.  Keep
             # rows explainable while ensuring no hypothetical order is compared
             # against the Recorder on a market-closed data date.
-            decision = topk_dropout_decision(
+            decision = build_strategy_decision(
                 daily_scores,
                 before,
+                None,
                 policy=replace(policy, only_tradable=False),
                 signal_date=signal_date,
                 trade_date=trade_date,
@@ -152,7 +191,7 @@ def build_strategy_audit(
             decision["action_reason"] = "MARKET_CLOSED_OR_NO_QUOTE"
             decision["action_order"] = pd.NA
         else:
-            decision = topk_dropout_decision(
+            decision = build_strategy_decision(
                 daily_scores,
                 before,
                 daily_quotes,
@@ -217,7 +256,7 @@ def build_strategy_audit(
 
     if strict and validation_errors:
         preview = "; ".join(validation_errors[:3])
-        raise RuntimeError(f"TopkDropout audit diverged from Qlib order requests: {preview}")
+        raise RuntimeError(f"strategy audit diverged from Qlib order requests: {preview}")
     if not rows:
         return pd.DataFrame()
     return pd.concat(rows, ignore_index=True)

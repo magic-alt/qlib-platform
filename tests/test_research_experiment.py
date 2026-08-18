@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from tushare_qlib.alpha import get_alpha_pack
 from tushare_qlib.canonical_config import CanonicalConfig
 from tushare_qlib.model_runtime import ModelProfile, ResolvedRuntime
@@ -8,15 +10,41 @@ from tushare_qlib.research_timing import LabelSpec
 from tushare_qlib.settings import Paths, Settings
 
 
-def test_experiment_identity_changes_with_model_but_not_alpha_identity(tmp_path):
-    settings = Settings(
+def _settings(tmp_path, experiment: dict[str, object]) -> Settings:
+    return Settings(
         config_path=tmp_path / "pipeline.yaml",
-        data={"qlib": {"dataset_version": "ds_test"}, "experiment": {"data_release": "ds_test"}},
+        data={
+            "qlib": {"dataset_version": "ds_test"},
+            "experiment": {"data_release": "ds_test", **experiment},
+        },
         paths=Paths.from_root(tmp_path / "data"),
         tushare_token=None,
         qlib_repo=None,
         qlib_data_uri=tmp_path / "qlib",
     )
+
+
+def _resolve(tmp_path, experiment: dict[str, object]) -> ResearchExperimentSpec:
+    settings = _settings(tmp_path, experiment)
+    profile = ModelProfile("one", "lightgbm", "cpu", 0, {}, "test")
+    runtime = ResolvedRuntime(profile, "cpu", None, {})
+    canonical = CanonicalConfig.from_settings(settings, runtime)
+    return ResearchExperimentSpec.resolve(
+        settings=settings,
+        runtime=runtime,
+        canonical=canonical,
+        alpha_pack=get_alpha_pack("alpha158_pit_v1"),
+        label_spec=LabelSpec(5, 1),
+        train=("2020-01-01", "2022-12-31"),
+        valid=("2023-01-01", "2023-06-30"),
+        test=("2023-07-01", "2023-12-31"),
+        run_kind="fixed_split",
+        benchmark="SH000300",
+    )
+
+
+def test_experiment_identity_changes_with_model_but_not_alpha_identity(tmp_path):
+    settings = _settings(tmp_path, {})
     profile = ModelProfile("one", "lightgbm", "cpu", 0, {}, "test")
     runtime = ResolvedRuntime(profile, "cpu", None, {})
     canonical = CanonicalConfig.from_settings(settings, runtime)
@@ -40,3 +68,15 @@ def test_experiment_identity_changes_with_model_but_not_alpha_identity(tmp_path)
     assert first.alpha_pack_sha256 == second.alpha_pack_sha256
     assert first.experiment_id != second.experiment_id
     assert first.experiment_id == ResearchExperimentSpec.resolve(runtime=runtime, **kwargs).experiment_id
+
+
+def test_experiment_accepts_rank_buffer_v1_policy(tmp_path):
+    spec = _resolve(tmp_path, {"portfolio": {"policy": "rank_buffer_v1"}})
+
+    assert spec.portfolio_policy_id == "rank_buffer_v1"
+    assert spec.portfolio_policy_sha256
+
+
+def test_experiment_rejects_unknown_portfolio_policy(tmp_path):
+    with pytest.raises(ValueError, match="unknown portfolio policy"):
+        _resolve(tmp_path, {"portfolio": {"policy": "not_a_policy"}})

@@ -4,8 +4,23 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
+from tushare_qlib.backtest_report import write_backtest_report
 from tushare_qlib.p0_baseline import write_p0_artifacts
+from tushare_qlib.settings import Paths, Settings
+
+
+def _settings_for_data_root(data_root: Path) -> Settings:
+    root = data_root.expanduser().resolve()
+    return Settings(
+        config_path=Path.cwd() / "configs" / "pipeline.yaml",
+        data={"project_root": str(root)},
+        paths=Paths.from_root(root),
+        tushare_token=None,
+        qlib_repo=None,
+        qlib_data_uri=root,
+    )
 
 
 def main() -> None:
@@ -16,8 +31,17 @@ def main() -> None:
         action="store_true",
         help="write evidence but do not fail the process; use only to diagnose legacy runs",
     )
+    parser.add_argument(
+        "--data-root",
+        default=Path("data"),
+        type=Path,
+        help="project data root used to regenerate the child report",
+    )
     args = parser.parse_args()
-    result = write_p0_artifacts(args.run_dir, strict_reconciliation=not args.allow_reconciliation_failure)
+    result = write_p0_artifacts(args.run_dir, strict_reconciliation=False)
+    write_backtest_report(_settings_for_data_root(args.data_root), args.run_dir)
+    if not args.allow_reconciliation_failure and not result["auditReconciliation"]["passed"]:
+        raise RuntimeError("AUDIT_RECONCILIATION_FAILED")
     print(json.dumps(result, ensure_ascii=False))
 
 
