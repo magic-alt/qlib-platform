@@ -185,6 +185,14 @@ def _annualized_ir(values: pd.Series, annualization_sessions: int) -> float:
     return float(numeric.mean() / std * np.sqrt(annualization_sessions))
 
 
+def _annualized_vol(values: pd.Series, annualization_sessions: int) -> float:
+    numeric = pd.to_numeric(values, errors="coerce").dropna()
+    std = float(numeric.std(ddof=1))
+    if len(numeric) < 2 or not np.isfinite(std) or std <= 0:
+        return float("nan")
+    return float(std * np.sqrt(annualization_sessions))
+
+
 def _max_drawdown(values: pd.Series) -> float:
     numeric = pd.to_numeric(values, errors="coerce").dropna()
     if numeric.empty:
@@ -330,4 +338,129 @@ def derive_cost_sensitivity(
                     "max_drawdown": _max_drawdown(net),
                 }
             )
+    return pd.DataFrame(rows)
+
+
+def _rolling_beta(
+    strategy_return: pd.Series,
+    benchmark_return: pd.Series,
+    window: int,
+) -> pd.Series:
+    """Rolling regression beta of strategy return on benchmark return."""
+    strategy = pd.to_numeric(strategy_return, errors="coerce")
+    benchmark = pd.to_numeric(benchmark_return, errors="coerce")
+    covariance = strategy.rolling(window, min_periods=window // 2).cov(benchmark)
+    variance = benchmark.rolling(window, min_periods=window // 2).var()
+    return (covariance / variance.replace(0.0, float("nan"))).replace([np.inf, -np.inf], np.nan)
+
+
+def _rolling_compounded_excess(
+    strategy_return: pd.Series,
+    benchmark_return: pd.Series,
+    window: int,
+) -> pd.Series:
+    """Rolling compounded net excess return over the trailing window."""
+    strategy = pd.to_numeric(strategy_return, errors="coerce")
+    benchmark = pd.to_numeric(benchmark_return, errors="coerce")
+    excess = (
+        (1.0 + strategy - benchmark)
+        .rolling(window, min_periods=window // 2)
+        .apply(
+            lambda values: float(np.prod(values) - 1.0),
+            raw=True,
+        )
+    )
+    return excess.replace([np.inf, -np.inf], np.nan)
+
+
+def derive_rolling_benchmark_diagnostics(
+    daily: pd.DataFrame,
+    *,
+    run_name: str,
+    model: str,
+    variant: str,
+    window: int = 63,
+) -> pd.DataFrame:
+    """Daily rolling benchmark diagnostics: beta and compounded excess.
+
+    Answers whether beta drifts and in which phases alpha decayed, without
+    requiring a separate risk model.  The daily bridge already aligns the
+    portfolio return with its benchmark and fold assignment.
+    """
+    frame = daily.copy()
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="raise").dt.normalize()
+    frame["signal_date"] = pd.to_datetime(frame["signal_date"], errors="raise").dt.normalize()
+    frame["gross_return"] = pd.to_numeric(frame["gross_return"], errors="coerce")
+    frame["benchmark_return"] = pd.to_numeric(frame["benchmark_return"], errors="coerce")
+    beta = _rolling_beta(frame["gross_return"], frame["benchmark_return"], window)
+    excess = _rolling_compounded_excess(frame["gross_return"], frame["benchmark_return"], window)
+    result = frame[["trade_date", "signal_date", "fold"]].copy()
+    result["run"] = run_name
+    result["model"] = model
+    result["variant"] = variant
+    result["rolling_beta"] = beta.to_numpy()
+    result["rolling_excess_return"] = excess.to_numpy()
+    result["rolling_window_days"] = window
+    return result
+
+
+def derive_benchmark_diagnostics(
+    daily: pd.DataFrame,
+    regime_labels: pd.DataFrame,
+    *,
+    run_name: str,
+    model: str,
+    variant: str,
+    spec: FailureAttributionSpec,
+) -> pd.DataFrame:
+    """Scope-level benchmark diagnostics: beta, tracking error, captures.
+
+    Portfolio V2.3 adds these so the Rank Buffer candidate can be judged on
+    whether it participated in the CSI300 rally (beta / up capture) rather than
+    raw return alone.  Beta and captures use gross returns; tracking error uses
+    the daily net-excess series, matching the rest of the attribution chain.
+    """
+
+    rows: list[dict[str, object]] = []
+    for scope_type, scope, dimension, state, block in _scope_dates(daily, regime_labels):
+        gross_return = pd.to_numeric(block["gross_return"], errors="coerce")
+        benchmark_return = pd.to_numeric(block["benchmark_return"], errors="coerce")
+        net_excess = pd.to_numeric(block["net_excess"], errors="coerce")
+        paired = pd.concat([gross_return, benchmark_return], axis=1).dropna()
+        variance = float(paired.iloc[:, 1].var(ddof=1)) if len(paired) > 1 else float("nan")
+        beta = (
+            float(paired.iloc[:, 0].cov(paired.iloc[:, 1]) / variance)
+            if np.isfinite(variance) and variance > 0
+            else float("nan")
+        )
+        benchmark_positive = (paired.iloc[:, 1] > 0).to_numpy()
+        benchmark_negative = (paired.iloc[:, 1] < 0).to_numpy()
+        up_capture = (
+            float(paired.iloc[benchmark_positive, 0].mean() / paired.iloc[benchmark_positive, 1].mean())
+            if benchmark_positive.any()
+            else float("nan")
+        )
+        down_capture = (
+            float(paired.iloc[benchmark_negative, 0].mean() / paired.iloc[benchmark_negative, 1].mean())
+            if benchmark_negative.any()
+            else float("nan")
+        )
+        rows.append(
+            {
+                "run": run_name,
+                "model": model,
+                "variant": variant,
+                "scope_type": scope_type,
+                "scope": scope,
+                "dimension": dimension,
+                "state": state,
+                "sessions": int(block["trade_date"].nunique()),
+                "portfolio_beta": beta,
+                "tracking_error": _annualized_vol(net_excess, spec.annualization_sessions),
+                "up_capture": up_capture,
+                "down_capture": down_capture,
+                "gross_active_return": _compound(block["gross_excess"]),
+                "net_active_return": _compound(block["net_excess"]),
+            }
+        )
     return pd.DataFrame(rows)

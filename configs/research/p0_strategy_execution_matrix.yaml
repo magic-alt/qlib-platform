@@ -1,0 +1,41 @@
+schemaVersion: "1.0"
+name: p0_strategy_execution_matrix
+purpose: >-
+  Orthogonal experiments against the frozen LightGBM baseline. Keep model
+  hyperparameters fixed while isolating portfolio turnover, execution-label
+  alignment, cost sensitivity, and retraining cadence.
+baseline:
+  modelProfile: lightgbm_alpha158_baseline
+  labelSpec: return_5d_t1_v1
+  retrain: frozen
+  strategy:
+    topk: 10
+    n_drop: 5
+    hold_thresh: 1
+  dealPrice: open
+portfolioPolicies:
+  - id: k20_d2_h3
+    topk: 20
+    n_drop: 2
+    hold_thresh: 3
+  - id: k30_d3_h5
+    topk: 30
+    n_drop: 3
+    hold_thresh: 5
+costStressExtraBps: [0.0, 1.0, 2.0, 3.0, 5.0, 10.0]
+labelSpecs:
+  - id: return_5d_t1_v1
+    priceField: close
+  - id: return_5d_t1_open_v1
+    priceField: open
+retraining:
+  - id: frozen
+  - id: annual_expanding
+  - id: quarterly_expanding
+  - id: rolling_3y_quarterly
+evaluation:
+  requireArtifacts:
+    - audit_reconciliation.parquet
+    - signal_diagnostics.parquet
+    - cost_stress.parquet
+  reportPeriods: [2025H1, 2025H2, 2026Q1, 2026Q2, 2026Q3]

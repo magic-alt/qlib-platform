@@ -96,7 +96,7 @@ class ResearchExperimentSpec:
         portfolio_config = experiment.get("portfolio", {})
         portfolio_config = portfolio_config if isinstance(portfolio_config, Mapping) else {}
         portfolio_policy_id = str(portfolio_config.get("policy") or "topk_dropout_v1")
-        if portfolio_policy_id != "topk_dropout_v1":
+        if portfolio_policy_id not in {"topk_dropout_v1", "rank_buffer_v1"}:
             raise ValueError(f"unknown portfolio policy: {portfolio_policy_id}")
         alpha_config = experiment.get("alpha", {})
         alpha_config = alpha_config if isinstance(alpha_config, Mapping) else {}
@@ -147,7 +147,9 @@ class ResearchExperimentSpec:
             model_profile_id=runtime.profile.name,
             model_profile_sha256=runtime.profile.fingerprint,
             portfolio_policy_id=portfolio_policy_id,
-            portfolio_policy_sha256=sha256_json(canonical.strategy.__dict__),
+            # Fingerprint the resolved policy so the hash is stable across
+            # parameter storage shapes and identical to the historical topk hash.
+            portfolio_policy_sha256=sha256_json(asdict(canonical.strategy.to_policy())),
             benchmark=benchmark,
             hypothesis_id=hypothesis_id,
             hypothesis_role=hypothesis_role,

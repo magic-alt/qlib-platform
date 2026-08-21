@@ -17,6 +17,7 @@ class LabelSpec:
 
     horizon_days: int
     signal_lag_days: int
+    price_field: str = "close"
 
     @property
     def lookahead_days(self) -> int:
@@ -24,11 +25,12 @@ class LabelSpec:
 
     @property
     def spec_id(self) -> str:
-        return f"return_{self.horizon_days}d_t{self.signal_lag_days}_v1"
+        suffix = "" if self.price_field == "close" else f"_{self.price_field}"
+        return f"return_{self.horizon_days}d_t{self.signal_lag_days}{suffix}_v1"
 
     @property
     def expression(self) -> str:
-        return f"Ref($close, -{self.lookahead_days})/Ref($close, -1) - 1"
+        return f"Ref(${self.price_field}, -{self.lookahead_days})/Ref(${self.price_field}, -1) - 1"
 
     def qlib_config(self) -> tuple[list[str], list[str]]:
         return [self.expression], ["LABEL0"]
@@ -54,7 +56,11 @@ def label_spec_from_settings(settings: Settings) -> LabelSpec:
     experiment = settings.data.get("experiment", {})
     label_config = experiment.get("label", {}) if isinstance(experiment, Mapping) else {}
     configured_spec = str(label_config.get("spec") or "") if isinstance(label_config, Mapping) else ""
-    match = re.fullmatch(r"return_(\d+)d_t(\d+)_v1", configured_spec) if configured_spec else None
+    match = (
+        re.fullmatch(r"return_(\d+)d_t(\d+)(?:_(open|close))?_v1", configured_spec)
+        if configured_spec
+        else None
+    )
     if configured_spec and match is None:
         raise ValueError(f"unknown label spec: {configured_spec}")
     horizon = (
@@ -80,7 +86,14 @@ def label_spec_from_settings(settings: Settings) -> LabelSpec:
         raise ValueError("research.label_horizon_days must be at least 1")
     if lag < 1:
         raise ValueError("research.signal_lag_days must be at least 1")
-    return LabelSpec(horizon_days=horizon, signal_lag_days=lag)
+    price_field = str(
+        match.group(3)
+        if match and match.group(3)
+        else label_config.get("price_field", research.get("label_price_field", "close"))
+    ).lower()
+    if price_field not in {"close", "open"}:
+        raise ValueError("label price_field must be close or open")
+    return LabelSpec(horizon_days=horizon, signal_lag_days=lag, price_field=price_field)
 
 
 def label_timing_from_settings(settings: Settings) -> LabelSpec:

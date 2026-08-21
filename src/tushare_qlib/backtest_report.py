@@ -830,6 +830,47 @@ def _write_markdown(
                 "",
             ]
         )
+    reconciliation = data.manifest.get("auditReconciliation", {})
+    diagnostics = data.manifest.get("signalDiagnostics", {})
+    if isinstance(reconciliation, Mapping):
+        lines.extend(
+            [
+                "## 交易审计对账",
+                "",
+                _markdown_table(
+                    ["检查", "结果"],
+                    [
+                        ("整体", "PASS" if reconciliation.get("passed") else "AUDIT_RECONCILIATION_FAILED"),
+                        ("成交额", "PASS" if reconciliation.get("turnover_match") else "FAIL"),
+                        ("交易成本", "PASS" if reconciliation.get("cost_match") else "FAIL"),
+                        ("持仓恒等式", "PASS" if reconciliation.get("position_match") else "FAIL"),
+                    ],
+                ),
+                "",
+            ]
+        )
+    if isinstance(diagnostics, Mapping):
+        lines.extend(
+            [
+                "## 信号质量诊断",
+                "",
+                _markdown_table(
+                    ["指标", "数值"],
+                    [
+                        ("IC", _fmt_number(diagnostics.get("ic"), 6)),
+                        ("ICIR", _fmt_number(diagnostics.get("icir"), 6)),
+                        ("Rank IC", _fmt_number(diagnostics.get("rankIC"), 6)),
+                        ("Rank ICIR", _fmt_number(diagnostics.get("rankICIR"), 6)),
+                        ("Top-Bottom Spread", _fmt_number(diagnostics.get("topBottomSpread"), 6)),
+                        (
+                            "Prediction Autocorrelation",
+                            _fmt_number(diagnostics.get("predictionAutocorrelation"), 6),
+                        ),
+                    ],
+                ),
+                "",
+            ]
+        )
     lines.extend(
         [
             "## 核心指标",

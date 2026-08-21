@@ -21,7 +21,7 @@ from .canonical_config import CanonicalConfig
 from .lineage import build_lineage, dirty_research_override_enabled, sha256_json
 from .settings import Settings
 from .store import sha256_file
-from .topk_dropout import TopkDropoutPolicy
+from .topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 from .model_runtime import (
     ModelProfile,
     ResolvedRuntime,
@@ -540,11 +540,11 @@ def _export_daily_signal_scores(
     score: pd.Series,
     *,
     model_id: str,
-    policy: TopkDropoutPolicy | None = None,
+    policy: TopkDropoutPolicy | RankBufferPolicy | None = None,
     lineage_id: str,
     manifest_path: Path,
 ) -> dict[pd.Timestamp, Path]:
-    """Persist the full cross-section required to reproduce TopkDropout decisions.
+    """Persist the full cross-section required to reproduce strategy decisions.
 
     ``selection_*.csv`` intentionally remains a compact TopN artifact.  The
     matching parquet files are the authoritative score inputs for the exact
@@ -560,6 +560,29 @@ def _export_daily_signal_scores(
     output_dir.mkdir(parents=True, exist_ok=True)
     calendar = _official_calendar(settings)
     paths: dict[pd.Timestamp, Path] = {}
+    strategy_columns: dict[str, object]
+    if isinstance(policy, RankBufferPolicy):
+        strategy_columns = {
+            "strategy_policy": "rank_buffer_v1",
+            "strategy_target_size": policy.target_size,
+            "strategy_entry_rank": policy.entry_rank,
+            "strategy_exit_rank": policy.exit_rank,
+            "strategy_max_replacements": policy.max_replacements,
+            "strategy_hold_thresh": policy.hold_thresh,
+            "strategy_risk_degree": policy.risk_degree,
+            "strategy_only_tradable": policy.only_tradable,
+            "strategy_forbid_all_trade_at_limit": policy.forbid_all_trade_at_limit,
+        }
+    else:
+        strategy_columns = {
+            "strategy_policy": "topk_dropout_v1",
+            "strategy_topk": policy.topk,
+            "strategy_n_drop": policy.n_drop,
+            "strategy_hold_thresh": policy.hold_thresh,
+            "strategy_risk_degree": policy.risk_degree,
+            "strategy_only_tradable": policy.only_tradable,
+            "strategy_forbid_all_trade_at_limit": policy.forbid_all_trade_at_limit,
+        }
     for signal_date in pd.DatetimeIndex(score.index.get_level_values("datetime").unique()).sort_values():
         future = calendar[calendar > signal_date]
         if future.empty:
@@ -574,12 +597,8 @@ def _export_daily_signal_scores(
         frame["model_id"] = model_id
         frame["dataset_id"] = dataset_id
         frame["signal_id"] = _signal_id(model_id, dataset_id, signal_date)
-        frame["strategy_topk"] = policy.topk
-        frame["strategy_n_drop"] = policy.n_drop
-        frame["strategy_hold_thresh"] = policy.hold_thresh
-        frame["strategy_risk_degree"] = policy.risk_degree
-        frame["strategy_only_tradable"] = policy.only_tradable
-        frame["strategy_forbid_all_trade_at_limit"] = policy.forbid_all_trade_at_limit
+        for column, value in strategy_columns.items():
+            frame[column] = value
         frame = stamp_artifact(
             frame,
             ArtifactType.MODEL_SCORE,
@@ -933,25 +952,14 @@ def train_backtest_select(
         with timings.measure("benchmark_load_seconds"):
             benchmark_cfg = _resolve_benchmark(settings, benchmark, oos_start, oos_end)
         with timings.measure("portfolio_engine_seconds"):
+            from .strategy_factory import build_qlib_strategy_config
             from .topk_dropout import enforce_deterministic_qlib_position_order
 
             enforce_deterministic_qlib_position_order()
             PortAnaRecord(
                 recorder=recorder,
                 config={
-                    "strategy": {
-                        "class": "TopkDropoutStrategy",
-                        "module_path": "qlib.contrib.strategy",
-                        "kwargs": {
-                            "signal": "<PRED>",
-                            "topk": topk_policy.topk,
-                            "n_drop": topk_policy.n_drop,
-                            "hold_thresh": topk_policy.hold_thresh,
-                            "only_tradable": topk_policy.only_tradable,
-                            "forbid_all_trade_at_limit": topk_policy.forbid_all_trade_at_limit,
-                            "risk_degree": topk_policy.risk_degree,
-                        },
-                    },
+                    "strategy": build_qlib_strategy_config(topk_policy),
                     "executor": {
                         "class": "SimulatorExecutor",
                         "module_path": "qlib.backtest.executor",
@@ -1088,7 +1096,11 @@ def train_backtest_select(
                     settings,
                     score,
                     model_id=model_id,
-                    topn=topk_policy.topk,
+                    topn=(
+                        topk_policy.target_size
+                        if isinstance(topk_policy, RankBufferPolicy)
+                        else topk_policy.topk
+                    ),
                     lineage_id=str(lineage["lineageId"]),
                     manifest_path=manifest_path,
                 )
@@ -1129,6 +1141,16 @@ def train_backtest_select(
             if artifact_level == "full"
             else []
         )
+        latest_strategy_state: dict[str, object] | None = None
+        if not audit.empty and "signal_date" in audit:
+            latest_decision = audit.loc[
+                audit["signal_date"].astype(str) == latest.strftime("%Y-%m-%d")
+            ].copy()
+            if not latest_decision.empty:
+                from .strategy_contract import strategy_contract_from_audit_decision
+
+                latest_decision["risk_degree"] = topk_policy.risk_degree
+                latest_strategy_state = strategy_contract_from_audit_decision(latest_decision)
         manifest = {
             "schemaVersion": "2.0",
             "externalRunId": model_id,
@@ -1182,9 +1204,17 @@ def train_backtest_select(
                 "dealPrice": str(research.get("deal_price", "open")),
                 "tradeUnit": int(research.get("trade_unit", 100)),
                 "maxParticipationRate": float(research.get("max_participation_rate", 0.05)),
-                "topkDropout": topk_policy.__dict__,
+                "strategyPolicy": (
+                    "rank_buffer_v1" if isinstance(topk_policy, RankBufferPolicy) else "topk_dropout_v1"
+                ),
+                **(
+                    {"rankBuffer": topk_policy.__dict__}
+                    if isinstance(topk_policy, RankBufferPolicy)
+                    else {"topkDropout": topk_policy.__dict__}
+                ),
             },
             "metrics": {**metrics, **gate_metrics},
+            "latestStrategyState": latest_strategy_state,
             "artifacts": [
                 {"name": pred_path.name, "localPath": str(pred_path), "rows": len(pred)},
                 {"name": pred_snapshot_path.name, "localPath": str(pred_snapshot_path)},
@@ -1199,7 +1229,7 @@ def train_backtest_select(
         }
         if promoted:
             assert output is not None and path is not None
-            manifest["latestTargets"] = {
+            manifest["modelTopkCandidates"] = {
                 "artifactType": ArtifactType.MODEL_TOPK.value,
                 "schemaVersion": "2.0",
                 "signalDate": latest.strftime("%Y-%m-%d"),
@@ -1219,6 +1249,10 @@ def train_backtest_select(
 
         DatasetRegistry(settings.registry_path).register_research_manifest(manifest_path)
         if artifact_level == "full":
+            from .p0_baseline import write_p0_artifacts
+
+            write_p0_artifacts(artifact_dir)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             with timings.measure("report_seconds"):
                 write_backtest_report(settings, artifact_dir)
         timing_payload = timings.to_dict()

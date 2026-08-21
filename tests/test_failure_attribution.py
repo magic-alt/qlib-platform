@@ -22,7 +22,9 @@ from tushare_qlib.research.failure_attribution import (
 from tushare_qlib.research.portfolio_attribution import (
     build_daily_holdings_conversion,
     build_daily_portfolio_bridge,
+    derive_benchmark_diagnostics,
     derive_cost_sensitivity,
+    derive_rolling_benchmark_diagnostics,
     summarize_portfolio_bridge,
 )
 from tushare_qlib.research.turnover_attribution import derive_turnover_attribution
@@ -184,6 +186,79 @@ def test_portfolio_and_cost_chain_reuses_realized_gross_path():
     assert zero["gross_return"] == pytest.approx(zero["net_return"])
     assert doubled["net_return"] < zero["net_return"]
     assert set(sensitivity["cost_multiplier"]) == {0.0, 0.5, 1.0, 1.5, 2.0}
+
+
+def test_benchmark_diagnostics_report_beta_tracking_error_and_captures():
+    predictions, _, folds = _panel()
+    xgb = predictions["xgboost"]
+    trade_dates = pd.bdate_range("2026-01-06", periods=4)
+    report = pd.DataFrame(
+        {
+            "return": [0.02, -0.01, 0.03, -0.02],
+            "bench": [0.01, -0.005, 0.015, -0.01],
+            "cost": [0.001, 0.001, 0.001, 0.001],
+            "turnover": [0.1, 0.2, 0.3, 0.4],
+        },
+        index=trade_dates,
+    )
+
+    daily = build_daily_portfolio_bridge(report, xgb, _audit(), fold_assignments=folds)
+    diagnostics = derive_benchmark_diagnostics(
+        daily,
+        _regimes(),
+        run_name="xgboost_baseline",
+        model="xgboost",
+        variant="baseline",
+        spec=_spec(),
+    )
+
+    overall = diagnostics.loc[diagnostics["scope_type"].eq("ALL_OOS")].iloc[0]
+    assert overall["portfolio_beta"] == pytest.approx(2.0)
+    assert overall["up_capture"] == pytest.approx(2.0)
+    assert overall["down_capture"] == pytest.approx(2.0)
+    assert overall["gross_active_return"] > 0
+    assert overall["net_active_return"] < overall["gross_active_return"]
+    assert np.isfinite(overall["tracking_error"])
+
+
+def test_rolling_benchmark_diagnostics_tracks_beta_and_excess_over_window():
+    predictions, _, folds = _panel()
+    xgb = predictions["xgboost"]
+    trade_dates = pd.bdate_range("2026-01-06", periods=4)
+    report = pd.DataFrame(
+        {
+            "return": [0.02, -0.01, 0.03, -0.02],
+            "bench": [0.01, -0.005, 0.015, -0.01],
+            "cost": [0.001, 0.001, 0.001, 0.001],
+            "turnover": [0.1, 0.2, 0.3, 0.4],
+        },
+        index=trade_dates,
+    )
+
+    daily = build_daily_portfolio_bridge(report, xgb, _audit(), fold_assignments=folds)
+    rolling = derive_rolling_benchmark_diagnostics(
+        daily,
+        run_name="xgboost_baseline",
+        model="xgboost",
+        variant="baseline",
+        window=4,
+    )
+
+    assert set(rolling.columns) == {
+        "trade_date",
+        "signal_date",
+        "fold",
+        "run",
+        "model",
+        "variant",
+        "rolling_beta",
+        "rolling_excess_return",
+        "rolling_window_days",
+    }
+    assert rolling["rolling_window_days"].eq(4).all()
+    assert len(rolling) == len(daily)
+    assert rolling["rolling_beta"].iloc[-1] == pytest.approx(2.0)
+    assert rolling["rolling_excess_return"].iloc[-1] > 0
 
 
 def test_turnover_attribution_reuses_strategy_audit_decisions_and_execution_outcomes():

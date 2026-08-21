@@ -155,7 +155,9 @@ research:
   # Resolved relative to this pipeline config. Override with --model-profile.
   model_profile: model_profiles/lightgbm_auto.yaml
   min_history_days: 2200
-  # Align the forward-return label with TopkDropout hold_thresh.
+  # Forecast horizon and minimum holding period are independent. The model is
+  # re-evaluated daily; portfolio responsiveness is governed separately by the
+  # execution policy (TopkDropout hold_thresh or RankBuffer exit buffer).
   label_horizon_days: 5
   random_seed: 42
   num_threads: 8

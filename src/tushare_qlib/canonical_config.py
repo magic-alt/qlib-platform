@@ -7,7 +7,7 @@ from .model_runtime import ResolvedRuntime
 from .portfolio import PortfolioPolicy
 from .research_gate import ResearchThresholds
 from .settings import Settings
-from .topk_dropout import TopkDropoutPolicy
+from .topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -78,12 +78,18 @@ class ModelSpec:
 
 @dataclass(frozen=True)
 class StrategySpec:
+    policy: str = "topk_dropout_v1"
     topk: int = 30
     n_drop: int = 5
     hold_thresh: int = 5
     only_tradable: bool = True
     forbid_all_trade_at_limit: bool = True
     risk_degree: float = 0.95
+    # Rank-buffer parameters; only meaningful when policy == "rank_buffer_v1".
+    target_size: int = 10
+    entry_rank: int = 10
+    exit_rank: int = 20
+    max_replacements: int = 3
 
     @classmethod
     def from_settings(
@@ -95,6 +101,21 @@ class StrategySpec:
         hold_thresh_override: int | None = None,
     ) -> "StrategySpec":
         strategy = _mapping(settings.data.get("strategy"))
+        policy = str(strategy.get("policy") or "topk_dropout_v1")
+        if policy == "rank_buffer_v1":
+            configured = _mapping(strategy.get("rank_buffer"))
+            values = dict(configured)
+            if topk_override is not None:
+                values["target_size"] = topk_override
+            if n_drop_override is not None:
+                values["max_replacements"] = n_drop_override
+            if hold_thresh_override is not None:
+                values["hold_thresh"] = hold_thresh_override
+            parsed = RankBufferPolicy.from_mapping(values)
+            parsed.validate()
+            return cls(policy=policy, **asdict(parsed))
+        if policy != "topk_dropout_v1":
+            raise ValueError(f"unknown strategy policy: {policy}")
         configured = _mapping(strategy.get("topk_dropout"))
         values = dict(configured)
         if topk_override is not None:
@@ -104,6 +125,7 @@ class StrategySpec:
         if hold_thresh_override is not None:
             values["hold_thresh"] = hold_thresh_override
         spec = cls(
+            policy=policy,
             topk=int(values.get("topk", cls.topk)),
             n_drop=int(values.get("n_drop", cls.n_drop)),
             hold_thresh=int(values.get("hold_thresh", cls.hold_thresh)),
@@ -116,8 +138,26 @@ class StrategySpec:
         spec.to_policy().validate()
         return spec
 
-    def to_policy(self) -> TopkDropoutPolicy:
-        return TopkDropoutPolicy(**asdict(self))
+    def to_policy(self) -> TopkDropoutPolicy | RankBufferPolicy:
+        if self.policy == "rank_buffer_v1":
+            return RankBufferPolicy(
+                target_size=self.target_size,
+                entry_rank=self.entry_rank,
+                exit_rank=self.exit_rank,
+                max_replacements=self.max_replacements,
+                hold_thresh=self.hold_thresh,
+                only_tradable=self.only_tradable,
+                forbid_all_trade_at_limit=self.forbid_all_trade_at_limit,
+                risk_degree=self.risk_degree,
+            )
+        return TopkDropoutPolicy(
+            topk=self.topk,
+            n_drop=self.n_drop,
+            hold_thresh=self.hold_thresh,
+            only_tradable=self.only_tradable,
+            forbid_all_trade_at_limit=self.forbid_all_trade_at_limit,
+            risk_degree=self.risk_degree,
+        )
 
 
 @dataclass(frozen=True)
