@@ -14,6 +14,7 @@ _PARTICIPATION_EXPRESSION = re.compile(
     r"^\s*\$volume\s*\*\s*([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*$"
 )
 _LIMIT_EXPRESSIONS = ("$is_limit_up > 0", "$is_limit_down > 0")
+_PORT_RECORD_CLASSES = frozenset({"PortAnaRecord", "ASharePortAnaRecord"})
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -65,7 +66,8 @@ def validate_qrun_contract(settings: Settings, workflow_path: str | Path) -> dic
     if not isinstance(records, list):
         records = []
     port_record = next(
-        (item for item in records if isinstance(item, Mapping) and item.get("class") == "PortAnaRecord"), None
+        (item for item in records if isinstance(item, Mapping) and item.get("class") in _PORT_RECORD_CLASSES),
+        None,
     )
     if port_record is None:
         return _result({"PortAnaRecord": {"pipeline": "present", "qrun": "missing"}})

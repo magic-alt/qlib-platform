@@ -102,10 +102,9 @@ task:
             module_path: qlib.contrib.strategy
             kwargs:
               signal: <PRED>
-              # Long-only A-share cash strategy: hold at most 10 names and replace at most 3 per day.
-              topk: 10
+              topk: 30
               n_drop: 5
-              hold_thresh: 1
+              hold_thresh: 5
               only_tradable: true
               forbid_all_trade_at_limit: true
               risk_degree: 0.95
@@ -123,10 +122,8 @@ task:
             exchange_kwargs:
               limit_threshold: ["$is_limit_up > 0", "$is_limit_down > 0"]
               deal_price: open
-              volume_threshold: [current, "$volume * 0.10"]
+              volume_threshold: [current, "$volume * 0.05"]
               trade_unit: 100
-              # A-share cash equity: 1 bp commission, no minimum commission.
-              open_cost: 0.0001
-              # Sell cost = 1 bp commission + 5 bp stamp duty.
-              close_cost: 0.0006
-              min_cost: 0
+              open_cost: 0.00035
+              close_cost: 0.00085
+              min_cost: 5

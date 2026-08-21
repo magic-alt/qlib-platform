@@ -130,4 +130,3 @@ task:
               # Sell cost = 1 bp commission + 5 bp stamp duty.
               close_cost: 0.0006
               min_cost: 0
-

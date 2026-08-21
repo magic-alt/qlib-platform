@@ -46,7 +46,11 @@ def _settings(tmp_path: Path) -> Settings:
     )
 
 
-def _write_workflow(tmp_path: Path, limit: str = '["$is_limit_up > 0", "$is_limit_down > 0"]') -> Path:
+def _write_workflow(
+    tmp_path: Path,
+    limit: str = '["$is_limit_up > 0", "$is_limit_down > 0"]',
+    record_class: str = "PortAnaRecord",
+) -> Path:
     workflow = tmp_path / "workflow.yaml"
     workflow.write_text(
         f"""
@@ -65,7 +69,7 @@ task:
                 exclude_st: true
                 allow_unknown_st: false
   record:
-    - class: PortAnaRecord
+    - class: {record_class}
       kwargs:
         config:
           strategy:
@@ -107,6 +111,16 @@ def test_qrun_contract_certifies_equivalent_static_semantics(tmp_path: Path, mon
     assert result["certifiedExecutionEquivalent"] is True
     assert result["certificationStatus"] == "certified"
     assert result["mismatches"] == {}
+
+
+def test_qrun_contract_accepts_a_share_portfolio_record_adapter(tmp_path: Path):
+    result = validate_qrun_contract(
+        _settings(tmp_path),
+        _write_workflow(tmp_path, record_class="ASharePortAnaRecord"),
+    )
+
+    assert result["passed"] is True
+    assert result["certifiedExecutionEquivalent"] is True
 
 
 @pytest.mark.parametrize(
