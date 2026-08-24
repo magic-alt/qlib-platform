@@ -1,0 +1,42 @@
+# Repository safety rules. These prefix rules complement, rather than replace,
+# AGENTS.md authorization requirements and runtime validation.
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "Do not discard repository changes. Use an explicit, recoverable alternative or request a manual exception.",
+    match = ["git reset --hard", "git reset --hard HEAD"],
+    not_match = ["git reset --soft HEAD~1"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "forbidden",
+    justification = "Do not remove untracked files through Git. Inspect exact targets and use a recoverable action if deletion is authorized.",
+    match = ["git clean -fd", "git clean -fxd"],
+    not_match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "-D"],
+    decision = "forbidden",
+    justification = "Do not forcibly delete branches. Use the documented post-merge cleanup workflow after verifying branch containment.",
+    match = ["git branch -D feature/example"],
+    not_match = ["git branch -d feature/example"],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "Pushing changes is an external state change and requires explicit authorization.",
+    match = ["git push", "git push origin chore/example", "git push --force-with-lease"],
+    not_match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["schtasks"],
+    decision = "prompt",
+    justification = "Scheduled-task changes are state-changing and require explicit authorization.",
+    match = ["schtasks /create /tn example /tr example.exe /sc daily", "schtasks /delete /tn example"],
+    not_match = ["git status --short"],
+)

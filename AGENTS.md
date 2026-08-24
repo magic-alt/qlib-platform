@@ -70,3 +70,11 @@
 - Treat `backfill`, `stage-*`, `dump-*`, `daily-sync`, `production-*`, `model-deploy`, `model-rollback`, and scheduled-task installation/removal as state-changing operations. Run them only with explicit user authorization and report affected outputs.
 
 
+## Repository Invariants
+- `qlib-platform` is a Research / Alpha Factory. It consumes immutable `DataRelease` inputs, performs research, and publishes research artifacts through Artifact Contract v2.
+- Keep the cross-repository boundary explicit: the sole handoff is a content-addressed `TARGET_PORTFOLIO` bound to exactly one `DataRelease`.
+- Do not introduce broker order submission, cancellation, replacement, broker-state writes, OMS ownership, execution ledgers, hard-risk enforcement, or authoritative LEAN execution semantics. Those belong to `platform`.
+- Preserve point-in-time causality, immutable artifact identities, per-fold fitted-state isolation, ordered non-overlapping OOS stitching, deterministic lineage/hashes, final-holdout isolation, and fail-closed validation.
+- The certified infrastructure baseline is the default explanation for weak research results. Do not alter certified infrastructure behavior merely because a model, alpha, or portfolio result is weak; see `docs/research_infrastructure_certification.md`.
+- The active governed program is Phase 3-D. It is diagnostics only: formal candidates, model selection, P2-R01 through P2-R03, final-holdout access, and publishing remain disallowed. Use the `phase3-diagnostics` Skill before Phase 3 work.
+
