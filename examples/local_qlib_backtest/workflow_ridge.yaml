@@ -1,0 +1,96 @@
+# Same research definition as workflow_lightgbm.yaml; only task.model changes.
+sys:
+  path: [./src]
+qlib_init:
+  provider_uri: "{{ QLIB_DATA_URI }}"
+  region: cn
+  kernels: 4
+  joblib_backend: loky
+experiment_name: local_alpha158_ridge
+market: &market csi300
+benchmark: &benchmark SH000300
+data_handler_config: &data_handler_config
+  start_time: "2018-10-01"
+  end_time: "2026-08-10"
+  fit_start_time: "2018-10-01"
+  fit_end_time: "2024-12-27"
+  instruments: *market
+  label:
+    - ["Ref($close, -6)/Ref($close, -1) - 1"]
+    - ["LABEL0"]
+  shared_processors:
+    - class: AshareUniverseFilter
+      module_path: tushare_qlib.processors
+      kwargs:
+        min_listed_days: 120
+        min_circ_mv_yuan: 2000000000
+        min_money_20d_yuan: 20000000
+        exclude_st: true
+        allow_unknown_st: false
+  infer_processors:
+    - {class: ProcessInfSingleThread, module_path: tushare_qlib.processors}
+    - {class: RobustZScoreNorm, kwargs: {fields_group: feature, clip_outlier: true}}
+    - {class: Fillna, kwargs: {fields_group: feature}}
+  learn_processors:
+    - {class: DropnaLabel}
+    - {class: CSRankNorm, kwargs: {fields_group: label}}
+task:
+  model:
+    class: LinearModel
+    module_path: qlib.contrib.model.linear
+    kwargs:
+      estimator: ridge
+      alpha: 1.0
+      fit_intercept: false
+      include_valid: false
+  dataset:
+    class: DatasetH
+    module_path: qlib.data.dataset
+    kwargs:
+      handler:
+        class: TushareAlpha158Fundamental
+        module_path: tushare_qlib.custom_handler
+        kwargs: *data_handler_config
+      segments:
+        train: ["2018-10-01", "2024-12-27"]
+        valid: ["2025-01-08", "2025-07-02"]
+        test: ["2025-07-11", "2026-08-10"]
+  record:
+    - class: SignalRecord
+      module_path: qlib.workflow.record_temp
+      kwargs: {model: <MODEL>, dataset: <DATASET>}
+    - class: SigAnaRecord
+      module_path: qlib.workflow.record_temp
+      kwargs: {ana_long_short: true, ann_scaler: 252}
+    - class: ASharePortAnaRecord
+      module_path: tushare_qlib.workflow_records
+      kwargs:
+        config:
+          strategy:
+            class: TopkDropoutStrategy
+            module_path: qlib.contrib.strategy
+            kwargs:
+              signal: <PRED>
+              topk: 30
+              n_drop: 5
+              hold_thresh: 5
+              only_tradable: true
+              forbid_all_trade_at_limit: true
+              risk_degree: 0.95
+          executor:
+            class: SimulatorExecutor
+            module_path: qlib.backtest.executor
+            kwargs: {time_per_step: day, generate_portfolio_metrics: true}
+          backtest:
+            start_time: "2025-07-11"
+            end_time: "2026-08-10"
+            account: 500000
+            benchmark: *benchmark
+            exchange_kwargs:
+              limit_threshold: ["$is_limit_up > 0", "$is_limit_down > 0"]
+              deal_price: open
+              volume_threshold: [current, "$volume * 0.05"]
+              trade_unit: 100
+              open_cost: 0.00035
+              close_cost: 0.00085
+              min_cost: 5

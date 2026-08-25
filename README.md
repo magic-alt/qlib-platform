@@ -131,6 +131,9 @@ Phase 2/3、TARGET_PORTFOLIO、LEAN handoff 和 Artifact v2 export 全部 fail-c
 
 YAML 工作流（仅用于探索和调试，不产生可准入执行链路的 artifact）：
 
+完整的 Windows 实机案例（本地不可变数据校验、LightGBM/Ridge、自定义模型、回测与结果读取）见
+[`examples/local_qlib_backtest/`](examples/local_qlib_backtest/README.md)。
+
 ```powershell
 # 使用 dataset-resolve 输出的不可变 Qlib 数据集路径。
 $env:QLIB_DATA_URI = '<RESOLVED_QLIB_DATASET>'
