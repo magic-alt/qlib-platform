@@ -46,9 +46,10 @@ def build_strategy_decision(
 def _position_frame(position: Any) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for instrument in sorted(position.get_stock_list()):
+        canonical = str(instrument).upper().strip()
         rows.append(
             {
-                "instrument": str(instrument),
+                "instrument": canonical,
                 "quantity": float(position.get_stock_amount(str(instrument))),
                 "holding_days": int(position.get_stock_count(str(instrument), "day")),
             }
@@ -61,14 +62,19 @@ def _indicator_values(indicator: Any, trade_date: pd.Timestamp, metric: str) -> 
     if order_indicator is None or metric not in order_indicator.data:
         return {}
     data = order_indicator.data[metric]
-    return {str(instrument): float(value) for instrument, value in zip(list(data.index), data.data)}
+    return {
+        str(instrument).upper().strip(): float(value)
+        for instrument, value in zip(list(data.index), data.data)
+    }
 
 
 def _trade_date_quotes(quote_status: pd.DataFrame, trade_date: pd.Timestamp) -> pd.DataFrame:
     if quote_status.empty:
         return pd.DataFrame(columns=["instrument", "paused", "is_limit_up", "is_limit_down"])
     frame = quote_status.loc[quote_status["trade_date"] == trade_date]
-    return frame[["instrument", "paused", "is_limit_up", "is_limit_down"]].copy()
+    result = frame[["instrument", "paused", "is_limit_up", "is_limit_down"]].copy()
+    result["instrument"] = result["instrument"].astype(str).str.upper().str.strip()
+    return result
 
 
 def _orders_match_or_tie_equivalent(
@@ -173,6 +179,9 @@ def build_strategy_audit(
         before = _position_frame(positions[previous_date])
         after = _position_frame(positions[trade_date])
         daily_scores = scores.xs(signal_date, level="datetime")
+        daily_scores.index = daily_scores.index.astype(str).str.upper().str.strip()
+        if daily_scores.index.has_duplicates:
+            raise ValueError("scores contain duplicate instruments after canonicalization")
         daily_quotes = _trade_date_quotes(quote_status, trade_date)
         if daily_quotes.empty:
             # Qlib treats a date without quote records as fully suspended.  Keep

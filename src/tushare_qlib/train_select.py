@@ -274,19 +274,23 @@ def build_dataset(
     universe = universe or {}
     handler_type = handler_class(alpha_pack)
     label = label_spec.qlib_config()
-    shared_processors = [
-        {
-            "class": "AshareUniverseFilter",
-            "module_path": "tushare_qlib.processors",
-            "kwargs": {
-                "min_listed_days": int(str(universe.get("min_listed_days", 120))),
-                "min_circ_mv_yuan": float(str(universe.get("min_circ_mv_yuan", 2_000_000_000))),
-                "min_money_20d_yuan": float(str(universe.get("min_money_20d_yuan", 20_000_000))),
-                "exclude_st": bool(universe.get("exclude_st", True)),
-                "allow_unknown_st": bool(universe.get("allow_unknown_st", False)),
-            },
-        }
-    ]
+    shared_processors = (
+        []
+        if alpha_pack.pack_id == "alpha158_market_v1"
+        else [
+            {
+                "class": "AshareUniverseFilter",
+                "module_path": "tushare_qlib.processors",
+                "kwargs": {
+                    "min_listed_days": int(str(universe.get("min_listed_days", 120))),
+                    "min_circ_mv_yuan": float(str(universe.get("min_circ_mv_yuan", 2_000_000_000))),
+                    "min_money_20d_yuan": float(str(universe.get("min_money_20d_yuan", 20_000_000))),
+                    "exclude_st": bool(universe.get("exclude_st", True)),
+                    "allow_unknown_st": bool(universe.get("allow_unknown_st", False)),
+                },
+            }
+        ]
+    )
     infer_processors = []
     if alpha_pack.processor_recipe == "phase2_feature_set_v1":
         if not feature_set_id:

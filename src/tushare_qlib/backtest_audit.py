@@ -11,16 +11,37 @@ import pandas as pd
 def audit_mlflow_run(run_dir: str | Path) -> dict[str, Any]:
     root = Path(run_dir).expanduser().resolve()
     artifacts = root / "artifacts" if (root / "artifacts").is_dir() else root
+    manifest_path = root / "manifest.json"
+    manifest: dict[str, Any] = {}
+    if manifest_path.is_file():
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = loaded if isinstance(loaded, dict) else {}
     errors: list[str] = []
     pred_path = artifacts / "pred.pkl"
     report_path = artifacts / "portfolio_analysis" / "report_normal_1day.pkl"
+    if not pred_path.exists() and (artifacts / "oos_predictions.parquet").is_file():
+        pred_path = artifacts / "oos_predictions.parquet"
+    if not report_path.exists() and (artifacts / "portfolio_report.parquet").is_file():
+        report_path = artifacts / "portfolio_report.parquet"
     config_path = artifacts / "config"
     if not pred_path.exists():
         errors.append("missing_pred")
     if not report_path.exists():
         errors.append("missing_portfolio_report")
-    pred = pd.read_pickle(pred_path) if pred_path.exists() else pd.DataFrame()
-    report = pd.read_pickle(report_path) if report_path.exists() else pd.DataFrame()
+    pred = (
+        pd.read_parquet(pred_path)
+        if pred_path.suffix == ".parquet"
+        else pd.read_pickle(pred_path)
+        if pred_path.exists()
+        else pd.DataFrame()
+    )
+    report = (
+        pd.read_parquet(report_path)
+        if report_path.suffix == ".parquet"
+        else pd.read_pickle(report_path)
+        if report_path.exists()
+        else pd.DataFrame()
+    )
     config: dict[str, Any] = {}
     if config_path.exists():
         with config_path.open("rb") as fp:
@@ -37,10 +58,12 @@ def audit_mlflow_run(run_dir: str | Path) -> dict[str, Any]:
         if pd.Timestamp(report.index.max()) > pd.Timestamp(pred_dates.max()):
             errors.append("portfolio_ends_after_predictions")
     benchmark = config.get("benchmark")
-    manifest_path = Path.cwd() / "data" / "output" / "research" / root.name / "manifest.json"
-    if benchmark is None and manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        execution = manifest.get("execution") if isinstance(manifest, dict) else {}
+    fallback_manifest = Path.cwd() / "data" / "output" / "research" / root.name / "manifest.json"
+    if not manifest and fallback_manifest.is_file():
+        loaded = json.loads(fallback_manifest.read_text(encoding="utf-8"))
+        manifest = loaded if isinstance(loaded, dict) else {}
+    if benchmark is None and manifest:
+        execution = manifest.get("execution")
         benchmark = execution.get("benchmark") if isinstance(execution, dict) else None
     if benchmark is None:
         errors.append("benchmark_not_recorded")

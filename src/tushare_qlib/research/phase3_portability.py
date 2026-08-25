@@ -473,6 +473,9 @@ def _verify_release(
     payloads: Mapping[str, Path],
 ) -> dict[str, Any]:
     release = _load_json(release_path, "portable DataRelease manifest")
+    from ..releases.capabilities import assert_manifest_capability
+
+    assert_manifest_capability(release, "phase3")
     if str(release.get("manifestSha256") or "") != sha256_json(
         {key: value for key, value in release.items() if key != "manifestSha256"}
     ):

@@ -522,20 +522,25 @@ def main() -> None:
 
     if args.command == "lean-register":
         from .lean_integration import register_manifest
+        from .releases.capabilities import (
+            data_release_id_from_bundle,
+            require_release_capability,
+        )
 
+        boundary_settings = Settings.load(args.config, create_dirs=False)
+        release_id = data_release_id_from_bundle(args.manifest)
+        require_release_capability(boundary_settings, "artifact_v2_export", reference=release_id)
         print(json.dumps(register_manifest(args.manifest, base_url=args.base_url), ensure_ascii=False))
         return
 
     if args.command == "artifact-v2-export":
-        from .releases import FileReleaseStore, release_store_root
-        from .releases.capabilities import assert_release_capability
+        from .releases.capabilities import require_release_capability
         from .research_bundle_export import export_manifest_as_v2_bundle, resolve_data_release_id
 
         export_settings = Settings.load(args.config, create_dirs=False)
         source_manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
         release_id = resolve_data_release_id(source_manifest, args.data_release_id)
-        release = FileReleaseStore(release_store_root(export_settings)).resolve(release_id)
-        assert_release_capability(release, "artifact_v2_export")
+        require_release_capability(export_settings, "artifact_v2_export", reference=release_id)
 
         path = export_manifest_as_v2_bundle(
             args.manifest,
@@ -558,11 +563,24 @@ def main() -> None:
         return
 
     if args.command == "build-target-portfolio":
-        from .trade_plan import build_trade_plan
+        from .releases.capabilities import (
+            data_release_id_from_artifact,
+            require_release_capability,
+        )
+        from .trade_plan import build_trade_plan, resolve_selection_path
+
+        boundary_settings = Settings.load(args.config, create_dirs=False)
+        selection_path = resolve_selection_path(
+            args.portfolio_config,
+            selection_file=args.selection_file,
+            selection_date=args.selection_date,
+        )
+        release_id = data_release_id_from_artifact(selection_path)
+        require_release_capability(boundary_settings, "target_portfolio", reference=release_id)
 
         path, plan = build_trade_plan(
             config_path=args.portfolio_config,
-            selection_file=args.selection_file,
+            selection_file=selection_path,
             selection_date=args.selection_date,
             prev_selection_file=args.current_portfolio,
             trade_date=args.trade_date,
@@ -589,7 +607,14 @@ def main() -> None:
 
     if args.command == "lean-export":
         from .lean_bridge import export_lean_targets
+        from .releases.capabilities import (
+            data_release_id_from_artifact,
+            require_release_capability,
+        )
 
+        boundary_settings = Settings.load(args.config, create_dirs=False)
+        release_id = data_release_id_from_artifact(args.target_file)
+        require_release_capability(boundary_settings, "target_portfolio", reference=release_id)
         frame = pd.read_csv(args.target_file)
         signal_date = _first_value(frame, "signal_date", args.signal_date)
         trade_date = _first_value(frame, "trade_date", args.trade_date)
@@ -1212,6 +1237,16 @@ def main() -> None:
             )
         )
         return
+
+    if args.command.startswith("phase2-") or (
+        args.command.startswith("phase3-") and args.command != "phase3-portable-verify"
+    ):
+        from .releases.capabilities import require_release_capability
+
+        require_release_capability(
+            settings,
+            "phase2" if args.command.startswith("phase2-") else "phase3",
+        )
 
     if args.command == "phase2-validate":
         from .research.phase2_contract import write_phase2_contract_lock

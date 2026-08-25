@@ -132,7 +132,7 @@ class LocalReleasePublisher:
                         "componentSha256": hashlib.sha256(_canonical_bytes(identity)).hexdigest(),
                     }
                 )
-            frozen_as_of = as_of_time or f"{coverage['end']}T00:00:00+00:00"
+            frozen_as_of = as_of_time or f"{coverage['end']}T17:30:00+08:00"
             identity = {
                 "schemaVersion": "2.0",
                 "profile": profile,

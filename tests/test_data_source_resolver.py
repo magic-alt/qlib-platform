@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
+
 from tushare_qlib.data_source_resolver import resolve_source
 from tushare_qlib.settings import Settings
 
@@ -55,5 +57,28 @@ def test_resolver_prefers_local_raw_before_download(tmp_path: Path):
 
     result = resolve_source(settings)
 
-    assert result.status == "BUILD_REQUIRED"
+    assert result.status == "DATA_INCOMPLETE"
     assert result.source == "local_raw"
+    assert set(result.missing_components) == {
+        "bars",
+        "adjustment_factors",
+        "security_master",
+        "trading_calendar",
+    }
+
+
+def test_resolver_selects_exploratory_market_profile_for_minimal_raw(tmp_path: Path):
+    settings = _settings(tmp_path)
+    (settings.paths.raw / "daily").mkdir(parents=True)
+    (settings.paths.raw / "adj_factor").mkdir()
+    settings.paths.metadata.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"value": [1]}).to_parquet(settings.paths.raw / "daily" / "data.parquet")
+    pd.DataFrame({"value": [1]}).to_parquet(settings.paths.raw / "adj_factor" / "data.parquet")
+    pd.DataFrame({"value": [1]}).to_parquet(settings.paths.metadata / "stock_master.parquet")
+    pd.DataFrame({"value": [1]}).to_parquet(settings.paths.metadata / "trade_calendar.parquet")
+
+    result = resolve_source(settings)
+
+    assert result.status == "BUILD_REQUIRED"
+    assert result.profile == "ashare_market_import_v1"
+    assert "pit_fundamentals_source" in result.missing_components

@@ -3,11 +3,21 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.releases import FileReleaseStore, LocalReleasePublisher, import_qlib_dataset
-from tushare_qlib.releases.capabilities import ReleaseCapabilityError, assert_release_capability
+from tushare_qlib.releases import (
+    FileReleaseStore,
+    LocalReleasePublisher,
+    import_qlib_dataset,
+    publish_local_market_release,
+)
+from tushare_qlib.releases.capabilities import (
+    ReleaseCapabilityError,
+    assert_manifest_capability,
+    assert_release_capability,
+)
 from tushare_qlib.settings import Settings
 
 
@@ -53,6 +63,7 @@ def test_qlib_import_is_immutable_idempotent_and_exploratory(tmp_path: Path):
     (source / "features" / "sh600000" / "close.day.bin").write_bytes(b"changed")
 
     assert second.data_release_id == first.data_release_id
+    assert first.manifest["asOfTime"] == "2026-08-24T17:30:00+08:00"
     assert first.manifest_path.read_bytes() == original_manifest
     assert (
         first.manifest_path.parent / "components" / "qlib_dataset" / "features" / "sh600000" / "close.day.bin"
@@ -85,3 +96,67 @@ def test_import_rejects_incomplete_qlib_provider(tmp_path: Path):
 
     with pytest.raises(ValueError, match="calendars/day.txt"):
         LocalReleasePublisher(tmp_path / "releases").import_qlib(provider)
+
+
+def test_explicit_policy_false_blocks_research_governance_release():
+    with pytest.raises(ReleaseCapabilityError, match="policy forbids"):
+        assert_manifest_capability(
+            {
+                "dataReleaseId": "ds_" + "a" * 64,
+                "profile": "ashare_qlib_research_v2",
+                "policies": {
+                    "governanceLevel": "research",
+                    "targetPortfolioAllowed": False,
+                },
+            },
+            "target_portfolio",
+        )
+
+
+def test_market_import_publishes_bound_exploratory_qlib_dataset(tmp_path: Path):
+    settings = _settings(tmp_path)
+    dates = pd.bdate_range("2026-08-17", periods=5)
+    symbols = ("600000.SH", "000001.SZ")
+    bars: list[dict[str, object]] = []
+    factors: list[dict[str, object]] = []
+    for position, date in enumerate(dates):
+        for index, symbol in enumerate(symbols):
+            close = 10.0 + index + position * 0.1
+            bars.append(
+                {
+                    "trade_date": date,
+                    "ts_code": symbol,
+                    "open": close - 0.02,
+                    "high": close + 0.05,
+                    "low": close - 0.05,
+                    "close": close,
+                    "volume": 1_000_000 + index,
+                    "amount": close * (1_000_000 + index),
+                }
+            )
+            factors.append({"trade_date": date, "ts_code": symbol, "adj_factor": 1.0})
+    daily = settings.paths.raw / "daily"
+    adjustment = settings.paths.raw / "adj_factor"
+    daily.mkdir(parents=True)
+    adjustment.mkdir()
+    pd.DataFrame(bars).to_parquet(daily / "data.parquet", index=False)
+    pd.DataFrame(factors).to_parquet(adjustment / "data.parquet", index=False)
+    settings.paths.metadata.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"ts_code": list(symbols)}).to_parquet(
+        settings.paths.metadata / "stock_master.parquet", index=False
+    )
+    pd.DataFrame({"cal_date": dates, "is_open": 1}).to_parquet(
+        settings.paths.metadata / "trade_calendar.parquet", index=False
+    )
+
+    release, dataset = publish_local_market_release(
+        settings,
+        start=str(dates[0].date()),
+        end=str(dates[-1].date()),
+    )
+
+    assert release.profile == "ashare_market_import_v1"
+    assert dataset.data_release_id == release.data_release_id
+    assert (dataset.data_path / "features" / "sh600000" / "close.day.bin").is_file()
+    with pytest.raises(ReleaseCapabilityError, match="policy forbids"):
+        assert_release_capability(release, "target_portfolio")
