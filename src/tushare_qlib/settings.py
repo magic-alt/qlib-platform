@@ -137,7 +137,12 @@ class Settings:
         _require_mapping(data["qlib"], "qlib")
         _require_mapping(data.get("tushare", {}), "tushare")
 
-        project_root = Path(str(data["project_root"])).expanduser()
+        mode = str(data.get("mode") or "standalone").strip().lower()
+        if mode not in {"standalone", "integrated"}:
+            raise ValueError("mode must be standalone or integrated")
+        root_env_name = str(data.get("project_root_env") or "").strip()
+        root_override = os.getenv(root_env_name, "").strip() if root_env_name else ""
+        project_root = Path(root_override or str(data["project_root"])).expanduser()
         if not project_root.is_absolute():
             project_root = (config_path.parent.parent / project_root).resolve()
         paths = Paths.from_root(project_root)
@@ -155,13 +160,14 @@ class Settings:
             raise RuntimeError("QLIB_REPO is not configured or does not exist")
 
         dataset_raw = str(qlib_cfg.get("dataset_dir", "")).strip()
-        if not dataset_raw:
-            raise ValueError("qlib.dataset_dir is required")
-        qlib_data_uri = Path(dataset_raw).expanduser()
-        if not qlib_data_uri.is_absolute():
-            qlib_data_uri = (config_path.parent.parent / qlib_data_uri).resolve()
+        if dataset_raw:
+            qlib_data_uri = Path(dataset_raw).expanduser()
+            if not qlib_data_uri.is_absolute():
+                qlib_data_uri = (config_path.parent.parent / qlib_data_uri).resolve()
+            else:
+                qlib_data_uri = qlib_data_uri.resolve()
         else:
-            qlib_data_uri = qlib_data_uri.resolve()
+            qlib_data_uri = (paths.root / "qlib" / "current").resolve()
 
         return cls(config_path, data, paths, token, qlib_repo, qlib_data_uri)
 
@@ -173,7 +179,11 @@ class Settings:
     def uses_tushare_source(self) -> bool:
         kind = self.source_kind
         if kind == "auto":
-            return "mysql" not in self.data.get("data_source", {})
+            # Auto resolution may use local immutable data first, but commands that
+            # explicitly perform ingestion (daily-sync/bootstrap) fall back to TuShare.
+            return True
+        if kind in {"local", "qlib", "dataset"}:
+            return False
         if kind in {"mysql", "lean_mysql", "lean-platform", "lean_platform"}:
             return False
         if kind in {"platform_release", "data_release"}:
@@ -187,29 +197,60 @@ class Settings:
             return "tushare"
         return str(source_cfg.get("kind", "tushare")).strip().lower()
 
-    def uses_platform_release(self) -> bool:
+    @property
+    def mode(self) -> str:
+        return str(self.data.get("mode") or "standalone").strip().lower()
+
+    def uses_data_release(self) -> bool:
         return self.source_kind in {"platform_release", "data_release"}
 
     @property
-    def platform_release_config(self) -> dict[str, Any]:
-        if not self.uses_platform_release():
-            raise ValueError("data_source.kind must be platform_release")
+    def data_release_config(self) -> dict[str, Any]:
+        if not self.uses_data_release():
+            raise ValueError("data_source.kind must be data_release or platform_release")
         source_cfg = _require_mapping(self.data.get("data_source", {}), "data_source")
-        return _require_mapping(source_cfg.get("platform_release", {}), "data_source.platform_release")
+        platform_cfg = source_cfg.get("platform_release")
+        generic_cfg = source_cfg.get("data_release")
+        if platform_cfg is not None and generic_cfg is not None and platform_cfg != generic_cfg:
+            raise ValueError("conflicting data_source.platform_release and data_source.data_release")
+        selected = generic_cfg if self.source_kind == "data_release" else platform_cfg
+        if selected is None:
+            selected = platform_cfg if platform_cfg is not None else generic_cfg
+        return _require_mapping(selected or {}, "data_source.data_release")
+
+    def uses_platform_release(self) -> bool:
+        """Compatibility alias for callers that consume an immutable DataRelease."""
+
+        return self.uses_data_release()
+
+    @property
+    def platform_release_config(self) -> dict[str, Any]:
+        """Compatibility alias; new code should use data_release_config."""
+
+        return self.data_release_config
 
     @property
     def platform_data_root(self) -> Path:
-        raw = str(self.platform_release_config.get("data_root") or "").strip()
+        raw = str(self.data_release_config.get("data_root") or "").strip()
         if not raw:
-            raise ValueError("data_source.platform_release.data_root is required")
+            store = self.data.get("release_store", {})
+            raw = str(store.get("root") or "").strip() if isinstance(store, dict) else ""
+        if not raw:
+            raise ValueError("DataRelease data_root or release_store.root is required")
         path = Path(raw).expanduser()
         return path.resolve() if path.is_absolute() else (self.config_path.parent.parent / path).resolve()
 
     @property
     def platform_release_manifest(self) -> Path:
-        raw = str(self.platform_release_config.get("manifest") or "").strip()
+        raw = str(self.data_release_config.get("manifest") or "").strip()
         if not raw:
-            raise ValueError("data_source.platform_release.manifest is required")
+            release_id = str(
+                self.data_release_config.get("id") or self.data_release_config.get("ref") or ""
+            ).strip()
+            if release_id.startswith("ds_"):
+                raw = str(self.platform_data_root / release_id / "manifest.json")
+        if not raw:
+            raise ValueError("DataRelease manifest or immutable release id is required")
         path = Path(raw).expanduser()
         path = path if path.is_absolute() else self.config_path.parent.parent / path
         if path.is_symlink():
@@ -225,7 +266,7 @@ class Settings:
 
     @property
     def platform_qlib_staging_role(self) -> str:
-        return str(self.platform_release_config.get("qlib_staging_role") or "qlib_staging").strip()
+        return str(self.data_release_config.get("qlib_staging_role") or "qlib_staging").strip()
 
     def require_qlib_repo(self) -> Path:
         if self.qlib_repo is None or not self.qlib_repo.exists():

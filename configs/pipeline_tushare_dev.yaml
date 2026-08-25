@@ -11,8 +11,9 @@ experiment:
   portfolio:
     policy: topk_dropout_v1
   benchmark: SH000300
-# Development and standalone-test profile only. Platform owns production
-# TuShare ingestion and DataRelease publication.
+# TuShare ingestion base profile. `pipeline.standalone.yaml` overlays autonomous
+# research DataRelease publication; integrated deployments use the explicit
+# `pipeline.integrated.yaml` profile instead.
 project_root: ./data
 storage:
   registry_path: ./data/registry/qlib.sqlite

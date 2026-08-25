@@ -1,12 +1,16 @@
 # Architecture Boundary
 
-`qlib-platform` is the Research / Alpha Factory. It consumes an immutable
-`DataRelease`, builds features and models, performs walk-forward research, and
-publishes only research artifacts through Artifact Contract v2.
+`qlib-platform` is an autonomous Research / Alpha Factory with its own lifecycle.
+It consumes or publishes an immutable `DataRelease`, builds features and models,
+performs walk-forward research, and publishes only research artifacts through
+Artifact Contract v2. `platform` is an optional Execution Plane, not a startup,
+authentication, or research dependency.
 
 Owned here:
 
 - Qlib materialization, feature store, factors, training and tuning;
+- local authentication and RBAC for multi-user API/UI deployments;
+- local/TuShare market-data bootstrap and immutable research DataRelease publication;
 - IC, RankIC, stability, walk-forward and research portfolio analysis;
 - `MODEL_RELEASE`, `STRATEGY_POLICY`, `SIGNAL_SNAPSHOT`,
   `TARGET_PORTFOLIO`, and `VALIDATION_RESULT`;
@@ -14,7 +18,7 @@ Owned here:
 
 Owned by `platform`:
 
-- TuShare production ingestion and canonical DataRelease publication;
+- optional canonical-data publication and execution-authoritative DataRelease certification;
 - authoritative LEAN backtests and execution semantics;
 - hard risk, paper/shadow trading, OMS, broker/QMT, orders, fills and ledger;
 - `LEAN_VALIDATED`, `PAPER`, `PRODUCTION`, and `RETIRED` transitions.
@@ -26,6 +30,19 @@ research backtests that emit simulated orders inside the Qlib exchange — never
 broker orders or broker-state writes. The sole integration boundary is a
 content-addressed `TARGET_PORTFOLIO` within an Artifact Contract v2 bundle
 bound to one `DataRelease`.
+
+Both repositories may produce a DataRelease v2. A qlib-produced release has a
+`lineage.producer` of `qlib-platform` and a research governance level. An imported
+legacy Qlib provider is frozen as `ashare_qlib_import_v1` and remains exploratory:
+it can be used for interactive local research but cannot enter Phase 2/Phase 3 or
+Artifact Contract v2 export. Platform may later verify or certify a research release;
+that certification does not change the release identity.
+
+Platform availability is fail-soft. DataRelease schema, identity, component and file
+verification remain fail-closed. When platform is unavailable, research continues and
+verified Artifact v2 bundles remain in the local durable outbox until an adapter can
+deliver and acknowledge them. OMS, broker, hard-risk, order, fill, and ledger semantics
+never enter this repository.
 
 ## Strategy policy layer
 

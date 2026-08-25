@@ -234,6 +234,7 @@ def _publish_candidate(
     smoke: dict[str, object],
     sync_context: dict[str, object] | None,
     parent: ResolvedDataset | None = None,
+    promote_alias: bool = True,
 ) -> Path:
     _deduplicate_unchanged(parent, candidate)
     manifest_path = write_fingerprint(
@@ -266,7 +267,8 @@ def _publish_candidate(
     registered = registry.register_dataset(
         json.loads(final_manifest.read_text(encoding="utf-8")), final_manifest
     )
-    registry.promote(settings.qlib_dataset_ref, registered.version_id)
+    if promote_alias:
+        registry.promote(settings.qlib_dataset_ref, registered.version_id)
     logger.info(
         "Published immutable Qlib dataset: alias={}, version={}", settings.qlib_dataset_ref, version_id
     )
@@ -278,6 +280,7 @@ def dump_full(
     *,
     single_thread: bool = False,
     sync_context: dict[str, object] | None = None,
+    promote_alias: bool = True,
 ) -> Path:
     versions = settings.qlib_versions_root
     versions.mkdir(parents=True, exist_ok=True)
@@ -287,7 +290,14 @@ def dump_full(
         install_qlib_universe(settings, candidate)
         instruments_name = str(settings.data.get("universe", {}).get("instruments", "all"))
         smoke = _smoke_test_dataset_subprocess(candidate, instruments_name)
-        return _publish_candidate(settings, candidate, mode="full", smoke=smoke, sync_context=sync_context)
+        return _publish_candidate(
+            settings,
+            candidate,
+            mode="full",
+            smoke=smoke,
+            sync_context=sync_context,
+            promote_alias=promote_alias,
+        )
     except Exception:
         shutil.rmtree(candidate, ignore_errors=True)
         raise
@@ -418,6 +428,14 @@ def write_fingerprint(
     platform_git = git_revision(Path(__file__).resolve().parents[2])
     qlib_git = git_revision(resolve_qlib_repo(settings.qlib_repo))
     universe_hash = membership_fingerprint(settings)
+    release_id = ""
+    release_manifest_sha = ""
+    if isinstance(sync_context, dict):
+        release_id = str(sync_context.get("data_release_id") or "").strip()
+        release_manifest_sha = str(sync_context.get("data_release_manifest_sha256") or "").strip()
+    if settings.uses_data_release():
+        release_cfg = settings.data_release_config
+        release_id = release_id or str(release_cfg.get("id") or release_cfg.get("ref") or "").strip()
     content: dict[str, object] = {
         "dataset_id": settings.data["qlib"].get("dataset_version", settings.qlib_data_uri.name),
         "fields": list(settings.qlib_include_fields),
@@ -430,11 +448,10 @@ def write_fingerprint(
         "package_versions": _package_versions(),
         "smoke_test": smoke,
     }
-    if settings.uses_platform_release():
-        release_cfg = settings.platform_release_config
-        content["data_release_id"] = str(release_cfg.get("id") or "")
-        if isinstance(sync_context, dict) and sync_context.get("data_release_manifest_sha256"):
-            content["data_release_manifest_sha256"] = str(sync_context["data_release_manifest_sha256"])
+    if release_id:
+        content["data_release_id"] = release_id
+    if release_manifest_sha:
+        content["data_release_manifest_sha256"] = release_manifest_sha
     target = dataset_dir or settings.qlib_data_uri
     calendar = target / "calendars" / "day.txt"
     dates = (
@@ -472,7 +489,9 @@ def write_fingerprint(
         coverage={"start": dates[0] if dates else None, "end": dates[-1] if dates else None},
         quality={"smoke_test": smoke, "passed": True},
         extra={
-            "dataset_id": settings.qlib_dataset_name,
+            "dataset_id": release_id or settings.qlib_dataset_name,
+            "data_release_id": release_id or None,
+            "data_release_manifest_sha256": release_manifest_sha or None,
             "mode": mode,
             "fields": list(settings.qlib_include_fields),
             "staging_manifest_sha256": combined_stage_hash,

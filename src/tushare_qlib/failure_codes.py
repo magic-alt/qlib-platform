@@ -4,6 +4,7 @@ from enum import Enum
 
 
 class FailureCode(str, Enum):
+    DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
     DATA_NOT_READY = "DATA_NOT_READY"
     DAILY_SYNC_FAILED = "DAILY_SYNC_FAILED"
     MODEL_NOT_DEPLOYED = "MODEL_NOT_DEPLOYED"
@@ -21,6 +22,8 @@ def classify_failure(exc: BaseException, phase: str) -> FailureCode:
     normalized_phase = phase.upper()
     if name == "SignalRejectedError":
         return FailureCode.SIGNAL_REJECTED
+    if name == "DataUnavailableError":
+        return FailureCode.DATA_UNAVAILABLE
     if normalized_phase == "SYNC":
         return FailureCode.DAILY_SYNC_FAILED
     if "no deployed model" in message or "requires a deployed model" in message:

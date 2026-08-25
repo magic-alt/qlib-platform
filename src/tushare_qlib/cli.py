@@ -12,7 +12,7 @@ from .settings import Settings
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Auditable platform DataRelease -> Qlib research pipeline")
-    p.add_argument("--config", default="configs/pipeline.yaml")
+    p.add_argument("--config", default="configs/pipeline.standalone.yaml")
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init-metadata")
     b = sub.add_parser("backfill")
@@ -35,6 +35,8 @@ def parser() -> argparse.ArgumentParser:
     su_members = sub.add_parser("sync-universe")
     su_members.add_argument("--start")
     su_members.add_argument("--end")
+    sync_industry = sub.add_parser("sync-industry")
+    sync_industry.add_argument("--end", required=True)
     daily_sync = sub.add_parser("daily-sync")
     daily_sync.add_argument("--as-of")
     daily_sync.add_argument("--check-only", action="store_true")
@@ -310,6 +312,44 @@ def parser() -> argparse.ArgumentParser:
     model_rollback.add_argument("--to", required=True, dest="deployment_id")
     model_rollback.add_argument("--device", default="cpu")
     sub.add_parser("model-status")
+    status = sub.add_parser("status")
+    status.add_argument("--json", action="store_true", dest="as_json")
+    health = sub.add_parser("health")
+    health.add_argument("kind", choices=["live", "ready", "dependencies"])
+    auth = sub.add_parser("auth")
+    auth_sub = auth.add_subparsers(dest="auth_command", required=True)
+    auth_bootstrap = auth_sub.add_parser("bootstrap-admin")
+    auth_bootstrap.add_argument("--username", default="admin")
+    auth_create = auth_sub.add_parser("user-create")
+    auth_create.add_argument("--username", required=True)
+    auth_create.add_argument(
+        "--role",
+        action="append",
+        choices=["admin", "operator", "researcher", "viewer"],
+        default=[],
+    )
+    auth_sub.add_parser("user-list")
+    bootstrap_cmd = sub.add_parser("bootstrap")
+    bootstrap_cmd.add_argument("--source", choices=["auto", "qlib", "raw", "tushare"], default="auto")
+    bootstrap_cmd.add_argument("--path")
+    bootstrap_cmd.add_argument("--start")
+    bootstrap_cmd.add_argument("--end")
+    release = sub.add_parser("release")
+    release_sub = release.add_subparsers(dest="release_command", required=True)
+    release_sub.add_parser("list")
+    release_verify = release_sub.add_parser("verify")
+    release_verify.add_argument("reference")
+    release_import = release_sub.add_parser("import-qlib")
+    release_import.add_argument("--path", required=True)
+    release_build_local = release_sub.add_parser("build-local")
+    release_build_local.add_argument("--start")
+    release_build_local.add_argument("--end")
+    release_build_tushare = release_sub.add_parser("build-tushare")
+    release_build_tushare.add_argument("--start", required=True)
+    release_build_tushare.add_argument("--end", required=True)
+    release_promote = release_sub.add_parser("promote")
+    release_promote.add_argument("reference")
+    release_promote.add_argument("--alias", default="research-release-current")
     live = sub.add_parser("live-inference")
     live.add_argument("--as-of", required=True)
     live.add_argument("--deployment-id")
@@ -383,6 +423,58 @@ def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -
 
 def main() -> None:
     args = parser().parse_args()
+    if args.command == "status":
+        from .standalone_status import collect_status, render_status
+
+        status_settings = Settings.load(args.config, create_dirs=False)
+        payload = collect_status(status_settings)
+        print(json.dumps(payload, ensure_ascii=False) if args.as_json else render_status(payload))
+        return
+    if args.command == "health":
+        from .health import dependency_health, live_health, ready_health
+
+        health_settings = Settings.load(args.config, create_dirs=False)
+        payload = {
+            "live": lambda: live_health(),
+            "ready": lambda: ready_health(health_settings),
+            "dependencies": lambda: dependency_health(health_settings),
+        }[args.kind]()
+        print(json.dumps(payload, ensure_ascii=False))
+        return
+    if args.command == "auth":
+        import getpass
+        import hmac
+
+        from .auth import local_auth_backend
+
+        auth_settings = Settings.load(args.config, create_dirs=False)
+        backend = local_auth_backend(auth_settings.paths.root)
+        if args.auth_command == "user-list":
+            print(
+                json.dumps(
+                    [
+                        {"username": principal.username, "roles": list(principal.roles)}
+                        for principal in backend.list_users()
+                    ],
+                    ensure_ascii=False,
+                )
+            )
+            return
+        credential = getpass.getpass("Credential: ")
+        confirmation = getpass.getpass("Confirm credential: ")
+        if not hmac.compare_digest(credential, confirmation):
+            raise ValueError("credential confirmation does not match")
+        principal = (
+            backend.bootstrap_admin(args.username, credential)
+            if args.auth_command == "bootstrap-admin"
+            else backend.create_user(
+                args.username,
+                credential,
+                roles=tuple(args.role or ["researcher"]),
+            )
+        )
+        print(json.dumps({"username": principal.username, "roles": list(principal.roles)}))
+        return
     if args.command == "migrate-qlib-layout":
         from .layout_migration import LayoutMigrator
 
@@ -435,16 +527,34 @@ def main() -> None:
         return
 
     if args.command == "artifact-v2-export":
-        from .research_bundle_export import export_manifest_as_v2_bundle
+        from .releases import FileReleaseStore, release_store_root
+        from .releases.capabilities import assert_release_capability
+        from .research_bundle_export import export_manifest_as_v2_bundle, resolve_data_release_id
+
+        export_settings = Settings.load(args.config, create_dirs=False)
+        source_manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        release_id = resolve_data_release_id(source_manifest, args.data_release_id)
+        release = FileReleaseStore(release_store_root(export_settings)).resolve(release_id)
+        assert_release_capability(release, "artifact_v2_export")
 
         path = export_manifest_as_v2_bundle(
             args.manifest,
             args.output_dir,
             git_commit=args.git_commit,
             container_digest=args.container_digest,
-            data_release_id=args.data_release_id,
+            data_release_id=release_id,
         )
-        print(json.dumps({"manifest": str(path)}, ensure_ascii=False))
+        from .platform_adapter import ArtifactOutbox
+
+        queued = ArtifactOutbox(export_settings.paths.state / "platform_adapter" / "outbox.sqlite").enqueue(
+            path, release_id
+        )
+        print(
+            json.dumps(
+                {"manifest": str(path), "outboxItemId": queued.item_id, "outboxStatus": queued.status},
+                ensure_ascii=False,
+            )
+        )
         return
 
     if args.command == "build-target-portfolio":
@@ -511,6 +621,83 @@ def main() -> None:
     # package, so a stale optional QLIB_REPO does not mask a valid editable
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
+    if args.command == "sync-industry":
+        from .industry import sync_sw2021_industry
+
+        path = sync_sw2021_industry(settings, coverage_end=args.end)
+        print(json.dumps({"industryClassificationPit": str(path)}, ensure_ascii=False))
+        return
+    if args.command == "bootstrap":
+        from .bootstrap import bootstrap
+
+        result = bootstrap(
+            settings,
+            source=args.source,
+            path=args.path,
+            start=args.start,
+            end=args.end,
+        )
+        print(json.dumps(result, ensure_ascii=False, default=str))
+        return
+    if args.command == "release":
+        from .dataset_registry import DatasetRegistry
+        from .releases import FileReleaseStore, import_qlib_dataset, release_store_root
+
+        store = FileReleaseStore(release_store_root(settings))
+        if args.release_command == "list":
+            print(
+                json.dumps(
+                    [
+                        {
+                            "dataReleaseId": item.data_release_id,
+                            "profile": item.profile,
+                            "manifestSha256": item.manifest_sha256,
+                            "manifest": str(item.manifest_path),
+                        }
+                        for item in store.list()
+                    ],
+                    ensure_ascii=False,
+                )
+            )
+        elif args.release_command == "verify":
+            release_value = store.resolve(args.reference)
+            print(
+                json.dumps(
+                    {
+                        "verified": True,
+                        "dataReleaseId": release_value.data_release_id,
+                        "manifestSha256": release_value.manifest_sha256,
+                    }
+                )
+            )
+        elif args.release_command == "import-qlib":
+            release_value, dataset = import_qlib_dataset(settings, args.path)
+            print(
+                json.dumps(
+                    {
+                        "dataReleaseId": release_value.data_release_id,
+                        "datasetVersionId": dataset.version_id,
+                        "governanceLevel": "exploratory",
+                    }
+                )
+            )
+        elif args.release_command in {"build-local", "build-tushare"}:
+            from .bootstrap import bootstrap
+
+            source = "raw" if args.release_command == "build-local" else "tushare"
+            print(
+                json.dumps(
+                    bootstrap(settings, source=source, start=args.start, end=args.end),
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            release_value = store.resolve(args.reference)
+            registry = DatasetRegistry(settings.registry_path)
+            registry.register_release(release_value)
+            registry.promote_release(args.alias, release_value.data_release_id)
+            print(json.dumps({"alias": args.alias, "dataReleaseId": release_value.data_release_id}))
+        return
     if args.command == "research-run" and (args.feature_set or args.hypothesis_id):
         experiment = settings.data.setdefault("experiment", {})
         if not isinstance(experiment, dict):
@@ -658,14 +845,32 @@ def main() -> None:
                     mode="full",
                     gold_sources=(("qlib_input", settings.paths.staging_full),),
                 )
+                from .releases import publish_local_research_release
+
+                release = publish_local_research_release(
+                    settings,
+                    start=args.start or settings.data["start_date"],
+                    end=args.end or settings.data["end_date"],
+                )
                 path = dump_full(
                     settings,
                     single_thread=args.single_thread,
                     sync_context={
+                        "data_release_id": release.data_release_id,
+                        "data_release_manifest_sha256": release.manifest_sha256,
                         "dataset_parents": [
                             {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
-                        ]
+                        ],
                     },
+                    promote_alias=False,
+                )
+                dataset_payload = json.loads((path / "dataset_manifest.json").read_text(encoding="utf-8"))
+                run_registry.register_release(release, governance_level="research")
+                run_registry.promote_research_snapshot(
+                    release_alias="research-release-current",
+                    data_release_id=release.data_release_id,
+                    dataset_alias=settings.qlib_dataset_ref,
+                    dataset_version_id=str(dataset_payload["version_id"]),
                 )
         except Exception as exc:
             run_registry.finish_pipeline_run(run_id, status="FAILED", error_code=type(exc).__name__)
@@ -836,10 +1041,10 @@ def main() -> None:
         if isinstance(groups, list) and "financial" in groups:
             from .fundamentals import build_pit_from_extended
 
-            source = settings.paths.raw / "extended" / "fina_indicator_vip"
+            pit_source = settings.paths.raw / "extended" / "fina_indicator_vip"
             result["pit_fundamentals"] = (
                 str(build_pit_from_extended(settings))
-                if any(source.glob("trade_date=*/data.parquet"))
+                if any(pit_source.glob("trade_date=*/data.parquet"))
                 else "unavailable:fina_indicator_vip"
             )
         print(json.dumps(result, ensure_ascii=False))
