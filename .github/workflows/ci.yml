@@ -102,11 +102,51 @@ jobs:
           wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
           "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pip install \
             -c constraints/ci.txt "${wheel}[qlib]" pytest
-      - name: Prove installed tq status/bootstrap/train/backtest on a fresh environment
-        run: >-
-          "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pytest -q
-          --override-ini pythonpath=
-          tests/test_standalone_isolation.py
+      - name: Prove installed tq and scheduler assets from an empty directory
+        run: |
+          cp tests/test_standalone_isolation.py "$RUNNER_TEMP/test_standalone_isolation.py"
+          mkdir "$RUNNER_TEMP/empty"
+          cd "$RUNNER_TEMP/empty"
+          "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pytest -q \
+            --override-ini pythonpath= \
+            "$RUNNER_TEMP/test_standalone_isolation.py"
+          "$RUNNER_TEMP/qlib-clean-venv/bin/tq-render-scheduler" \
+            --kind systemd \
+            --repo-root "$RUNNER_TEMP/empty" \
+            --python-exe "$RUNNER_TEMP/qlib-clean-venv/bin/python" \
+            --output-dir "$RUNNER_TEMP/rendered-systemd"
+
+  clean-machine-lightgbm:
+    runs-on: ubuntu-latest
+    env:
+      PLATFORM_URL: "http://127.0.0.1:9"
+      QUANT_DATA_ROOT: ""
+      DATASET_RELEASE_ID: ""
+      TUSHARE_TOKEN: ""
+      QLIB_DATA_ROOT: ""
+      STANDALONE_MODEL_PROFILE: "configs/model_profiles/lightgbm_ci_smoke.yaml"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install build
+      - run: python -m build --wheel
+      - run: python -m venv "$RUNNER_TEMP/qlib-clean-venv"
+      - name: Install only the built wheel with Qlib and LightGBM
+        run: |
+          wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pip install \
+            -c constraints/ci.txt "${wheel}[qlib]" pytest
+      - name: Prove installed LightGBM train/backtest/audit from an empty directory
+        run: |
+          cp tests/test_standalone_isolation.py "$RUNNER_TEMP/test_standalone_isolation.py"
+          mkdir "$RUNNER_TEMP/empty"
+          cd "$RUNNER_TEMP/empty"
+          "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pytest -q \
+            --override-ini pythonpath= \
+            "$RUNNER_TEMP/test_standalone_isolation.py"
 
   dnn-bundle-parity:
     runs-on: ubuntu-latest

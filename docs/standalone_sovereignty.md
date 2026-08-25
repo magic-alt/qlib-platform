@@ -99,6 +99,10 @@ or rename failure returns `not_ready`; missing market data remains dependency de
 CI builds a wheel, installs it into a fresh virtual environment, and invokes the installed
 `tq` entry point through `status -> bootstrap -> train-select -> backtest-predictions ->
 research-audit`. This catches editable-install and undeclared-dependency leaks.
+A separate `clean-machine-lightgbm` job repeats the installed-wheel path with a bounded
+CPU LightGBM profile (`10` boosting rounds and one thread). Both wheel jobs copy only the
+acceptance test into a temporary location and run it with the working directory set to an
+empty directory, so runtime configs and model profiles must resolve from the installed wheel.
 
 Windows uses `scripts/register_tushare_daily_sync_task.ps1`, whose default is
 `configs/pipeline.standalone.yaml`; integrated users must pass
@@ -114,6 +118,19 @@ agent can be rendered without installing them automatically:
   --kind launchd --repo-root "$PWD" --python-exe "$PWD/.venv/bin/python" \
   --output-dir /tmp/qlib-launchd
 ```
+
+A wheel-only installation also exposes `tq-render-scheduler`; its templates and standalone
+configuration are installed with the wheel. For example, from the desired process working
+directory:
+
+```bash
+tq-render-scheduler \
+  --kind systemd --repo-root "$PWD" --python-exe "$VIRTUAL_ENV/bin/python" \
+  --output-dir /tmp/qlib-systemd
+```
+
+The systemd timer binds `18:30` explicitly to `Asia/Shanghai`; launchd follows the macOS
+host timezone, which must be configured to `Asia/Shanghai` for the same wall-clock behavior.
 
 Review the rendered files before copying them into the user service directory and enabling
 them. Rendering and tests never register or start a scheduled job.

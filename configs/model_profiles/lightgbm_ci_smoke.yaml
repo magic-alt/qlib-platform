@@ -1,0 +1,11 @@
+name: lightgbm_ci_smoke
+family: lightgbm
+device: cpu
+device_index: 0
+model_kwargs:
+  learning_rate: 0.1
+  num_boost_round: 10
+  early_stopping_rounds: 0
+  max_bin: 31
+  force_row_wise: true
+  num_threads: 1

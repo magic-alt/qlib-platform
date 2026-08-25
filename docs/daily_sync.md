@@ -49,7 +49,9 @@ powershell -ExecutionPolicy Bypass -File scripts\register_tushare_daily_sync_tas
 
 Linux systemd user timer 和 macOS launchd agent 使用
 `scripts/render_standalone_scheduler.py` 渲染；模板位于 `deploy/systemd/` 与
-`deploy/launchd/`。渲染命令只写目标目录，不会自动安装或启动任务，完整命令见
+`deploy/launchd/`。wheel 安装同时提供 `tq-render-scheduler` 和上述模板；systemd timer 的
+`18:30` 显式绑定 `Asia/Shanghai`，launchd 则使用 macOS 主机时区。渲染命令只写目标目录，
+不会自动安装或启动任务，完整命令见
 [`standalone_sovereignty.md`](standalone_sovereignty.md)。
 
 ## 运维状态

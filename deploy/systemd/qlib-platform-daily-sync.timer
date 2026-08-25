@@ -2,7 +2,7 @@
 Description=Run qlib-platform standalone daily sync at 18:30
 
 [Timer]
-OnCalendar=*-*-* 18:30:00
+OnCalendar=*-*-* 18:30:00 Asia/Shanghai
 Persistent=true
 Unit=qlib-platform-daily-sync.service
 
