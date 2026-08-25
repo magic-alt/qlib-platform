@@ -59,3 +59,52 @@ def test_settings_rejects_extends_cycle(tmp_path: Path):
 
     with pytest.raises(ValueError, match="extends cycle"):
         Settings.load(first, create_dirs=False)
+
+
+def test_standalone_profile_loads_without_platform_or_tushare_environment(monkeypatch):
+    for name in (
+        "QUANT_DATA_ROOT",
+        "DATASET_RELEASE_ID",
+        "QLIB_REPO",
+        "QLIB_DATA_URI",
+        "QLIB_DATA_ROOT",
+        "TUSHARE_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+
+    settings = Settings.load("configs/pipeline.standalone.yaml", create_dirs=False)
+
+    assert settings.mode == "standalone"
+    assert settings.source_kind == "auto"
+    assert settings.uses_tushare_source() is True
+    assert settings.tushare_token is None
+    assert settings.paths.root.name == "data"
+    assert settings.qlib_data_uri == settings.paths.root / "qlib" / "current"
+
+
+def test_standalone_root_environment_is_optional_override(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("QLIB_DATA_ROOT", str(tmp_path / "standalone-root"))
+    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+
+    settings = Settings.load("configs/pipeline.standalone.yaml", create_dirs=False)
+
+    assert settings.paths.root == (tmp_path / "standalone-root").resolve()
+
+
+def test_generic_data_release_configuration_is_supported(tmp_path: Path):
+    settings = Settings.__new__(Settings)
+    object.__setattr__(
+        settings,
+        "data",
+        {
+            "mode": "integrated",
+            "data_source": {
+                "kind": "data_release",
+                "data_release": {"id": "ds_" + "a" * 64, "data_root": str(tmp_path)},
+            },
+        },
+    )
+
+    assert settings.uses_data_release()
+    assert settings.data_release_config["id"] == "ds_" + "a" * 64

@@ -13,3 +13,9 @@ surface. Gateway changes and operational commands must be made in `platform`.
 
 Qlib publishes `TARGET_PORTFOLIO`; platform owns QMT observations, hard risk,
 orders, fills, reconciliation and ledger state.
+
+When `platform` or QMT is unavailable, qlib-platform remains ready for local
+authentication and research. Artifact Contract v2 output is retained in the local
+platform-adapter outbox and execution capability is reported as degraded. Recovery
+does not require restarting qlib-platform; an adapter may drain the immutable,
+checksum-verified artifacts after platform returns.

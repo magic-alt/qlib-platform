@@ -10,6 +10,10 @@ from .settings import Settings
 from .store import sha256_file
 
 
+class DataUnavailableError(FileNotFoundError):
+    code = "DATA_UNAVAILABLE"
+
+
 @dataclass(frozen=True)
 class ResolvedDataset:
     reference: str
@@ -45,6 +49,10 @@ def resolve_dataset(
     if not allow_legacy:
         raise KeyError(f"unknown dataset reference: {selected}")
     path = settings.qlib_data_uri
+    required = (path / "calendars" / "day.txt", path / "instruments", path / "features")
+    strict_local = settings.source_kind in {"local", "qlib", "dataset", "auto"}
+    if strict_local and (not path.is_dir() or any(not item.exists() for item in required)):
+        raise DataUnavailableError(f"DATA_UNAVAILABLE: no usable Qlib dataset at {path}")
     manifest = path / "dataset_manifest.json"
     payload = json.loads(manifest.read_text(encoding="utf-8")) if manifest.is_file() else {}
     return ResolvedDataset(

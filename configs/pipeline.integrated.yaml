@@ -1,0 +1,4 @@
+# Explicit compatibility profile for Platform-produced DataRelease inputs.
+extends: pipeline.yaml
+
+mode: integrated

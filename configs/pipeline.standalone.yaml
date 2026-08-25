@@ -1,0 +1,26 @@
+extends: pipeline_tushare_dev.yaml
+
+# Default autonomous Research Plane profile.  All paths are local and no
+# Platform or TuShare credential is required merely to load the application.
+mode: standalone
+project_root: ./data
+project_root_env: QLIB_DATA_ROOT
+
+storage:
+  registry_path: ""
+
+data_source:
+  kind: auto
+
+release_store:
+  kind: file
+  # Empty means <resolved project_root>/releases, including QLIB_DATA_ROOT overrides.
+  root: ""
+  publish_on_sync: true
+
+qlib:
+  repo_path: ""
+  dataset_dir: ""
+  versions_root: ""
+  dataset_name: cn_standalone
+  dataset_version: local

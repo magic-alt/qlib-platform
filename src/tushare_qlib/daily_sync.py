@@ -314,6 +314,59 @@ class DailySyncService:
             if self.store.exists("daily", trade_date):
                 build_curated_day(self.settings, trade_date, force=True)
         last_date = self._qlib_last_date()
+        release_store = self.settings.data.get("release_store", {})
+        publish_release = (
+            self.settings.mode == "standalone"
+            and isinstance(release_store, dict)
+            and bool(release_store.get("publish_on_sync", False))
+        )
+        if publish_release and (force_full or last_date is None or changed_dates or revised_symbols):
+            from .dataset_registry import DatasetRegistry
+            from .releases import publish_local_research_release
+
+            build_all_curated(self.settings)
+            export_full_staging(self.settings, force=True)
+            snapshots = freeze_pipeline_layers(
+                self.settings,
+                mode="full_release",
+                gold_sources=(("qlib_input", self.settings.paths.staging_full),),
+            )
+            registry = DatasetRegistry(self.settings.registry_path)
+            parent_release_id = registry.resolve_release_alias("research-release-current")
+            release = publish_local_research_release(
+                self.settings,
+                start=str(self.settings.data["start_date"]),
+                end=(
+                    max(changed_dates)
+                    if changed_dates
+                    else str(sync_context.get("eligible_date") or self.settings.data["end_date"])
+                ),
+                parent_release_id=parent_release_id,
+            )
+            sync_context.update(
+                {
+                    "data_release_id": release.data_release_id,
+                    "data_release_manifest_sha256": release.manifest_sha256,
+                    "dataset_parents": [
+                        {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
+                    ],
+                }
+            )
+            path = dump_full(self.settings, sync_context=sync_context, promote_alias=False)
+            dataset_manifest = json.loads((path / "dataset_manifest.json").read_text(encoding="utf-8"))
+            registry.register_release(release, governance_level="research")
+            registry.promote_research_snapshot(
+                release_alias="research-release-current",
+                data_release_id=release.data_release_id,
+                dataset_alias=self.settings.qlib_dataset_ref,
+                dataset_version_id=str(dataset_manifest["version_id"]),
+            )
+            return {
+                "mode": "full_release",
+                "append_dates": changed_dates,
+                "repair_symbols": sorted(revised_symbols),
+                "data_release_id": release.data_release_id,
+            }
         if force_full or last_date is None:
             build_all_curated(self.settings)
             export_full_staging(self.settings, force=True)

@@ -54,6 +54,31 @@ jobs:
       - run: pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
       - run: tq project-audit --root . --output "$RUNNER_TEMP/project_audit.json"
 
+  standalone-isolation:
+    runs-on: ubuntu-latest
+    env:
+      PLATFORM_URL: ""
+      QUANT_DATA_ROOT: ""
+      DATASET_RELEASE_ID: ""
+      TUSHARE_TOKEN: ""
+      QLIB_DATA_ROOT: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Prove standalone boot, auth, release, feature, train and backtest isolation
+        run: >-
+          pytest -q
+          tests/test_standalone_isolation.py
+          tests/test_local_release_publisher.py
+          tests/test_data_source_resolver.py
+          tests/test_local_auth.py
+          tests/test_health.py
+          tests/test_platform_outbox.py
+
   dnn-bundle-parity:
     runs-on: ubuntu-latest
     steps:

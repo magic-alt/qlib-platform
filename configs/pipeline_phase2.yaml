@@ -1,4 +1,4 @@
-extends: pipeline.yaml
+extends: pipeline.integrated.yaml
 
 experiment:
   alpha:

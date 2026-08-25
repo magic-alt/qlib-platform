@@ -3,15 +3,15 @@
 本工程是机构级量化平台的 Research Plane：Qlib 负责特征、模型、walk-forward、信号分析和研究组合；
 正式组合验证、订单、风控、账本和券商接入由 `platform` / LEAN 负责。核心原则是：
 
-1. 生产环境只消费 `platform` 发布的不可变 `DataRelease`；本仓库的 Tushare 采集仅用于开发和独立测试。
+1. 默认 standalone 模式可以从本地 Qlib、本地 raw 或 TuShare 构建并发布不可变 research `DataRelease`；integrated 模式也可消费 `platform` 发布的 release。
 2. Canonical Parquet 是事实层，Qlib Bin 是带版本的派生数据；研究运行固定到不可变 release。
 3. Bronze、Silver、Gold 和 Qlib 版本分层，所有阶段均可重跑、校验和审计。
 4. 复权价格、成交量和 `factor` 使用同一套可逆公式。
 5. 财务数据必须按公告日做 point-in-time 展开，不能按报告期直接回填。
 6. 元数据 working view 使用原子替换，保证已发布版本所硬链接的快照不会被后续同步改写。
 
-开发模式仍支持 `Bronze → Silver → Gold → Qlib versions`，并通过 SQLite Registry 管理
-dataset alias、lineage 和 research run；生产模式以 `DataRelease → Qlib materialization` 为唯一入口。完整的布局、PIT 口径、迁移与命令说明见
+standalone 模式支持 `Bronze → Silver → Gold → DataRelease → Qlib versions`，并通过 SQLite Registry 管理
+release/dataset alias、lineage 和 research run；正式研究仍固定到不可变 DataRelease。完整的布局、PIT 口径、迁移与命令说明见
 [`docs/qlib_data_platform.md`](docs/qlib_data_platform.md)。LEAN、OMS、交易风控和券商写接口不属于
 本仓库边界，详见 [`docs/architecture_boundary.md`](docs/architecture_boundary.md)。
 
@@ -42,7 +42,7 @@ $RepoPython = '.\.venv\python.exe'
 所有项目命令均通过仓库本地解释器运行；Windows PowerShell 后续示例均假定已设置 `$RepoPython`：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml --help
+& $RepoPython -m tushare_qlib --help
 ```
 
 克隆 Qlib 源码并固定版本：
@@ -53,7 +53,7 @@ cd qlib
 git checkout 79633dd9506ea689e5400dea0197717b5b3d74b7
 ```
 
-生产运行不再配置 Tushare 凭据，而是固定到 `platform` 发布的 DataRelease：
+Integrated 模式固定到外部发布的 DataRelease：
 
 ```powershell
 $env:QUANT_DATA_ROOT = '<SHARED_DATA_ROOT>'
@@ -61,7 +61,9 @@ $env:DATASET_RELEASE_ID = 'ds_<64_HEX_CHARS>'
 $env:QLIB_REPO = '<PINNED_QLIB_CHECKOUT>'
 ```
 
-`TUSHARE_TOKEN` 仅供 `configs/pipeline_tushare_dev.yaml` 的开发/独立测试模式使用。
+默认 `configs/pipeline.standalone.yaml` 不要求任何 Platform 环境变量；已有本地数据时也不要求
+`TUSHARE_TOKEN`。只有执行 TuShare 下载命令时才要求该变量。详见
+[`docs/standalone_sovereignty.md`](docs/standalone_sovereignty.md)。
 
 `configs/pipeline_lean_mysql.yaml` 是迁移期兼容配置，不是最终生产数据契约；新的生产研究运行不得直接从 MySQL 读取历史行情。
 
@@ -93,22 +95,29 @@ Qlib 会校验 release ID、canonical manifest/component SHA-256、覆盖区间�
 绑定和 target payload SHA 全部一致，且 execution validation 通过后，命令才输出 `status: PASS` 与
 `promotionStatus: LEAN_VALIDATED`。完整证据保存在 `<work-dir>/cross-repo-golden-result.json`。
 
-## 3. 开发/独立测试模式
+## 3. Standalone 自主运行模式
 
-生产 TuShare ingestion 已归属 `platform`。只有开发和独立测试可以使用本仓库保留的采集链：
+默认 CLI 使用 standalone profile。先查看能力或自动导入已有 Qlib provider：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml init-metadata
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml backfill --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml backfill-extended --start 20000101 --end <END> --workers 8
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml sync-universe --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml sync-benchmark --symbol SH000300 --start 20160104 --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-build `
-  --start 20160104 --end <END> --single-thread
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-verify research-current
+& $RepoPython -m tushare_qlib status
+& $RepoPython -m tushare_qlib health dependencies
+& $RepoPython -m tushare_qlib bootstrap
+& $RepoPython -m tushare_qlib release list
 ```
 
-该配置不得用于生产数据发布；生产调度、daily sync 和 DataRelease publication 由 `platform` 执行。
+从 TuShare 完整 bootstrap（显式日期窗口，要求 `TUSHARE_TOKEN`）：
+
+```powershell
+& $RepoPython -m tushare_qlib bootstrap --source tushare --start 20160104 --end <END>
+```
+
+本地多用户 UI/API 可独立初始化管理员；本地进程 CLI 不强制认证：
+
+```powershell
+& $RepoPython -m tushare_qlib auth bootstrap-admin --username admin
+& $RepoPython -m tushare_qlib auth user-list
+```
 
 ## 4. 训练、回测和选股
 

@@ -16,7 +16,7 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _data_release_id(manifest: Mapping[str, Any], override: str | None) -> str:
+def resolve_data_release_id(manifest: Mapping[str, Any], override: str | None) -> str:
     candidates = [
         override,
         _mapping(manifest.get("dataset")).get("dataReleaseId"),
@@ -72,7 +72,7 @@ def export_manifest_as_v2_bundle(
         external_run_id=str(manifest.get("externalRunId") or source.parent.name),
         run_kind=str(manifest.get("runKind") or "research"),
         name=str(manifest.get("name") or "") or None,
-        data_release_id=_data_release_id(manifest, data_release_id),
+        data_release_id=resolve_data_release_id(manifest, data_release_id),
         universe_release_id=str(_mapping(manifest.get("dataset")).get("universeReleaseId") or "") or None,
         git_commit=git_commit,
         container_digest=container_digest,

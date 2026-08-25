@@ -22,6 +22,7 @@ class DatasetVersion:
     manifest_path: Path
     data_path: Path
     created_at_utc: str
+    data_release_id: str | None = None
 
 
 class DatasetRegistry:
@@ -62,6 +63,7 @@ class DatasetRegistry:
                     schema_version TEXT NOT NULL,
                     manifest_sha256 TEXT NOT NULL,
                     created_at_utc TEXT NOT NULL,
+                    data_release_id TEXT,
                     CHECK (status IN ('BUILDING','VALIDATED','PUBLISHED','QUARANTINED'))
                 );
                 CREATE INDEX IF NOT EXISTS idx_dataset_name_created
@@ -117,8 +119,30 @@ class DatasetRegistry:
                     metadata_json TEXT NOT NULL,
                     created_at_utc TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS data_releases (
+                    data_release_id TEXT PRIMARY KEY,
+                    profile TEXT NOT NULL,
+                    manifest_path TEXT NOT NULL UNIQUE,
+                    manifest_sha256 TEXT NOT NULL,
+                    governance_level TEXT NOT NULL,
+                    producer TEXT NOT NULL,
+                    coverage_start TEXT,
+                    coverage_end TEXT,
+                    created_at_utc TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS release_aliases (
+                    alias TEXT PRIMARY KEY,
+                    data_release_id TEXT NOT NULL REFERENCES data_releases(data_release_id),
+                    updated_at_utc TEXT NOT NULL
+                );
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(dataset_versions)").fetchall()
+            }
+            if "data_release_id" not in columns:
+                connection.execute("ALTER TABLE dataset_versions ADD COLUMN data_release_id TEXT")
 
     def register_dataset(self, manifest: Mapping[str, Any], manifest_path: str | Path) -> DatasetVersion:
         status = str(manifest.get("status", "VALIDATED")).upper()
@@ -139,18 +163,32 @@ class DatasetRegistry:
 
         created = str(manifest.get("created_at_utc") or manifest.get("generated_at_utc") or "")
         created = created or datetime.now(timezone.utc).isoformat()
+        semantic = manifest.get("semantic_contract", {})
+        semantic = semantic if isinstance(semantic, Mapping) else {}
+        data_release_id = (
+            str(manifest.get("data_release_id") or semantic.get("data_release_id") or "").strip() or None
+        )
         record = DatasetVersion(
-            version_id, dataset_name, str(manifest.get("layer", "qlib")), status, path, data_path, created
+            version_id,
+            dataset_name,
+            str(manifest.get("layer", "qlib")),
+            status,
+            path,
+            data_path,
+            created,
+            data_release_id,
         )
         with self.connect() as connection:
             connection.execute(
                 """INSERT INTO dataset_versions(
                     version_id,dataset_name,layer,status,manifest_path,data_path,
-                    coverage_start,coverage_end,schema_version,manifest_sha256,created_at_utc
-                ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                    coverage_start,coverage_end,schema_version,manifest_sha256,created_at_utc,
+                    data_release_id
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(version_id) DO UPDATE SET status=excluded.status,
                     manifest_path=excluded.manifest_path,data_path=excluded.data_path,
-                    manifest_sha256=excluded.manifest_sha256""",
+                    manifest_sha256=excluded.manifest_sha256,
+                    data_release_id=excluded.data_release_id""",
                 (
                     version_id,
                     dataset_name,
@@ -163,6 +201,7 @@ class DatasetRegistry:
                     str(manifest.get("schema_version", "3.0")),
                     sha256_file(path),
                     created,
+                    data_release_id,
                 ),
             )
             connection.execute("DELETE FROM dataset_partitions WHERE version_id=?", (version_id,))
@@ -205,6 +244,29 @@ class DatasetRegistry:
             ).fetchone()
         return self._version(row) if row is not None else None
 
+    def inspect(self, reference: str) -> DatasetVersion | None:
+        """Resolve an existing alias/version without creating or migrating the registry."""
+
+        if not self.path.is_file():
+            return None
+        uri = f"file:{self.path.resolve().as_posix()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=5)
+        connection.row_factory = sqlite3.Row
+        try:
+            row = connection.execute(
+                "SELECT v.* FROM dataset_aliases a JOIN dataset_versions v USING(version_id) WHERE a.alias=?",
+                (reference,),
+            ).fetchone()
+            if row is None:
+                row = connection.execute(
+                    "SELECT * FROM dataset_versions WHERE version_id=?", (reference,)
+                ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        finally:
+            connection.close()
+        return self._version(row) if row is not None else None
+
     def list_versions(self, dataset_name: str | None = None) -> list[DatasetVersion]:
         self.initialize()
         with self.connect() as connection:
@@ -240,6 +302,114 @@ class DatasetRegistry:
             )
             self._write_alias_pointer(alias, str(row["dataset_name"]), version_id)
         resolved = self.get_version(version_id)
+        assert resolved is not None
+        return resolved
+
+    def register_release(self, release: Any, *, governance_level: str = "research") -> None:
+        lineage = release.manifest.get("lineage", {})
+        lineage = lineage if isinstance(lineage, Mapping) else {}
+        producer = str(lineage.get("producer") or "external")
+        coverage = release.coverage
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute(
+                """INSERT INTO data_releases(
+                    data_release_id,profile,manifest_path,manifest_sha256,governance_level,
+                    producer,coverage_start,coverage_end,created_at_utc
+                ) VALUES(?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(data_release_id) DO UPDATE SET
+                    manifest_path=excluded.manifest_path,
+                    manifest_sha256=excluded.manifest_sha256""",
+                (
+                    release.data_release_id,
+                    release.profile,
+                    str(release.manifest_path),
+                    release.manifest_sha256,
+                    governance_level,
+                    producer,
+                    coverage.get("start"),
+                    coverage.get("end"),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+
+    def promote_release(self, alias: str, data_release_id: str) -> None:
+        self.initialize()
+        with self.connect() as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM data_releases WHERE data_release_id=?", (data_release_id,)
+            ).fetchone()
+            if exists is None:
+                raise KeyError(f"unknown DataRelease: {data_release_id}")
+            connection.execute(
+                """INSERT INTO release_aliases(alias,data_release_id,updated_at_utc)
+                   VALUES(?,?,?) ON CONFLICT(alias) DO UPDATE SET
+                   data_release_id=excluded.data_release_id,
+                   updated_at_utc=excluded.updated_at_utc""",
+                (alias, data_release_id, datetime.now(timezone.utc).isoformat()),
+            )
+
+    def resolve_release_alias(self, alias: str) -> str | None:
+        if not self.path.is_file():
+            return None
+        uri = f"file:{self.path.resolve().as_posix()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=5)
+        try:
+            row = connection.execute(
+                "SELECT data_release_id FROM release_aliases WHERE alias=?", (alias,)
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        finally:
+            connection.close()
+        return str(row[0]) if row is not None else None
+
+    def promote_research_snapshot(
+        self,
+        *,
+        release_alias: str,
+        data_release_id: str,
+        dataset_alias: str,
+        dataset_version_id: str,
+    ) -> DatasetVersion:
+        """Atomically advance the bound DataRelease and DatasetVersion aliases."""
+
+        self.initialize()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as connection:
+            release = connection.execute(
+                "SELECT 1 FROM data_releases WHERE data_release_id=?", (data_release_id,)
+            ).fetchone()
+            dataset = connection.execute(
+                "SELECT * FROM dataset_versions WHERE version_id=?", (dataset_version_id,)
+            ).fetchone()
+            if release is None:
+                raise KeyError(f"unknown DataRelease: {data_release_id}")
+            if dataset is None:
+                raise KeyError(f"unknown dataset version: {dataset_version_id}")
+            if dataset["status"] not in {"VALIDATED", "PUBLISHED"}:
+                raise ValueError(f"dataset version is not promotable: {dataset['status']}")
+            if str(dataset["data_release_id"] or "") != data_release_id:
+                raise ValueError("DatasetVersion is not bound to the promoted DataRelease")
+            connection.execute(
+                "UPDATE dataset_versions SET status='PUBLISHED' WHERE version_id=?",
+                (dataset_version_id,),
+            )
+            connection.execute(
+                """INSERT INTO dataset_aliases(alias,dataset_name,version_id,updated_at_utc)
+                   VALUES(?,?,?,?) ON CONFLICT(alias) DO UPDATE SET
+                   dataset_name=excluded.dataset_name,version_id=excluded.version_id,
+                   updated_at_utc=excluded.updated_at_utc""",
+                (dataset_alias, dataset["dataset_name"], dataset_version_id, now),
+            )
+            connection.execute(
+                """INSERT INTO release_aliases(alias,data_release_id,updated_at_utc)
+                   VALUES(?,?,?) ON CONFLICT(alias) DO UPDATE SET
+                   data_release_id=excluded.data_release_id,
+                   updated_at_utc=excluded.updated_at_utc""",
+                (release_alias, data_release_id, now),
+            )
+        resolved = self.get_version(dataset_version_id)
         assert resolved is not None
         return resolved
 
@@ -432,4 +602,7 @@ class DatasetRegistry:
             Path(str(row["manifest_path"])),
             Path(str(row["data_path"])),
             str(row["created_at_utc"]),
+            str(row["data_release_id"])
+            if "data_release_id" in row.keys() and row["data_release_id"]
+            else None,
         )
