@@ -24,7 +24,7 @@ readiness only—it does not make the process, auth, registry, or configuration 
 
 ## Release governance
 
-`release import-qlib` copies an existing provider into an immutable
+`release import-qlib` freezes an existing provider into an immutable
 `ashare_qlib_import_v1` release, verifies hashes, creates a bound DatasetVersion, and
 atomically advances the release/dataset aliases. It is exploratory and cannot be used
 for Phase 2, Phase 3, TARGET_PORTFOLIO handoff, or Artifact Contract v2 export.
@@ -33,6 +33,11 @@ for Phase 2, Phase 3, TARGET_PORTFOLIO handoff, or Artifact Contract v2 export.
 `ashare_qlib_research_v2`, then materializes Qlib and atomically advances both aliases.
 Daily sync uses the same full, fail-closed publisher when `publish_on_sync` is enabled.
 Every release is self-contained under `<QLIB_DATA_ROOT>/releases/ds_<sha256>/`.
+Component bytes are stored once under `releases/objects/<prefix>/<sha256>` and
+materialized into each immutable release with hard links. Filesystems without hard-link
+support safely fall back to copies. Qlib imports use the same copy-on-write materialization
+for their bound DatasetVersion, removing the previous second full provider copy while
+preserving ordinary paths and the existing DataRelease/DatasetVersion verification rules.
 
 When only market inputs are available, `bootstrap --source auto` reports the
 certified components that are absent and can still publish
@@ -70,9 +75,48 @@ The reusable health surfaces map to:
 - `health dependencies`: local data, TuShare, platform, and execution-export status.
 
 Platform failure is reported as degraded dependency state, never a research-plane
-startup failure. Verified Artifact Contract v2 manifests are placed in a durable local
-outbox. Failed delivery keeps them pending; recovery can acknowledge them without a
-qlib-platform restart.
+startup failure. Verified Artifact Contract v2 manifests are copied into a content-addressed
+local outbox spool before enqueue, so cleanup of the research output directory cannot remove
+pending delivery bytes. Failed delivery stays pending. A one-shot recovery or long-running
+retry worker can deliver to an explicitly configured Platform Artifact v2 endpoint:
+
+```powershell
+& $RepoPython -m tushare_qlib outbox drain --endpoint https://platform.example/api/artifacts
+& $RepoPython -m tushare_qlib outbox worker --endpoint https://platform.example/api/artifacts
+```
+
+`PLATFORM_ARTIFACT_ENDPOINT` may replace `--endpoint`; its value is never included in
+health output. Each request carries the outbox item id as its idempotency key plus the
+artifact SHA-256 and bound DataRelease id. Only a 2xx response acknowledges the item.
+
+`health ready` performs a read-only SQLite quick check and schema check when the Registry
+exists, verifies minimum free disk space, and proves a write plus atomic rename on the data
+filesystem. Corruption, an incomplete Registry schema, a read-only volume, low disk space,
+or rename failure returns `not_ready`; missing market data remains dependency degradation.
+
+## Installation and scheduling
+
+CI builds a wheel, installs it into a fresh virtual environment, and invokes the installed
+`tq` entry point through `status -> bootstrap -> train-select -> backtest-predictions ->
+research-audit`. This catches editable-install and undeclared-dependency leaks.
+
+Windows uses `scripts/register_tushare_daily_sync_task.ps1`, whose default is
+`configs/pipeline.standalone.yaml`; integrated users must pass
+`-ConfigPath configs/pipeline.integrated.yaml`. Linux systemd user units and a macOS launchd
+agent can be rendered without installing them automatically:
+
+```bash
+.venv/bin/python scripts/render_standalone_scheduler.py \
+  --kind systemd --repo-root "$PWD" --python-exe "$PWD/.venv/bin/python" \
+  --output-dir /tmp/qlib-systemd
+
+.venv/bin/python scripts/render_standalone_scheduler.py \
+  --kind launchd --repo-root "$PWD" --python-exe "$PWD/.venv/bin/python" \
+  --output-dir /tmp/qlib-launchd
+```
+
+Review the rendered files before copying them into the user service directory and enabling
+them. Rendering and tests never register or start a scheduled job.
 
 ## Isolation acceptance
 

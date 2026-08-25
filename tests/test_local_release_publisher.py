@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -70,6 +71,37 @@ def test_qlib_import_is_immutable_idempotent_and_exploratory(tmp_path: Path):
     ).read_bytes() != b"changed"
     with pytest.raises(ReleaseCapabilityError, match="exploratory"):
         assert_release_capability(first, "phase3")
+
+
+def test_release_and_dataset_use_content_addressed_copy_on_write(tmp_path: Path):
+    settings = _settings(tmp_path)
+    source = _provider(tmp_path / "legacy")
+
+    release, dataset = import_qlib_dataset(settings, source)
+
+    frozen = release.manifest_path.parent / "components" / "qlib_dataset" / "calendars" / "day.txt"
+    digest = next(
+        item["sha256"]
+        for component in release.manifest["components"]
+        for item in component["files"]
+        if item["path"].endswith("calendars/day.txt")
+    )
+    stored = release.manifest_path.parent.parent / "objects" / digest[:2] / digest
+    materialized = dataset.data_path / "calendars" / "day.txt"
+    assert os.path.samefile(frozen, stored)
+    assert os.path.samefile(materialized, frozen)
+
+
+def test_content_addressed_object_corruption_fails_closed(tmp_path: Path):
+    source = _provider(tmp_path / "legacy")
+    publisher = LocalReleasePublisher(tmp_path / "releases")
+    release = publisher.import_qlib(source)
+    entry = release.manifest["components"][0]["files"][0]
+    stored = tmp_path / "releases" / "objects" / entry["sha256"][:2] / entry["sha256"]
+    stored.write_bytes(b"tampered")
+
+    with pytest.raises(ValueError, match="object is corrupt"):
+        publisher.import_qlib(source)
 
 
 def test_import_registers_bound_dataset_and_atomic_aliases(tmp_path: Path):

@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 import fastjsonschema
 
 from .settings import Settings
+from .runtime_resources import resource_path
 
 
 SCHEMA_VERSION = "2.0"
@@ -63,7 +64,7 @@ PROFILE_COMPONENT_SCHEMAS = {
 
 
 def _validate_contract_schema(manifest: Mapping[str, Any]) -> None:
-    schema_path = Path(__file__).resolve().parents[2] / "contracts" / "data-release.v2.schema.json"
+    schema_path = resource_path("contracts/data-release.v2.schema.json")
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     try:
         fastjsonschema.validate(schema, manifest)

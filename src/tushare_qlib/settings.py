@@ -9,6 +9,8 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from .runtime_resources import resource_path
+
 _ENV_PATTERN = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 
@@ -127,7 +129,7 @@ class Settings:
         create_dirs: bool = True,
     ) -> "Settings":
         load_dotenv()
-        config_path = Path(config_path).expanduser().resolve()
+        config_path = resource_path(Path(config_path).expanduser()).resolve()
         data = _expand_env(_load_config(config_path))
 
         if "project_root" not in data:

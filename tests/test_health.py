@@ -27,3 +27,15 @@ def test_health_remains_ready_when_data_and_platform_are_unavailable(tmp_path: P
     assert dependencies["local_data"] == "data_unavailable"
     assert dependencies["platform"] == "not_configured"
     assert dependencies["execution_export"] == "degraded"
+
+
+def test_ready_health_fails_closed_for_corrupt_registry(tmp_path: Path):
+    settings = _settings(tmp_path)
+    settings.registry_path.parent.mkdir(parents=True)
+    settings.registry_path.write_bytes(b"not a sqlite database")
+
+    result = ready_health(settings)
+
+    assert result["status"] == "not_ready"
+    assert result["registry"] == "unavailable"
+    assert result["checks"]["registry"] == "database_error"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run qlib-platform standalone daily sync at 18:30
+
+[Timer]
+OnCalendar=*-*-* 18:30:00
+Persistent=true
+Unit=qlib-platform-daily-sync.service
+
+[Install]
+WantedBy=timers.target

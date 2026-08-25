@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from .settings import Settings
+from .runtime_resources import resource_argument
 
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Auditable platform DataRelease -> Qlib research pipeline")
-    p.add_argument("--config", default="configs/pipeline.standalone.yaml")
+    p.add_argument("--config", default=resource_argument("configs/pipeline.standalone.yaml"))
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init-metadata")
     b = sub.add_parser("backfill")
@@ -135,7 +137,9 @@ def parser() -> argparse.ArgumentParser:
     alpha_diagnose.add_argument("--acceptance", required=True)
     alpha_diagnose.add_argument("--walk-forward", required=True)
     alpha_diagnose.add_argument("--feature-snapshot", required=True)
-    alpha_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    alpha_diagnose.add_argument(
+        "--taxonomy", default=resource_argument("configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    )
     alpha_diagnose.add_argument("--output")
     regime_diagnose = sub.add_parser("regime-diagnose")
     regime_diagnose.add_argument("--base-study", required=True)
@@ -144,8 +148,12 @@ def parser() -> argparse.ArgumentParser:
     regime_diagnose.add_argument("--ridge-predictions", required=True)
     regime_diagnose.add_argument("--lightgbm-predictions", required=True)
     regime_diagnose.add_argument("--feature-snapshot", required=True)
-    regime_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
-    regime_diagnose.add_argument("--regimes", default="configs/regimes/ashare_regime_v1.yaml")
+    regime_diagnose.add_argument(
+        "--taxonomy", default=resource_argument("configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    )
+    regime_diagnose.add_argument(
+        "--regimes", default=resource_argument("configs/regimes/ashare_regime_v1.yaml")
+    )
     regime_diagnose.add_argument("--output")
     attribution_diagnose = sub.add_parser("attribution-diagnose")
     attribution_diagnose.add_argument("--regime-study", required=True)
@@ -162,7 +170,7 @@ def parser() -> argparse.ArgumentParser:
     )
     attribution_diagnose.add_argument(
         "--attribution",
-        default="configs/attribution/ashare_failure_attribution_v1.yaml",
+        default=resource_argument("configs/attribution/ashare_failure_attribution_v1.yaml"),
     )
     attribution_diagnose.add_argument("--output")
     explanation_diagnose = sub.add_parser("explanation-diagnose")
@@ -174,7 +182,9 @@ def parser() -> argparse.ArgumentParser:
     explanation_diagnose.add_argument("--lightgbm-walk-forward", required=True)
     explanation_diagnose.add_argument("--xgboost-walk-forward", required=True)
     explanation_diagnose.add_argument("--feature-snapshot", required=True)
-    explanation_diagnose.add_argument("--taxonomy", default="configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    explanation_diagnose.add_argument(
+        "--taxonomy", default=resource_argument("configs/alpha_taxonomy/alpha158_pit_v1.yaml")
+    )
     explanation_diagnose.add_argument(
         "--model-artifact-root",
         action="append",
@@ -184,7 +194,7 @@ def parser() -> argparse.ArgumentParser:
     )
     explanation_diagnose.add_argument(
         "--explanation",
-        default="configs/explanation/ashare_model_explanation_v1.yaml",
+        default=resource_argument("configs/explanation/ashare_model_explanation_v1.yaml"),
     )
     explanation_diagnose.add_argument("--output")
     phase1_synthesize = sub.add_parser("phase1-synthesize")
@@ -194,14 +204,14 @@ def parser() -> argparse.ArgumentParser:
     phase1_synthesize.add_argument("--explanation-study", required=True)
     phase1_synthesize.add_argument(
         "--synthesis",
-        default="configs/synthesis/ashare_phase1_synthesis_v1.yaml",
+        default=resource_argument("configs/synthesis/ashare_phase1_synthesis_v1.yaml"),
     )
     phase1_synthesize.add_argument("--output")
     phase2_validate = sub.add_parser("phase2-validate")
     phase2_validate.add_argument("--phase1-manifest", required=True)
     phase2_validate.add_argument(
         "--contract",
-        default="configs/research/ashare_phase2_v1.yaml",
+        default=resource_argument("configs/research/ashare_phase2_v1.yaml"),
     )
     phase2_validate.add_argument("--output", required=True)
     phase2_plan = sub.add_parser("phase2-plan")
@@ -235,7 +245,7 @@ def parser() -> argparse.ArgumentParser:
     phase3_validate.add_argument("--phase2-data-acceptance", required=True)
     phase3_validate.add_argument(
         "--contract",
-        default="configs/research/ashare_phase3_v1.yaml",
+        default=resource_argument("configs/research/ashare_phase3_v1.yaml"),
     )
     phase3_validate.add_argument("--output", required=True)
     phase3_plan = sub.add_parser("phase3-plan")
@@ -247,21 +257,23 @@ def parser() -> argparse.ArgumentParser:
     phase3_diagnose.add_argument("--evidence", required=True)
     phase3_diagnose.add_argument(
         "--regimes",
-        default="configs/regimes/ashare_regime_v1.yaml",
+        default=resource_argument("configs/regimes/ashare_regime_v1.yaml"),
     )
     phase3_diagnose.add_argument("--output", required=True)
     phase3_export = sub.add_parser("phase3-portable-export")
     phase3_export.add_argument("--contract-lock", required=True)
     phase3_export.add_argument("--plan", required=True)
     phase3_export.add_argument("--diagnosis", required=True)
-    phase3_export.add_argument("--contract", default="configs/research/ashare_phase3_v1.yaml")
+    phase3_export.add_argument(
+        "--contract", default=resource_argument("configs/research/ashare_phase3_v1.yaml")
+    )
     phase3_export.add_argument("--data-root", required=True)
     phase3_export.add_argument("--output", required=True)
     phase3_verify = sub.add_parser("phase3-portable-verify")
     phase3_verify.add_argument("--package", required=True)
 
     tp = sub.add_parser("build-target-portfolio")
-    tp.add_argument("--portfolio-config", default="configs/target_portfolio.yaml")
+    tp.add_argument("--portfolio-config", default=resource_argument("configs/target_portfolio.yaml"))
     tp.add_argument("--selection-file")
     tp.add_argument("--selection-date")
     tp.add_argument("--current-portfolio")
@@ -295,7 +307,7 @@ def parser() -> argparse.ArgumentParser:
     pa.add_argument("--root", default=".")
     pa.add_argument("--output", default="docs/project_audit.json")
     wc = sub.add_parser("validate-qrun-contract")
-    wc.add_argument("--workflow", default="configs/workflow_lightgbm.yaml")
+    wc.add_argument("--workflow", default=resource_argument("configs/workflow_lightgbm.yaml"))
 
     fi = sub.add_parser("ingest-pit-fundamentals")
     fi.add_argument("reports")
@@ -316,6 +328,17 @@ def parser() -> argparse.ArgumentParser:
     status.add_argument("--json", action="store_true", dest="as_json")
     health = sub.add_parser("health")
     health.add_argument("kind", choices=["live", "ready", "dependencies"])
+    outbox = sub.add_parser("outbox")
+    outbox_sub = outbox.add_subparsers(dest="outbox_command", required=True)
+    outbox_drain = outbox_sub.add_parser("drain")
+    outbox_drain.add_argument("--endpoint")
+    outbox_drain.add_argument("--timeout-seconds", type=float, default=30.0)
+    outbox_worker = outbox_sub.add_parser("worker")
+    outbox_worker.add_argument("--endpoint")
+    outbox_worker.add_argument("--timeout-seconds", type=float, default=30.0)
+    outbox_worker.add_argument("--poll-seconds", type=float, default=30.0)
+    outbox_worker.add_argument("--max-poll-seconds", type=float, default=300.0)
+    outbox_worker.add_argument("--once", action="store_true")
     auth = sub.add_parser("auth")
     auth_sub = auth.add_subparsers(dest="auth_command", required=True)
     auth_bootstrap = auth_sub.add_parser("bootstrap-admin")
@@ -440,6 +463,34 @@ def main() -> None:
             "dependencies": lambda: dependency_health(health_settings),
         }[args.kind]()
         print(json.dumps(payload, ensure_ascii=False))
+        return
+    if args.command == "outbox":
+        from .platform_adapter import ArtifactOutbox, OutboxWorker, PlatformClient
+
+        outbox_settings = Settings.load(args.config, create_dirs=False)
+        endpoint = str(args.endpoint or os.getenv("PLATFORM_ARTIFACT_ENDPOINT", "")).strip()
+        if not endpoint:
+            raise RuntimeError(
+                "Platform artifact endpoint is required via --endpoint or PLATFORM_ARTIFACT_ENDPOINT"
+            )
+        queue = ArtifactOutbox(outbox_settings.paths.state / "platform_adapter" / "outbox.sqlite")
+        client = PlatformClient(endpoint, timeout_seconds=args.timeout_seconds)
+        worker = OutboxWorker(
+            queue,
+            client.send,
+            poll_seconds=getattr(args, "poll_seconds", 30.0),
+            max_poll_seconds=getattr(args, "max_poll_seconds", 300.0),
+        )
+        if args.outbox_command == "drain" or args.once:
+            acknowledged = worker.run_once()
+            print(
+                json.dumps(
+                    {"acknowledged": acknowledged, "pending": len(queue.pending())},
+                    ensure_ascii=False,
+                )
+            )
+            return
+        worker.run_forever()
         return
     if args.command == "auth":
         import getpass

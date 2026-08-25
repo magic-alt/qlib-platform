@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from ..content_store import ContentAddressedStore
 from ..store import sha256_file
 
 
@@ -25,6 +27,7 @@ class ArtifactOutbox:
 
     def __init__(self, database: str | Path):
         self.database = Path(database).expanduser().resolve()
+        self.spool = ContentAddressedStore(self.database.parent / "spool")
 
     def initialize(self) -> None:
         self.database.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +55,7 @@ class ArtifactOutbox:
             raise ValueError("outbox artifact must be bound to a valid DataRelease id")
         self.initialize()
         digest = sha256_file(path)
+        spooled_path, _ = self.spool.store(path, digest=digest)
         item_id = uuid.uuid4().hex
         with sqlite3.connect(self.database) as connection:
             connection.execute(
@@ -60,7 +64,7 @@ class ArtifactOutbox:
                 ) VALUES(?,?,?,?,?,?)""",
                 (
                     item_id,
-                    str(path),
+                    str(spooled_path),
                     digest,
                     data_release_id,
                     "PENDING",
@@ -71,6 +75,15 @@ class ArtifactOutbox:
                 "SELECT * FROM artifact_outbox WHERE artifact_sha256=? AND data_release_id=?",
                 (digest, data_release_id),
             ).fetchone()
+            assert row is not None
+            if Path(str(row[1])) != spooled_path:
+                connection.execute(
+                    "UPDATE artifact_outbox SET artifact_path=? WHERE item_id=?",
+                    (str(spooled_path), str(row[0])),
+                )
+                row = connection.execute(
+                    "SELECT * FROM artifact_outbox WHERE item_id=?", (str(row[0]),)
+                ).fetchone()
         assert row is not None
         return self._item(row)
 
@@ -115,3 +128,38 @@ class ArtifactOutbox:
         return OutboxItem(
             str(row[0]), Path(str(row[1])), str(row[2]), str(row[3]), str(row[4]), int(str(row[5]))
         )
+
+
+class OutboxWorker:
+    """Retry pending handoffs without coupling research availability to Platform."""
+
+    def __init__(
+        self,
+        outbox: ArtifactOutbox,
+        sender: Callable[[OutboxItem], None],
+        *,
+        poll_seconds: float = 30.0,
+        max_poll_seconds: float = 300.0,
+    ):
+        if poll_seconds <= 0 or max_poll_seconds < poll_seconds:
+            raise ValueError("outbox polling intervals are invalid")
+        self.outbox = outbox
+        self.sender = sender
+        self.poll_seconds = poll_seconds
+        self.max_poll_seconds = max_poll_seconds
+
+    def run_once(self) -> int:
+        return self.outbox.drain(self.sender)
+
+    def run_forever(self, *, should_stop: Callable[[], bool] = lambda: False) -> None:
+        delay = self.poll_seconds
+        while not should_stop():
+            pending_before = len(self.outbox.pending())
+            acknowledged = self.run_once()
+            delay = (
+                self.poll_seconds
+                if acknowledged or not pending_before
+                else min(delay * 2, self.max_poll_seconds)
+            )
+            if not should_stop():
+                time.sleep(delay)
