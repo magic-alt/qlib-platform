@@ -38,6 +38,13 @@ it can be used for interactive local research but cannot enter Phase 2/Phase 3 o
 Artifact Contract v2 export. Platform may later verify or certify a research release;
 that certification does not change the release identity.
 
+An OHLCV-oriented local import is frozen as `ashare_market_import_v1`. It requires
+bars, adjustment factors, a security master, and a trading calendar, and can be
+materialized into a Qlib DatasetVersion for exploratory Alpha158 training/backtests.
+It cannot enter Phase 2/Phase 3, research promotion, TARGET_PORTFOLIO, LEAN handoff, or
+Artifact Contract v2 export. Those restrictions are manifest capabilities enforced at
+every handoff command.
+
 Platform availability is fail-soft. DataRelease schema, identity, component and file
 verification remain fail-closed. When platform is unavailable, research continues and
 verified Artifact v2 bundles remain in the local durable outbox until an adapter can

@@ -12,9 +12,11 @@ health do not require `PLATFORM_URL`, `QUANT_DATA_ROOT`, `DATASET_RELEASE_ID`, o
 1. active immutable local DataRelease and its bound DatasetVersion;
 2. a single local DataRelease requiring materialization or promotion;
 3. an existing local Qlib provider requiring immutable import;
-4. local raw market data requiring a full local release build;
-5. TuShare availability;
-6. `DATA_UNAVAILABLE`.
+4. local raw data: full governed inputs select `ashare_qlib_research_v2`;
+5. OHLCV + adjustment factors + security master + trading calendar select the
+   exploratory `ashare_market_import_v1` profile;
+6. TuShare availability;
+7. `DATA_UNAVAILABLE`.
 
 Multiple unaliased releases fail with `RELEASE_SELECTION_REQUIRED`; the program never
 guesses which immutable dataset should become current. Absence of data affects research
@@ -31,6 +33,27 @@ for Phase 2, Phase 3, TARGET_PORTFOLIO handoff, or Artifact Contract v2 export.
 `ashare_qlib_research_v2`, then materializes Qlib and atomically advances both aliases.
 Daily sync uses the same full, fail-closed publisher when `publish_on_sync` is enabled.
 Every release is self-contained under `<QLIB_DATA_ROOT>/releases/ds_<sha256>/`.
+
+When only market inputs are available, `bootstrap --source auto` reports the
+certified components that are absent and can still publish
+`ashare_market_import_v1`. Its required components are `bars`,
+`adjustment_factors`, `security_master`, and `trading_calendar`. The resulting
+Qlib DatasetVersion supports `alpha158_market_v1`, formal local training, and
+research backtests, but its policies fail closed for Phase 2, Phase 3,
+TARGET_PORTFOLIO, research promotion, and Artifact Contract v2 export. Missing even
+one market component returns `DATA_INCOMPLETE` with `missingComponents`; bootstrap
+never silently invents an adjustment factor, calendar, or security master.
+
+If `--start` and `--end` are omitted, raw and TuShare bootstrap use the configured
+`start_date` and `end_date`. Local end-of-day releases record `asOfTime` at
+17:30 Asia/Shanghai for their coverage end, rather than midnight UTC.
+
+Capability enforcement is centralized and release-bound. `build-target-portfolio`
+and `lean-export` resolve the release from the governed input artifact;
+`lean-register` resolves the single release bound by the Artifact v2 bundle; Phase
+2 and Phase 3 commands require the active release capability. Portable Phase 3
+verification checks the embedded release so cross-machine read-only verification
+does not depend on a local current alias.
 
 ## Authentication and health
 
@@ -53,7 +76,17 @@ qlib-platform restart.
 
 ## Isolation acceptance
 
-The `standalone-isolation` CI job unsets all Platform and TuShare variables and uses a
-synthetic A-share Qlib provider to run immutable import, feature query, minimal training,
-and an OOS portfolio-return smoke test. It also proves local auth, no-data startup,
-release resolution, and outbox outage/recovery behavior.
+The `standalone-isolation` CI job unsets Platform/TuShare data dependencies and uses a
+synthetic A-share Qlib provider to run the project CLI itself:
+
+```text
+release import-qlib
+  -> train-select --stage signal
+  -> immutable PredictionSnapshot
+  -> backtest-predictions
+  -> research-audit
+```
+
+The test asserts the ResearchExperiment and PredictionSnapshot remain bound to the
+imported immutable DataRelease. It also proves local auth, no-data startup, release
+resolution, capability rejection, and outbox outage/recovery behavior.

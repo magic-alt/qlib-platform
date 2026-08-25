@@ -19,16 +19,19 @@ class _OrderIndicator:
 
 
 class _Indicator:
-    def __init__(self, trade_date: pd.Timestamp) -> None:
+    def __init__(self, trade_date: pd.Timestamp, *, lowercase: bool = False) -> None:
+        def codes(values: dict[str, float]) -> dict[str, float]:
+            return {key.lower() if lowercase else key: value for key, value in values.items()}
+
         self.order_indicator_his = {
             trade_date: _OrderIndicator(
                 {
-                    "amount": {"S22": -100.0, "S01": 100.0, "S02": 100.0, "S04": 100.0},
-                    "deal_amount": {"S22": -100.0, "S01": 100.0, "S02": 100.0, "S04": 100.0},
-                    "trade_dir": {"S22": -1.0, "S01": 1.0, "S02": 1.0, "S04": 1.0},
-                    "trade_price": {"S22": 8.0, "S01": 10.0, "S02": 9.0, "S04": 11.0},
-                    "trade_value": {"S22": -800.0, "S01": 1_000.0, "S02": 900.0, "S04": 1_100.0},
-                    "trade_cost": {"S22": -1.0, "S01": 1.0, "S02": 1.0, "S04": 1.0},
+                    "amount": codes({"S22": -100.0, "S01": 100.0, "S02": 100.0, "S04": 100.0}),
+                    "deal_amount": codes({"S22": -100.0, "S01": 100.0, "S02": 100.0, "S04": 100.0}),
+                    "trade_dir": codes({"S22": -1.0, "S01": 1.0, "S02": 1.0, "S04": 1.0}),
+                    "trade_price": codes({"S22": 8.0, "S01": 10.0, "S02": 9.0, "S04": 11.0}),
+                    "trade_value": codes({"S22": -800.0, "S01": 1_000.0, "S02": 900.0, "S04": 1_100.0}),
+                    "trade_cost": codes({"S22": -1.0, "S01": 1.0, "S02": 1.0, "S04": 1.0}),
                 }
             )
         }
@@ -105,10 +108,13 @@ def test_build_strategy_audit_reconciles_rank_buffer_fills() -> None:
     )
 
     audit = build_strategy_audit(
-        scores,
-        positions,
-        _Indicator(trade_date),
-        quotes,
+        scores.rename(index=lambda value: str(value).lower(), level="instrument"),
+        {
+            date: _Position([instrument.lower() for instrument in position.get_stock_list()])
+            for date, position in positions.items()
+        },
+        _Indicator(trade_date, lowercase=True),
+        quotes.assign(instrument=quotes["instrument"].str.lower()),
         policy=policy,
     )
 

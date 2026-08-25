@@ -8,6 +8,7 @@ from tushare_qlib.alpha import ALPHA_PACKS, get_alpha_pack
 def test_first_alpha_pack_set_is_registered_with_stable_contracts():
     assert set(ALPHA_PACKS) == {
         "alpha158_daily_v1",
+        "alpha158_market_v1",
         "alpha158_pit_v1",
         "multifactor_core_v1",
         "ashare_factor_benchmark_v1",
@@ -15,6 +16,10 @@ def test_first_alpha_pack_set_is_registered_with_stable_contracts():
     }
     assert len({pack.fingerprint for pack in ALPHA_PACKS.values()}) == len(ALPHA_PACKS)
     assert "industry_classification_pit" in ALPHA_PACKS["multifactor_core_v1"].required_release_components
+    market_pack = ALPHA_PACKS["alpha158_market_v1"]
+    assert market_pack.required_release_components == ()
+    assert market_pack.feature_groups == ("technical",)
+    assert "close" in market_pack.required_qlib_fields
     assert ALPHA_PACKS["alpha158_pit_v1"].processor_recipe == "alpha158_default_v1"
 
 

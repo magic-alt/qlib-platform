@@ -17,7 +17,11 @@ PIT_FEATURE_NAMES = (
 )
 
 
-class TushareAlpha158Daily(Alpha158):
+class TushareAlpha158Market(Alpha158):
+    """Price/volume-only Alpha158 handler for exploratory market imports."""
+
+
+class TushareAlpha158Daily(TushareAlpha158Market):
     """Alpha158 plus valuation, liquidity, money-flow and A-share state fields."""
 
     def get_feature_config(self):

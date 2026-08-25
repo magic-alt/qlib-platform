@@ -69,7 +69,7 @@ jobs:
           python-version: '3.11'
           cache: pip
       - run: pip install -c constraints/ci.txt -e '.[dev]'
-      - name: Prove standalone boot, auth, release, feature, train and backtest isolation
+      - name: Prove formal standalone CLI research and backtest isolation
         run: >-
           pytest -q
           tests/test_standalone_isolation.py

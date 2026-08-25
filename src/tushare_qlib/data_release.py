@@ -38,11 +38,13 @@ REQUIRED_RESEARCH_COMPONENTS = CORE_RESEARCH_COMPONENTS
 QLIB_RESEARCH_PROFILE = "ashare_qlib_research_v1"
 QLIB_RESEARCH_PROFILE_V2 = "ashare_qlib_research_v2"
 QLIB_IMPORT_PROFILE = "ashare_qlib_import_v1"
+MARKET_IMPORT_PROFILE = "ashare_market_import_v1"
 DATA_RELEASE_PROFILES = {
     "cn-equity-daily-research-v2": CORE_RESEARCH_COMPONENTS,
     QLIB_RESEARCH_PROFILE: CORE_RESEARCH_COMPONENTS | {"qlib_staging", "industry_classification_pit"},
     QLIB_RESEARCH_PROFILE_V2: CORE_RESEARCH_COMPONENTS | {"qlib_staging", "industry_classification_pit"},
     QLIB_IMPORT_PROFILE: frozenset({"qlib_dataset"}),
+    MARKET_IMPORT_PROFILE: frozenset({"bars", "adjustment_factors", "security_master", "trading_calendar"}),
 }
 PROFILE_COMPONENT_SCHEMAS = {
     QLIB_RESEARCH_PROFILE_V2: {
@@ -51,6 +53,12 @@ PROFILE_COMPONENT_SCHEMAS = {
         "qlib_staging": "qlib-staging-v2",
     },
     QLIB_IMPORT_PROFILE: {"qlib_dataset": "qlib-provider-v1"},
+    MARKET_IMPORT_PROFILE: {
+        "bars": "1",
+        "adjustment_factors": "1",
+        "security_master": "1",
+        "trading_calendar": "1",
+    },
 }
 
 

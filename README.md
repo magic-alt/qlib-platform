@@ -106,11 +106,18 @@ Qlib 会校验 release ID、canonical manifest/component SHA-256、覆盖区间�
 & $RepoPython -m tushare_qlib release list
 ```
 
-从 TuShare 完整 bootstrap（显式日期窗口，要求 `TUSHARE_TOKEN`）：
+从 TuShare 完整 bootstrap（要求 `TUSHARE_TOKEN`；省略日期时使用配置中的
+`start_date/end_date`）：
 
 ```powershell
 & $RepoPython -m tushare_qlib bootstrap --source tushare --start 20160104 --end <END>
 ```
+
+本地只有行情时，`bootstrap --source auto` 会检查
+`bars/adjustment_factors/security_master/trading_calendar`。齐备后发布
+`ashare_market_import_v1` 并物化绑定的 Qlib DatasetVersion；缺件时返回明确的
+`missingComponents`。该 profile 只允许 exploratory Alpha158 训练与研究回测，
+Phase 2/3、TARGET_PORTFOLIO、LEAN handoff 和 Artifact v2 export 全部 fail-closed。
 
 本地多用户 UI/API 可独立初始化管理员；本地进程 CLI 不强制认证：
 

@@ -85,6 +85,28 @@ def _find_selection(selection_dir: Path, pattern: str, requested_date: str | Non
     return matches[-1]
 
 
+def resolve_selection_path(
+    config_path: str | Path,
+    *,
+    selection_file: str | Path | None = None,
+    selection_date: str | None = None,
+) -> Path:
+    config_path = Path(config_path).expanduser().resolve()
+    config = _load_yaml(config_path)
+    target_portfolio = config.get("target_portfolio", config)
+    if not isinstance(target_portfolio, dict):
+        raise ValueError("target_portfolio section must be a mapping")
+    if selection_file:
+        return Path(selection_file).expanduser().resolve()
+    project_dir = config_path.parent.parent
+    selection_dir = _resolve_path(str(target_portfolio.get("selection_dir", "./data/output")), project_dir)
+    return _find_selection(
+        selection_dir,
+        str(target_portfolio.get("selection_glob", "selection_*.csv")),
+        selection_date,
+    )
+
+
 def _read_current(path: Path | None) -> pd.DataFrame:
     if path is None or not path.exists():
         return pd.DataFrame(columns=["instrument", "target_weight"])
@@ -139,14 +161,11 @@ def build_trade_plan(
             f"move these fields to pipeline.yaml: {names}"
         )
 
-    selection_dir = _resolve_path(str(target_portfolio.get("selection_dir", "./data/output")), project_dir)
     output_dir = _resolve_path(str(target_portfolio.get("output_dir", "./data/output")), project_dir)
-    selection_path = (
-        Path(selection_file).expanduser().resolve()
-        if selection_file
-        else _find_selection(
-            selection_dir, str(target_portfolio.get("selection_glob", "selection_*.csv")), selection_date
-        )
+    selection_path = resolve_selection_path(
+        config_path,
+        selection_file=selection_file,
+        selection_date=selection_date,
     )
     selection = pd.read_csv(selection_path)
     metadata = validate_artifact(selection, ArtifactType.MODEL_TOPK)

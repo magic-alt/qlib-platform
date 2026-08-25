@@ -6,6 +6,10 @@ mode: standalone
 project_root: ./data
 project_root_env: QLIB_DATA_ROOT
 
+experiment:
+  alpha:
+    pack: alpha158_market_v1
+
 storage:
   registry_path: ""
 

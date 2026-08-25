@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
 
@@ -29,8 +30,22 @@ class DatasetSpec:
         mysql = _mapping(source_cfg.get("mysql"))
         platform_release = _mapping(source_cfg.get("platform_release"))
         universe = dict(_mapping(settings.data.get("universe")))
+        manifest_path = settings.qlib_data_uri / "dataset_manifest.json"
+        manifest: Mapping[str, Any] = {}
+        semantic: Mapping[str, Any] = {}
+        if manifest_path.is_file():
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = loaded if isinstance(loaded, Mapping) else {}
+            raw_semantic = manifest.get("semantic_contract")
+            semantic = raw_semantic if isinstance(raw_semantic, Mapping) else {}
+        materialized_release = str(
+            semantic.get("data_release_id") or manifest.get("data_release_id") or ""
+        ).strip()
+        materialized_source = str(semantic.get("source_type") or "").strip()
         source = (
-            "platform_release"
+            materialized_source
+            if materialized_source
+            else "platform_release"
             if settings.uses_platform_release()
             else "tushare"
             if settings.uses_tushare_source()
@@ -43,7 +58,9 @@ class DatasetSpec:
             if source == "lean_mysql"
             else universe.get("instruments")
         )
-        dataset_id = platform_release.get("id") if source == "platform_release" else None
+        dataset_id = materialized_release or (
+            platform_release.get("id") if source == "platform_release" else None
+        )
         name = str(universe.get("label") or configured or "all")
         membership_type = "point_in_time" if configured and str(configured).lower() != "all" else "filtered"
         return cls(

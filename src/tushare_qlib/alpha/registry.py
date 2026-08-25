@@ -37,6 +37,16 @@ _DAILY_FIELDS = (
 )
 
 ALPHA_PACKS: dict[str, AlphaPackSpec] = {
+    "alpha158_market_v1": AlphaPackSpec(
+        "alpha158_market_v1",
+        1,
+        "TushareAlpha158Market",
+        _BASE_FIELDS,
+        (),
+        60,
+        "alpha158_default_v1",
+        ("technical",),
+    ),
     "alpha158_daily_v1": AlphaPackSpec(
         "alpha158_daily_v1",
         1,

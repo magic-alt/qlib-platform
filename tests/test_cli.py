@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 
-from tushare_qlib.cli import _report_payload, parser
+import pytest
+
+from tushare_qlib.cli import _report_payload, main, parser
+from tushare_qlib.releases.capabilities import ReleaseCapabilityError
 from tushare_qlib.settings import Paths, Settings
 from tushare_qlib.standalone_status import collect_status
 
@@ -72,3 +76,123 @@ def test_status_is_ready_without_platform_and_reports_missing_data(tmp_path):
     assert payload["research"] == "data_unavailable"
     assert payload["platform"] == "not_configured"
     assert not paths.root.exists()
+
+
+@pytest.mark.parametrize(
+    ("command", "arguments", "capability"),
+    [
+        ("phase2-plan", ["--contract-lock", "lock.json", "--output", "plan.json"], "phase2"),
+        ("phase3-plan", ["--contract-lock", "lock.json", "--output", "plan.json"], "phase3"),
+    ],
+)
+def test_governed_phase_commands_require_current_release_capability(
+    tmp_path, monkeypatch, command, arguments, capability
+):
+    config = tmp_path / "pipeline.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "mode: standalone",
+                f"project_root: {tmp_path / 'data'}",
+                "data_source: {kind: auto}",
+                "qlib: {}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    def reject(_settings, requested, **_kwargs):
+        calls.append(requested)
+        raise ReleaseCapabilityError("guard-called")
+
+    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr(
+        "tushare_qlib.releases.capabilities.require_release_capability",
+        reject,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tq", "--config", str(config), command, *arguments],
+    )
+
+    with pytest.raises(ReleaseCapabilityError, match="guard-called"):
+        main()
+
+    assert calls == [capability]
+
+
+@pytest.mark.parametrize(
+    ("command", "arguments", "capability"),
+    [
+        ("build-target-portfolio", [], "target_portfolio"),
+        ("lean-export", ["target.csv"], "target_portfolio"),
+        ("lean-register", ["bundle.json"], "artifact_v2_export"),
+        (
+            "artifact-v2-export",
+            [
+                "manifest.json",
+                "--output-dir",
+                "bundle",
+                "--git-commit",
+                "abc123",
+                "--container-digest",
+                "sha256:test",
+                "--data-release-id",
+                "ds_" + "a" * 64,
+            ],
+            "artifact_v2_export",
+        ),
+    ],
+)
+def test_handoff_commands_check_release_capability_before_writing_or_network(
+    tmp_path, monkeypatch, command, arguments, capability
+):
+    config = tmp_path / "pipeline.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "mode: standalone",
+                f"project_root: {tmp_path / 'data'}",
+                "data_source: {kind: auto}",
+                "qlib: {}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "manifest.json").write_text("{}", encoding="utf-8")
+    calls: list[tuple[str, str | None]] = []
+
+    def reject(_settings, requested, *, reference=None):
+        calls.append((requested, reference))
+        raise ReleaseCapabilityError("guard-called")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr(
+        "tushare_qlib.releases.capabilities.require_release_capability",
+        reject,
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.releases.capabilities.data_release_id_from_artifact",
+        lambda _path: "ds_" + "a" * 64,
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.releases.capabilities.data_release_id_from_bundle",
+        lambda _path: "ds_" + "a" * 64,
+    )
+    monkeypatch.setattr(
+        "tushare_qlib.trade_plan.resolve_selection_path",
+        lambda *_args, **_kwargs: tmp_path / "selection.csv",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tq", "--config", str(config), command, *arguments],
+    )
+
+    with pytest.raises(ReleaseCapabilityError, match="guard-called"):
+        main()
+
+    assert calls == [(capability, "ds_" + "a" * 64)]
