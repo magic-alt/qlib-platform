@@ -66,6 +66,7 @@ def test_profile_rejects_unknown_keys(tmp_path):
         "lightgbm_auto",
         "lightgbm_cpu_m5",
         "lightgbm_cpu_fast",
+        "lightgbm_ci_smoke",
         "lightgbm_cpu_quantized",
         "lightgbm_cuda_nvidia",
         "lightgbm_gpu_windows",

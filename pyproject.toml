@@ -59,6 +59,7 @@ dev = [
 
 [project.scripts]
 tq = "tushare_qlib.cli:main"
+tq-render-scheduler = "tushare_qlib.scheduler:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -74,6 +75,8 @@ where = ["src"]
 "configs/regimes" = ["configs/regimes/*.yaml"]
 "configs/research" = ["configs/research/*.yaml"]
 "configs/synthesis" = ["configs/synthesis/*.yaml"]
+"deploy/systemd" = ["deploy/systemd/*"]
+"deploy/launchd" = ["deploy/launchd/*"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

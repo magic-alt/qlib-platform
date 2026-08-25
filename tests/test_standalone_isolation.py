@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from tushare_qlib.dataset_registry import DatasetRegistry
+from tushare_qlib.runtime_resources import resource_path
 from tushare_qlib.settings import Settings
 
 
@@ -181,7 +182,10 @@ def test_standalone_formal_cli_research_and_backtest_without_platform(tmp_path: 
         }
     ).to_parquet(benchmark / "SH000300.parquet", index=False)
 
-    root = Path(__file__).parents[1]
+    profile = os.environ.get(
+        "STANDALONE_MODEL_PROFILE",
+        "configs/model_profiles/ridge_golden_v1.yaml",
+    )
     train_result = _run_cli(
         settings.config_path,
         "train-select",
@@ -195,7 +199,7 @@ def test_standalone_formal_cli_research_and_backtest_without_platform(tmp_path: 
         str(dates[110].date()),
         str(dates[139].date()),
         "--model-profile",
-        str(root / "configs" / "model_profiles" / "ridge_golden_v1.yaml"),
+        str(resource_path(profile).resolve()),
         "--stage",
         "signal",
         "--artifact-level",
