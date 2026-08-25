@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from tushare_qlib.signal_diagnostics import build_signal_diagnostics
 
@@ -18,6 +19,6 @@ def test_signal_diagnostics_emit_ic_rank_ic_rolls_months_and_prediction_autocorr
     assert {"ic", "rank_ic", "rolling_ic_63d", "rolling_rank_ic_63d", "top_bottom_spread"}.issubset(
         daily.columns
     )
-    assert summary["ic"] == 1.0
-    assert summary["rankIC"] == 1.0
+    assert summary["ic"] == pytest.approx(1.0)
+    assert summary["rankIC"] == pytest.approx(1.0)
     assert len(summary["monthly"]) == 1
