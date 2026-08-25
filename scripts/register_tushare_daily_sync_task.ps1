@@ -4,7 +4,7 @@ param(
     [string]$PythonExe,
     [Parameter(Mandatory = $true)]
     [string]$RepoRoot,
-    [string]$ConfigPath = "configs\pipeline.yaml",
+    [string]$ConfigPath = "configs\pipeline.standalone.yaml",
     [string]$At = "18:30",
     [switch]$WhatIf
 )

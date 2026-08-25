@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -119,8 +120,16 @@ def _settings(tmp_path: Path) -> Settings:
 
 
 def _run_cli(config: Path, *arguments: str) -> dict[str, object]:
+    environment = Path(sys.executable).parent
+    candidates = (
+        (environment / "Scripts" / "tq.exe", environment / "tq.exe")
+        if os.name == "nt"
+        else (environment / "tq",)
+    )
+    executable = next((path for path in candidates if path.is_file()), None)
+    assert executable is not None, f"installed tq entry point is missing under: {environment}"
     completed = subprocess.run(
-        [sys.executable, "-m", "tushare_qlib", "--config", str(config), *arguments],
+        [str(executable), "--config", str(config), *arguments],
         cwd=config.parent,
         check=True,
         capture_output=True,
@@ -146,10 +155,13 @@ def test_standalone_formal_cli_research_and_backtest_without_platform(tmp_path: 
     monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
     settings = _settings(tmp_path)
     dates = _provider(tmp_path / "legacy_qlib")
+    status_result = _run_cli(settings.config_path, "status", "--json")
+    assert status_result["mode"] == "standalone"
     import_result = _run_cli(
         settings.config_path,
-        "release",
-        "import-qlib",
+        "bootstrap",
+        "--source",
+        "qlib",
         "--path",
         str(tmp_path / "legacy_qlib"),
     )

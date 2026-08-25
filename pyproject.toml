@@ -63,6 +63,18 @@ tq = "tushare_qlib.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.data-files]
+"contracts" = ["contracts/*.json", "contracts/README.md"]
+"configs" = ["configs/*.yaml"]
+"configs/alpha_taxonomy" = ["configs/alpha_taxonomy/*.yaml"]
+"configs/attribution" = ["configs/attribution/*.yaml"]
+"configs/explanation" = ["configs/explanation/*.yaml"]
+"configs/model_profiles" = ["configs/model_profiles/*.yaml"]
+"configs/portfolio" = ["configs/portfolio/*.yaml"]
+"configs/regimes" = ["configs/regimes/*.yaml"]
+"configs/research" = ["configs/research/*.yaml"]
+"configs/synthesis" = ["configs/synthesis/*.yaml"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]

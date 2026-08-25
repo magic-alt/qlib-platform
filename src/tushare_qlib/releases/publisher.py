@@ -19,6 +19,7 @@ from ..data_release import (
     DataRelease,
     verify_data_release,
 )
+from ..content_store import ContentAddressedStore, clone_tree_copy_on_write
 from ..dataset_manifest import write_dataset_manifest
 from ..dataset_registry import DatasetRegistry, DatasetVersion
 from ..settings import Settings
@@ -41,6 +42,7 @@ class ComponentSource:
 class LocalReleasePublisher:
     def __init__(self, root: str | Path):
         self.root = Path(root).expanduser().resolve()
+        self.objects = ContentAddressedStore(self.root / "objects")
 
     @staticmethod
     def _source_files(source: ComponentSource) -> list[Path]:
@@ -105,10 +107,12 @@ class LocalReleasePublisher:
                     relative_source = original.relative_to(source_root)
                     target = role_root / relative_source
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(original, target)
+                    digest = sha256_file(original)
+                    stored, digest = self.objects.store(original, digest=digest)
+                    self.objects.materialize(stored, target)
                     entry: dict[str, object] = {
                         "path": target.relative_to(candidate).as_posix(),
-                        "sha256": sha256_file(target),
+                        "sha256": digest,
                         "sizeBytes": target.stat().st_size,
                     }
                     if target.suffix.lower() == ".parquet":
@@ -295,7 +299,7 @@ def import_qlib_dataset(settings: Settings, source: str | Path) -> tuple[DataRel
     versions.mkdir(parents=True, exist_ok=True)
     candidate = Path(tempfile.mkdtemp(prefix=".import-qlib.", dir=versions))
     try:
-        shutil.copytree(source_dataset, candidate, dirs_exist_ok=True)
+        clone_tree_copy_on_write(source_dataset, candidate)
         manifest_path, payload = write_dataset_manifest(
             candidate,
             dataset_name=settings.qlib_dataset_name,

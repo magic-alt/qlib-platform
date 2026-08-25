@@ -59,6 +59,7 @@ Integrated 模式固定到外部发布的 DataRelease：
 $env:QUANT_DATA_ROOT = '<SHARED_DATA_ROOT>'
 $env:DATASET_RELEASE_ID = 'ds_<64_HEX_CHARS>'
 $env:QLIB_REPO = '<PINNED_QLIB_CHECKOUT>'
+& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml status
 ```
 
 默认 `configs/pipeline.standalone.yaml` 不要求任何 Platform 环境变量；已有本地数据时也不要求
@@ -72,12 +73,12 @@ $env:QLIB_REPO = '<PINNED_QLIB_CHECKOUT>'
 Qlib 会校验 release ID、canonical manifest/component SHA-256、覆盖区间和显式 `qlib_staging` 组件；不会猜测 canonical 表结构。
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml source-preflight `
+& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml source-preflight `
   --start <START> --end <END>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
+& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml dataset-build `
   --start <START> --end <END> --single-thread
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml feature-store --dataset-ref research-current --start 20160201 --end <END>
+& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml dataset-verify research-current
+& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml feature-store --dataset-ref research-current --start 20160201 --end <END>
 ```
 
 同一正式验证中，Qlib 与 LEAN 必须引用完全相同的 `dataset_release_id`。
@@ -139,7 +140,7 @@ $env:QLIB_DATA_URI = '<RESOLVED_QLIB_DATASET>'
 或 Python 一体化流程：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select
+& $RepoPython -m tushare_qlib train-select
 ```
 
 Windows 多进程研究任务必须通过 `& $RepoPython -m tushare_qlib` 或带
@@ -154,22 +155,22 @@ Windows 多进程研究任务必须通过 `& $RepoPython -m tushare_qlib` 或带
 
 ```powershell
 # Apple Silicon：CPU LightGBM
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select `
+& $RepoPython -m tushare_qlib train-select `
   --model-profile configs/model_profiles/lightgbm_cpu_m5.yaml
 
 # Linux / WSL2 + CUDA build：NVIDIA LightGBM
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml research-run --mode walk-forward `
+& $RepoPython -m tushare_qlib research-run --mode walk-forward `
   --model-profile configs/model_profiles/lightgbm_cuda_nvidia.yaml
 
 # Windows 原生 OpenCL：先按 docs/windows_lightgbm_gpu.md 编译，再验证
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml runtime-probe `
+& $RepoPython -m tushare_qlib runtime-probe `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select `
+& $RepoPython -m tushare_qlib train-select `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 
 # Apple Silicon：Qlib DNN + PyTorch MPS
 & $RepoPython -m pip install -e '.[pytorch]'
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select `
+& $RepoPython -m tushare_qlib train-select `
   --model-profile configs/model_profiles/pytorch_mps_m5.yaml
 ```
 
@@ -192,14 +193,14 @@ total 的诊断子阶段，以及各顶层阶段的 handles/threads/children 变
 大批量特征实验先使用不运行 portfolio backtest、也绝不发布 selection 的 Signal Screen：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml research-run --mode fixed --stage signal `
+& $RepoPython -m tushare_qlib research-run --mode fixed --stage signal `
   --model-profile configs/model_profiles/lightgbm_cpu_fast.yaml
 ```
 
 Signal Screen 生成的 immutable OOS prediction 可以独立测试策略参数，不会重新创建 Dataset 或训练模型：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml backtest-predictions `
+& $RepoPython -m tushare_qlib backtest-predictions `
   data/output/research/<run_id>/oos_predictions.parquet `
   --topn 30 --artifact-level minimal
 ```
@@ -249,7 +250,7 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 研究运行完成后，可将已有 manifest 导出为双方共享的 Artifact Contract v2 bundle：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml artifact-v2-export `
+& $RepoPython -m tushare_qlib artifact-v2-export `
   data/output/research/<RUN_ID>/manifest.json `
   --output-dir data/output/research/<RUN_ID>/artifact-v2 `
   --git-commit <GIT_COMMIT> `
@@ -279,7 +280,7 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 命令行会优先打印这两个报告路径。已完成的固定切分运行可补生成报告：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml research-report data/output/research/<run_id>
+& $RepoPython -m tushare_qlib research-report data/output/research/<run_id>
 ```
 
 若旧运行未导出 `holdings.parquet`，命令会自动查找本地 MLflow 的 Qlib 仓位快照；存在多个候选时传入
@@ -291,7 +292,7 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 也不生成 `ORDER_INTENT`、订单、成交或持仓账本。使用研究策略生成目标组合：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml build-target-portfolio `
+& $RepoPython -m tushare_qlib build-target-portfolio `
   --selection-file data/output/selection_<YYYYMMDD>.csv `
   --trade-date <YYYY-MM-DD>
 ```
@@ -299,11 +300,11 @@ Research Gate 所需的 252 个有效 OOS 观测、标签尾部缓冲和回测�
 正式交接使用 Artifact Contract v2：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml artifact-v2-export `
+& $RepoPython -m tushare_qlib artifact-v2-export `
   data/output/research/<RUN_ID>/manifest.json `
   --output-dir data/output/exports/<RUN_ID> `
   --git-commit <GIT_COMMIT> --container-digest <CONTAINER_DIGEST>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml lean-register `
+& $RepoPython -m tushare_qlib lean-register `
   data/output/exports/<RUN_ID>/qlib_research_bundle.v2.json
 ```
 
@@ -346,9 +347,9 @@ P3 已物理移除旧的 execution/broker/ledger/QMT Python 模块；Qlib 不再
 `research-current` alias 更新。仅在已明确授权的交易日运行；示例中的日期须替换为实际业务日：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml daily-sync --as-of <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select --dataset-ref research-current
+& $RepoPython -m tushare_qlib daily-sync --as-of <YYYY-MM-DD>
+& $RepoPython -m tushare_qlib dataset-verify research-current
+& $RepoPython -m tushare_qlib train-select --dataset-ref research-current
 ```
 
 `curate-day`、`stage-update` 和 `dump-update` 是低层恢复工具，不是常规每日发布入口。
@@ -357,9 +358,9 @@ P3 已物理移除旧的 execution/broker/ledger/QMT Python 模块；Qlib 不再
 每日推理仅生成模型分数、信号健康报告和可交接的研究 Artifact：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml live-inference --as-of <YYYY-MM-DD> `
+& $RepoPython -m tushare_qlib live-inference --as-of <YYYY-MM-DD> `
   --dataset-ref <DATA_RELEASE_ID> --deployment-id <LOCAL_MODEL_RELEASE_ID>
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml daily-signal-run --as-of <YYYY-MM-DD>
+& $RepoPython -m tushare_qlib daily-signal-run --as-of <YYYY-MM-DD>
 ```
 
 模型在本仓库内的 `model-deploy` 仅表示本地推理激活，不代表 platform 的 `PRODUCTION` 状态。

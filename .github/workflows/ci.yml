@@ -49,6 +49,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data" "$RUNNER_TEMP/quant-data"
       - run: pip install -c constraints/ci.txt -e '.[dev]'
       - run: ruff check src tests
+      - run: ruff format --check src tests
       - run: mypy src
       - run: tq --config configs/pipeline.yaml validate-qrun-contract
       - run: pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
@@ -78,6 +79,34 @@ jobs:
           tests/test_local_auth.py
           tests/test_health.py
           tests/test_platform_outbox.py
+
+  clean-machine-wheel:
+    runs-on: ubuntu-latest
+    env:
+      PLATFORM_URL: "http://127.0.0.1:9"
+      QUANT_DATA_ROOT: ""
+      DATASET_RELEASE_ID: ""
+      TUSHARE_TOKEN: ""
+      QLIB_DATA_ROOT: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install build
+      - run: python -m build --wheel
+      - run: python -m venv "$RUNNER_TEMP/qlib-clean-venv"
+      - name: Install only the built wheel and smoke-test dependencies
+        run: |
+          wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit)
+          "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pip install \
+            -c constraints/ci.txt "${wheel}[qlib]" pytest
+      - name: Prove installed tq status/bootstrap/train/backtest on a fresh environment
+        run: >-
+          "$RUNNER_TEMP/qlib-clean-venv/bin/python" -m pytest -q
+          --override-ini pythonpath=
+          tests/test_standalone_isolation.py
 
   dnn-bundle-parity:
     runs-on: ubuntu-latest
