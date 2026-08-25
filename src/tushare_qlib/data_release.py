@@ -6,8 +6,10 @@ import os
 import re
 import shutil
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any, Mapping
 
 import pandas as pd
@@ -16,6 +18,12 @@ import fastjsonschema
 
 from .settings import Settings
 from .runtime_resources import resource_path
+from .verification import (
+    deterministic_sample,
+    load_verification_receipt,
+    normalize_verification_mode,
+    write_verification_receipt,
+)
 
 
 SCHEMA_VERSION = "2.0"
@@ -76,6 +84,10 @@ def _canonical_bytes(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
+def _integer(value: object) -> int:
+    return int(value) if isinstance(value, (str, int, float)) else 0
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -102,6 +114,19 @@ def _inside(root: Path, raw: str | Path, *, owner: str, base: Path | None = None
     if not resolved.is_file():
         raise FileNotFoundError(f"{owner} is missing: {resolved}")
     return resolved
+
+
+def _declared_file(root: Path, raw: object, *, owner: str, base: Path) -> Path:
+    value = str(raw or "")
+    declared = Path(value)
+    if not value or ".." in PurePosixPath(value.replace("\\", "/")).parts:
+        raise ValueError(f"{owner} has an invalid path")
+    target = declared if declared.is_absolute() else base / declared
+    try:
+        target.absolute().relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{owner} escapes the configured data root") from exc
+    return target
 
 
 @dataclass(frozen=True)
@@ -149,6 +174,8 @@ def load_data_release(settings: Settings) -> DataRelease:
         settings.platform_data_root,
         settings.platform_release_manifest,
         configured_id=str(config.get("id") or config.get("ref") or "").strip() or None,
+        mode="deep",
+        workers=4,
     )
 
 
@@ -157,7 +184,17 @@ def verify_data_release(
     manifest_path: str | Path,
     *,
     configured_id: str | None = None,
+    mode: str = "deep",
+    receipt_dir: str | Path | None = None,
+    reuse_receipt: bool = False,
+    sample_size: int = 64,
+    evidence: dict[str, object] | None = None,
+    verified_digests: set[str] | None = None,
+    workers: int = 1,
 ) -> DataRelease:
+    if workers < 1:
+        raise ValueError("verification workers must be positive")
+    normalized_mode = normalize_verification_mode(mode)
     data_root = Path(data_root).expanduser().resolve()
     raw_manifest = Path(manifest_path).expanduser()
     if raw_manifest.is_symlink():
@@ -208,6 +245,9 @@ def verify_data_release(
     if not isinstance(raw_components, list):
         raise ValueError("DataRelease components must be a list")
     components: dict[str, dict[str, Any]] = {}
+    declared_files: list[Mapping[str, object]] = []
+    seen_paths: set[str] = set()
+    total_bytes = 0
     for raw_component in raw_components:
         if not isinstance(raw_component, Mapping):
             raise ValueError("DataRelease component must be an object")
@@ -221,17 +261,24 @@ def verify_data_release(
         for item in raw_files:
             if not isinstance(item, Mapping):
                 raise ValueError(f"Invalid DataRelease file entry: {role}")
-            path = _inside(
+            declared_path = str(item.get("path") or "")
+            _declared_file(
                 data_root,
-                str(item.get("path") or ""),
+                declared_path,
                 owner=f"DataRelease {role} file",
                 base=manifest_path.parent,
             )
+            if declared_path in seen_paths:
+                raise ValueError(f"Duplicate DataRelease file path: {declared_path}")
+            seen_paths.add(declared_path)
             expected = str(item.get("sha256") or "").lower()
-            if len(expected) != 64 or _sha256_file(path) != expected:
-                raise ValueError(f"DataRelease file checksum mismatch: {item.get('path')}")
-            if int(item.get("sizeBytes") or 0) != path.stat().st_size:
-                raise ValueError(f"DataRelease file size mismatch: {item.get('path')}")
+            if len(expected) != 64 or any(value not in "0123456789abcdef" for value in expected):
+                raise ValueError(f"Invalid DataRelease file checksum: {declared_path}")
+            size_bytes = int(item.get("sizeBytes") or 0)
+            if size_bytes < 0:
+                raise ValueError(f"Invalid DataRelease file size: {declared_path}")
+            total_bytes += size_bytes
+            declared_files.append(item)
         component_identity = {
             key: component.get(key)
             for key in (
@@ -258,6 +305,81 @@ def verify_data_release(
                 "DataRelease component schema mismatch: "
                 f"{role} expected {expected_schema}, got {actual_schema or 'missing'}"
             )
+    receipt = None
+    if normalized_mode == "deep" and reuse_receipt and receipt_dir is not None:
+        receipt = load_verification_receipt(
+            receipt_dir,
+            artifact_kind="data_release",
+            artifact_id=release_id,
+            manifest_sha256=recorded_manifest_sha,
+        )
+        if receipt is not None:
+            _, receipt_payload = receipt
+            if (
+                _integer(receipt_payload.get("fileCount", -1)) != len(declared_files)
+                or _integer(receipt_payload.get("totalBytes", -1)) != total_bytes
+            ):
+                raise ValueError("verification receipt file inventory mismatch")
+    selected: list[Mapping[str, object]] = []
+    if receipt is None and normalized_mode == "sampled":
+        selected = deterministic_sample(
+            declared_files,
+            identity=release_id,
+            path_key="path",
+            sample_size=sample_size,
+        )
+    elif receipt is None and normalized_mode == "deep":
+        selected = declared_files
+
+    def verify_file(item: Mapping[str, object]) -> str | None:
+        path = _inside(
+            data_root,
+            str(item.get("path") or ""),
+            owner="DataRelease file",
+            base=manifest_path.parent,
+        )
+        expected = str(item.get("sha256") or "").lower()
+        if _integer(item.get("sizeBytes")) != path.stat().st_size:
+            raise ValueError(f"DataRelease file checksum mismatch (size drift): {item.get('path')}")
+        object_path = data_root / "objects" / expected[:2] / expected
+        linked_object = object_path.is_file() and os.path.samefile(path, object_path)
+        checksum_path = object_path if linked_object else path
+        if _sha256_file(checksum_path) != expected:
+            raise ValueError(f"DataRelease file checksum mismatch: {item.get('path')}")
+        return expected if linked_object else None
+
+    if workers == 1 or len(selected) < 2:
+        verified_results = [verify_file(item) for item in selected]
+    else:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="release-verify") as executor:
+            verified_results = list(executor.map(verify_file, selected))
+    verified_objects = {digest for digest in verified_results if digest is not None}
+    if verified_digests is not None:
+        verified_digests.update(verified_objects)
+    receipt_path: Path | None = receipt[0] if receipt is not None else None
+    if normalized_mode == "deep" and receipt is None and receipt_dir is not None:
+        receipt_path = write_verification_receipt(
+            receipt_dir,
+            artifact_kind="data_release",
+            artifact_id=release_id,
+            manifest_sha256=recorded_manifest_sha,
+            file_count=len(declared_files),
+            total_bytes=total_bytes,
+        )
+    if evidence is not None:
+        evidence.update(
+            {
+                "mode": normalized_mode,
+                "verificationSource": "receipt" if receipt is not None else "files",
+                "manifestSha256": recorded_manifest_sha,
+                "fileCount": len(declared_files),
+                "verifiedFileCount": 0 if receipt is not None else len(selected),
+                "verifiedUniqueObjects": len(verified_objects),
+                "workers": workers,
+                "totalBytes": total_bytes,
+                "receipt": str(receipt_path) if receipt_path is not None else None,
+            }
+        )
     return DataRelease(data_root, manifest_path, manifest, components)
 
 

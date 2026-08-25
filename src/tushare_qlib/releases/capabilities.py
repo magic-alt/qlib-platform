@@ -76,7 +76,11 @@ def require_release_capability(
         raise ReleaseCapabilityError(
             f"DataRelease capability {capability} requires an explicitly bound current release"
         )
-    release = FileReleaseStore(release_store_root(settings)).resolve(selected)
+    release = FileReleaseStore(release_store_root(settings)).resolve(
+        selected,
+        mode="deep",
+        workers=4,
+    )
     assert_release_capability(release, capability)
     return release
 

@@ -34,17 +34,37 @@ class FileReleaseStore:
             raise ValueError(f"invalid DataRelease alias target: {reference}")
         return release_id
 
-    def resolve(self, reference: str) -> DataRelease:
+    def resolve(
+        self,
+        reference: str,
+        *,
+        mode: str = "manifest",
+        receipt_dir: str | Path | None = None,
+        reuse_receipt: bool = False,
+        sample_size: int = 64,
+        evidence: dict[str, object] | None = None,
+        workers: int = 1,
+    ) -> DataRelease:
         release_id = self._resolve_reference(reference)
         manifest = self.root / release_id / "manifest.json"
-        return verify_data_release(self.root, manifest, configured_id=release_id)
+        return verify_data_release(
+            self.root,
+            manifest,
+            configured_id=release_id,
+            mode=mode,
+            receipt_dir=receipt_dir,
+            reuse_receipt=reuse_receipt,
+            sample_size=sample_size,
+            evidence=evidence,
+            workers=workers,
+        )
 
     def list(self) -> Sequence[ReleaseRecord]:
         if not self.root.is_dir():
             return ()
         records: list[ReleaseRecord] = []
         for path in sorted(self.root.glob("ds_*/manifest.json")):
-            release = verify_data_release(self.root, path)
+            release = verify_data_release(self.root, path, mode="manifest")
             records.append(
                 ReleaseRecord(
                     release.data_release_id,
@@ -60,6 +80,7 @@ class FileReleaseStore:
             release.data_root,
             release.manifest_path,
             configured_id=release.data_release_id,
+            mode="deep",
         )
         return VerificationResult(
             True,
