@@ -2,6 +2,7 @@ param(
     [string]$LightGBMVersion = "4.7.0",
     [string]$PipelineConfig = "configs/pipeline.yaml",
     [string]$ModelProfile = "configs/model_profiles/lightgbm_gpu_windows.yaml",
+    [string]$PythonExe = ".\.venv\python.exe",
     [Parameter(Mandatory = $true)]
     [string]$BoostRoot,
     [Parameter(Mandatory = $true)]
@@ -12,11 +13,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-foreach ($tool in @("cmake", "python")) {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        throw "$tool is required. Install CMake and run this script from a Visual Studio x64 developer shell."
-    }
+if (-not (Get-Command "cmake" -ErrorAction SilentlyContinue)) {
+    throw "cmake is required. Install CMake and run this script from a Visual Studio x64 developer shell."
 }
+if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
+    throw "Repository-local Python interpreter not found: $PythonExe"
+}
+$resolvedPython = (Resolve-Path -LiteralPath $PythonExe).Path
 foreach ($path in @($BoostRoot, $BoostLibraryDir)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Required build path does not exist: $path"
@@ -39,12 +42,12 @@ if ($OpenCLLibrary) {
     $pipArgs = $pipArgs[0..($pipArgs.Length - 2)] + `
         "--config-settings=cmake.define.OpenCL_LIBRARY=$OpenCLLibrary" + $pipArgs[-1]
 }
-python @pipArgs
+& $resolvedPython @pipArgs
 if ($LASTEXITCODE -ne 0) {
     throw "LightGBM OpenCL build failed. Verify Visual Studio C++ Build Tools and an OpenCL SDK/runtime."
 }
 
-python -m tushare_qlib --config $PipelineConfig runtime-probe --model-profile $ModelProfile
+& $resolvedPython -m tushare_qlib --config $PipelineConfig runtime-probe --model-profile $ModelProfile
 if ($LASTEXITCODE -ne 0) {
     throw "LightGBM installed, but the one-tree OpenCL runtime probe failed."
 }
