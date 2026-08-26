@@ -31,3 +31,16 @@ The registered orthogonal experiment design is
 `configs/research/p0_strategy_execution_matrix.yaml`. Run portfolio policies on
 the same immutable prediction snapshot first, then compare close and open labels
 under the same policy, and only then compare frozen and walk-forward retraining.
+
+After all child runs have passed their individual audits, write the checksum-backed
+orthogonal synthesis receipt:
+
+```powershell
+& $RepoPython scripts/synthesize_p0_orthogonal_audit.py `
+  --child-run-dir data/output/research/<CHILD_RUN_1> `
+  --child-run-dir data/output/research/<CHILD_RUN_2> `
+  --output data/output/research/p0_orthogonal_audit_receipt.json
+```
+
+The synthesis fails closed if a child audit is missing, failed, tampered with, or
+inconsistent with the other child runs.
