@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from jinja2 import Template
 
 
 ROOT = Path(__file__).parents[1]
@@ -28,6 +29,7 @@ def test_local_backtest_workflows_keep_research_and_execution_contract_fixed() -
 
     for config in configs:
         assert config["qlib_init"]["provider_uri"] == "{{ QLIB_DATA_URI }}"
+        assert "experiment_name" not in config
         assert config["market"] == "csi300"
         assert config["benchmark"] == "SH000300"
         assert config["data_handler_config"] == reference["data_handler_config"]
@@ -37,6 +39,17 @@ def test_local_backtest_workflows_keep_research_and_execution_contract_fixed() -
         segments = config["task"]["dataset"]["kwargs"]["segments"]
         assert segments["train"][1] < segments["valid"][0]
         assert segments["valid"][1] < segments["test"][0]
+
+
+@pytest.mark.parametrize("workflow", WORKFLOWS, ids=lambda path: path.stem)
+def test_local_backtest_workflows_accept_rendered_windows_data_uri(workflow: Path) -> None:
+    rendered = Template(workflow.read_text(encoding="utf-8")).render(
+        QLIB_DATA_URI=r"D:\qlib-data\versions\immutable-release"
+    )
+
+    config = yaml.safe_load(rendered)
+
+    assert config["qlib_init"]["provider_uri"] == r"D:\qlib-data\versions\immutable-release"
 
 
 def test_custom_ridge_uses_train_only_and_preserves_prediction_index() -> None:

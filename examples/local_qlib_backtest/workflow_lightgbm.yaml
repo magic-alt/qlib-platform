@@ -4,12 +4,11 @@ sys:
     - ./src
 
 qlib_init:
-  provider_uri: "{{ QLIB_DATA_URI }}"
+  provider_uri: '{{ QLIB_DATA_URI }}'
   region: cn
   kernels: 4
   joblib_backend: loky
 
-experiment_name: local_alpha158_lightgbm
 market: &market csi300
 benchmark: &benchmark SH000300
 
