@@ -30,9 +30,9 @@ holdout、不生成正式候选，也不发布 `TARGET_PORTFOLIO`。
 从仓库根目录执行。所有 Python/Qlib 命令只使用仓库本地环境：
 
 ```powershell
-$RepoPython = '.\.venv\python.exe'
+$RepoPython = '.\.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $RepoPython)) {
-    throw '缺少 .\.venv\python.exe，请先重建仓库本地环境。'
+    throw '缺少 .\.venv\Scripts\python.exe，请先重建仓库本地环境。'
 }
 & $RepoPython -m pip install -c constraints\ci.txt -e '.[dev]'
 ```
@@ -61,7 +61,7 @@ $env:QLIB_DATA_URI = 'data/qlib'
 
 脚本依次完成：
 
-1. 确认 `.venv/python.exe` 与 `.venv/Scripts/qrun.exe` 存在；
+1. 确认 `.venv/Scripts/python.exe` 与 `.venv/Scripts/qrun.exe` 存在；
 2. 把 `research-current` 解析成确切版本并执行完整 checksum 校验；
 3. 运行 `validate-qrun-contract`，检查策略、成交和基准静态语义；
 4. 在 `mlruns/examples_local_backtest` 中创建隔离的 Qlib/MLflow 研究记录；

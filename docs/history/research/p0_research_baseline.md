@@ -1,4 +1,15 @@
+---
+status: HISTORICAL
+owner: research
+applies_to_commit: 4f5c5d5
+last_verified: 2026-08-28
+superseded_by: architecture_boundary.md
+---
+
 # P0 research baseline
+
+> HISTORICAL. Order-like fields below are research simulation/audit representations. They are not the
+> current qlib-to-platform handoff contract.
 
 The P0 baseline is research-only. It must not be passed to LEAN or QMT until
 all execution reconciliation checks pass.
@@ -7,7 +18,7 @@ For a completed run, generate the required evidence with the repository-local
 interpreter:
 
 ```powershell
-$RepoPython = '.\.venv\python.exe'
+$RepoPython = '.\.venv\Scripts\python.exe'
 & $RepoPython scripts/generate_p0_baseline_artifacts.py data/output/research/<RUN_ID>
 ```
 
@@ -22,10 +33,10 @@ fails with `AUDIT_RECONCILIATION_FAILED` if any of these invariants fails:
 `--allow-reconciliation-failure` exists only to inspect old, incomplete qrun
 exports. Such a run remains ineligible for production research promotion.
 
-`latest_strategy_targets` exposes four separate payloads for a signal date:
-`modelTopkCandidates`, `strategyTargetPositions`, `nextTradeOrders`, and
-`expectedPostTradePositions`. Execution adapters must consume only orders and
-post-trade positions, never raw model candidates.
+`latest_strategy_targets` historically exposed `modelTopkCandidates`,
+`strategyTargetPositions`, `nextTradeOrders`, and `expectedPostTradePositions` for research
+simulation and audit. None is an execution-adapter interface. The current cross-repository handoff is
+only a content-addressed `TARGET_PORTFOLIO` bound to one DataRelease through Artifact Contract v2.
 
 The registered orthogonal experiment design is
 `configs/research/p0_strategy_execution_matrix.yaml`. Run portfolio policies on

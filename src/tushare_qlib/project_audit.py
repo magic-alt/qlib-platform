@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .docs_check import check_documentation
+
 
 @dataclass(frozen=True)
 class AuditFinding:
@@ -78,6 +80,28 @@ def audit_project(root: str | Path) -> dict[str, object]:
             "Exclude virtual environments and experiment artifacts from release packages.",
         )
     )
+    documentation = check_documentation(base)
+    if documentation:
+        for item in documentation:
+            findings.append(
+                AuditFinding(
+                    item.rule_id,
+                    item.severity,
+                    False,
+                    f"location={item.path}:{item.line}; issue={item.message}",
+                    "Run scripts/check_docs.py and repair the governed documentation invariant.",
+                )
+            )
+    else:
+        findings.append(
+            AuditFinding(
+                "DOC-000",
+                "P1",
+                True,
+                "documentation_findings=0",
+                "Keep documentation consistency checks in CI.",
+            )
+        )
     caches = sorted(str(path) for path in relative_files if any(part in _CACHE_DIRS for part in path.parts))
     findings.append(
         AuditFinding(

@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: data
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+---
+
 # Qlib Data Platform v3
 
 This repository treats Parquet datasets as the canonical research facts and Qlib Bin as an immutable,
@@ -48,7 +55,7 @@ the inode of any hard-linked immutable snapshot, so a later metadata refresh can
 Migration is state-changing and is never implicit. First inspect the plan:
 
 ```powershell
-$RepoPython = '.\.venv\python.exe'
+$RepoPython = '.\.venv\Scripts\python.exe'
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml migrate-qlib-layout
 ```
 

@@ -1,3 +1,11 @@
+---
+status: HISTORICAL
+owner: research
+applies_to_commit: 4f5c5d5
+last_verified: 2026-08-28
+superseded_by: alpha_research_phase_2.md
+---
+
 # Alpha Research Phase 1
 
 ## `alpha158_pit_v1` stability and failure-mechanism diagnosis

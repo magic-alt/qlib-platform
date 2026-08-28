@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: research
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+---
+
 # Portfolio V2 — Rank Buffer execution layer
 
 The 2×2 TopkDropout sweep (`Hold × Drop`) is closed. Its core finding is that
@@ -73,17 +80,20 @@ candidate is also judged on whether it participated in the CSI300 rally.
 
 ## Research gate
 
-The `RankICIR >= 0.50` / `ICIR >= 0.50` / `ExcessIR >= 0.50` thresholds stay
-**frozen**. Rank buffer fixes signal→PnL conversion, not signal stability; the
-remaining benchmark gap is a signal problem and must not be hidden by loosening
-the gate.
+The frozen boolean gate is
+`(ICIR >= 0.50 OR RankICIR >= 0.50) AND ExcessIR >= 0.50`, plus all other
+research, portfolio and lineage conditions. Rank buffer fixes signal→PnL conversion, not signal
+stability; the remaining benchmark gap must not be hidden by loosening the gate.
 
-## Next stages (not yet implemented)
+## Two portfolio layers
 
-1. Wire the existing `PortfolioPolicy` (`max_position`, `max_turnover`) into
-   the formal chain as a second portfolio layer.
-2. Benchmark-relative constraints and, later, a true CSI300 enhanced-index
-   optimizer.
+`TopkDropout` and `RankBuffer` are stateful Qlib research-backtest execution policies. They drive
+simulated retain/sell/replace decisions and research PnL/audit.
+
+`PortfolioPolicy` is a separate, implemented MODEL_TOPK-to-TARGET_PORTFOLIO layer. It applies weighting,
+`max_position`, `max_exposure`, `max_group_exposure` and `max_turnover` before Artifact Contract v2
+handoff. It is not the RankBuffer backtest policy. Future work is benchmark-relative constraints and a
+true CSI300 enhanced-index optimizer, not initial PortfolioPolicy wiring.
 
 ## Benchmark diagnostics (implemented)
 
