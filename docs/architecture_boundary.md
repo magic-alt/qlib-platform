@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: architecture
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+---
+
 # Architecture Boundary
 
 `qlib-platform` is an autonomous Research / Alpha Factory with its own lifecycle.

@@ -16,10 +16,10 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location -LiteralPath $RepoRoot
 
-$RepoPython = Join-Path $RepoRoot '.venv\python.exe'
+$RepoPython = Join-Path $RepoRoot '.venv\Scripts\python.exe'
 $Qrun = Join-Path $RepoRoot '.venv\Scripts\qrun.exe'
 if (-not (Test-Path -LiteralPath $RepoPython)) {
-    throw 'Repository-local interpreter is missing: .\.venv\python.exe'
+    throw 'Repository-local interpreter is missing: .\.venv\Scripts\python.exe'
 }
 if (-not (Test-Path -LiteralPath $Qrun)) {
     throw 'Repository-local qrun is missing: .\.venv\Scripts\qrun.exe'

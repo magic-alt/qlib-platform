@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: operations
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+---
+
 # TuShare 每日数据同步
 
 `daily-sync` 是面向 Tushare 数据源的幂等、状态变更发布命令。Windows 任务计划可在每日 18:30 调用它；节假日或没有内容变化时以 `noop` 正常结束。只在已授权的业务窗口运行它。
@@ -15,7 +22,7 @@
 从仓库根目录使用本地解释器：
 
 ```powershell
-$RepoPython = '.\.venv\python.exe'
+$RepoPython = '.\.venv\Scripts\python.exe'
 & $RepoPython -m tushare_qlib sync-dividends --bootstrap --resume
 & $RepoPython -m tushare_qlib daily-sync --check-only
 ```
@@ -39,7 +46,7 @@ $RepoPython = '.\.venv\python.exe'
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\register_tushare_daily_sync_task.ps1 `
-  -PythonExe .\.venv\python.exe -RepoRoot (Get-Location).Path -WhatIf
+  -PythonExe .\.venv\Scripts\python.exe -RepoRoot (Get-Location).Path -WhatIf
 ```
 
 检查输出后去掉 `-WhatIf` 正式注册。任务仅在当前用户已登录时运行，错过时间会尽快补跑，失败后每 30 分钟重试，最多 3 次。`TUSHARE_TOKEN` 继续由运行账户的既有配置提供，脚本不接收、输出或保存任何凭据值。

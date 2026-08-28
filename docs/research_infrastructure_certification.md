@@ -1,10 +1,17 @@
+---
+status: FROZEN
+owner: architecture
+applies_to_commit: 4f5c5d5
+last_verified: 2026-08-28
+---
+
 # Research Infrastructure Certification
 
 ## Decision
 
 As of 2026-08-17, the research infrastructure baseline is:
 
-> **Research Infrastructure: CERTIFIED**
+> **Research Infrastructure baseline: CERTIFIED @ `4f5c5d5`**
 
 This decision freezes the infrastructure-validation phase and makes Alpha, model, regime, and
 portfolio research the default explanation space for weak strategy results. A low IC, unstable
@@ -14,6 +21,14 @@ failure.
 
 The certified code baseline is commit `4f5c5d5` on `main`. The acceptance protocol and required
 evidence are defined in [full_walk_forward_acceptance.md](full_walk_forward_acceptance.md).
+
+## Current-main interpretation
+
+The reviewed current-main baseline `8692afefe1f6cc82ab1f276fca788888f9f30f3e` is 26 commits ahead
+of the certified baseline. Its post-baseline certification status is
+`INCREMENTAL_REVALIDATION_REQUIRED`. The `CERTIFIED` claim does not automatically cover all
+post-baseline changes, including standalone release/capability work, Artifact v2 export changes,
+portfolio-policy changes or Phase 3 implementation.
 
 ## Certified scope
 

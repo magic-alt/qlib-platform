@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: architecture
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+---
+
 # Standalone Sovereignty
 
 `qlib-platform` defaults to `configs/pipeline.standalone.yaml`. Loading the

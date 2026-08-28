@@ -1,4 +1,9 @@
 ---
+status: MOVED
+owner: architecture
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+canonical_repository: magic-alt/platform
 title: 迅投 QMT 极速策略交易系统使用教程与程序化接口说明
 source: 《迅投QMT极速策略交易系统说明文档》
 source_version: 2025-12
@@ -6,6 +11,10 @@ document_type: 使用手册摘要 / 程序化交易接口指南
 ---
 
 # 迅投 QMT 极速策略交易系统使用教程与程序化接口说明
+
+> MOVED. 本文不属于 `qlib-platform` 的 active documentation。Canonical implementation 与
+> runbook 位于 `magic-alt/platform`；本仓仅保留迁移来源，不能据此在 Research Plane 增加
+> broker/QMT、订单、成交、hard risk 或 ledger ownership。
 
 > 本文根据用户提供的《迅投QMT极速策略交易系统说明文档》（北京睿智融科控股股份有限公司，2025 年 12 月）整理。
 >

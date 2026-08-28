@@ -1,8 +1,8 @@
 param(
-    [string]$LightGBMVersion = "4.7.0",
+    [string]$LightGBMVersion = "4.6.0",
     [string]$PipelineConfig = "configs/pipeline.yaml",
     [string]$ModelProfile = "configs/model_profiles/lightgbm_gpu_windows.yaml",
-    [string]$PythonExe = ".\.venv\python.exe",
+    [string]$PythonExe = ".\.venv\Scripts\python.exe",
     [Parameter(Mandatory = $true)]
     [string]$BoostRoot,
     [Parameter(Mandatory = $true)]

@@ -5,8 +5,9 @@ sys:
     path:
         - ./src
 
+# Deprecated compatibility workflow. Prefer examples/local_qlib_backtest/.
 qlib_init:
-    provider_uri: "/Users/kaermax/lean-platform/data/derived/qlib/ds_3ecbca9539a7586a2a73633a8ed7dbc1d2624667a97c371e951058b1c14faa23/versions/a70ee699aa5c8d13732ef139cdbf915e3aece37cad23b486c4a6f4e74e58875e"
+    provider_uri: '{{ QLIB_DATA_URI }}'
     region: cn
 
 market: &market csi300

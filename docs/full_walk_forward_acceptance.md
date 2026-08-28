@@ -1,4 +1,14 @@
+---
+status: FROZEN
+owner: research
+applies_to_commit: 4f5c5d5
+last_verified: 2026-08-28
+---
+
 # Full Walk-forward Acceptance
+
+> Frozen certification protocol for the `4f5c5d5` infrastructure baseline. It does not automatically
+> certify post-baseline changes on current main.
 
 `FULL_WALK_FORWARD_V1` certifies temporal causality, per-fold fitted-state isolation,
 continuous OOS portfolio state, checkpoint recovery, deterministic replay, and final-holdout

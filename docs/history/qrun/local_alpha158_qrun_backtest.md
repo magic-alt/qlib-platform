@@ -1,4 +1,16 @@
+---
+status: DEPRECATED
+owner: research
+applies_to_commit: 4f5c5d5
+last_verified: 2026-08-28
+superseded_by: ../examples/local_qlib_backtest/README.md
+---
+
 # 本地 CSI300 / Alpha158 / Qlib `qrun` 回测指南
+
+> DEPRECATED / HISTORICAL. 当前唯一维护的 qrun 教程是
+> [examples/local_qlib_backtest](../../../examples/local_qlib_backtest/README.md)。
+> 本页不得用于当前 fit 参数、数据路径或时间窗口决策。
 
 本文记录 `workflow_local_lightgbm.yaml` 的本地研究流程。它复现 Qlib 官方的
 `LightGBM + Alpha158 + TopkDropout` 案例，但绑定当前工程的不可变 Qlib 数据，并使用
@@ -16,7 +28,7 @@ A 股交易约束。该流程只生成研究产物和模拟回测，不能用于
 | 测试 | 2025-01-02 至 2026-08-10 | 预测与信号评价 |
 | 组合回测 | 2025-01-02 至 2026-08-07 | T+1 日频执行；末日保留一个后续交易日供 Qlib 结算 |
 
-数据路径在 [workflow_local_lightgbm.yaml](../workflow_local_lightgbm.yaml) 的
+数据路径在 [workflow_local_lightgbm.yaml](../../../workflow_local_lightgbm.yaml) 的
 `qlib_init.provider_uri` 中固定为不可变版本。不要把它改成 `current`、工作目录或未经
 `dataset-verify` 验证的数据路径；这样才可复现本报告的输入。
 
@@ -138,30 +150,10 @@ model:
 
 ### XGBoost
 
-先安装可选依赖，再替换模型段：
-
-```bash
-.venv/bin/python -m pip install -e '.[xgboost]'
-```
-
-```yaml
-model:
-  class: XGBModel
-  module_path: qlib.contrib.model.xgboost
-  kwargs:
-    objective: reg:squarederror
-    eval_metric: rmse
-    eta: 0.03
-    max_depth: 8
-    subsample: 0.8
-    colsample_bytree: 0.8
-    n_estimators: 2000
-    early_stopping_rounds: 100
-    nthread: 8
-```
-
-不要直接沿用 LightGBM 的 `num_leaves`、`lambda_l1` 或 `lambda_l2` 参数；它们不是 XGBoost 的同名
-契约。调参应只看验证集，测试集只用于最终一次比较。
+Qlib 0.9.7 内置 `XGBModel` 的 constructor kwargs 进入 booster；把 `n_estimators` 或
+`early_stopping_rounds` 放入该 YAML `kwargs` 不能控制预期的 fit 参数。使用当前 example 的
+说明，或使用一体化 `configs/model_profiles/xgboost_cpu_v1.yaml` 与项目 adapter；不要复制本页的
+旧 XGBoost 配置。
 
 ### PyTorch DNN
 

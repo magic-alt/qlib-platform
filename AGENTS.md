@@ -12,8 +12,8 @@
 - `README.md`: operational command reference.
 
 ## Build, Test, and Development Commands
-- Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
-- In PowerShell, define `$RepoPython = '.\.venv\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m tushare_qlib --config configs/pipeline.yaml <command>`.
+- Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\Scripts\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
+- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m tushare_qlib --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile.
 - Install core development dependencies: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev]"`.
 - Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[all,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
 - Pipeline example: `<repo-python> -m tushare_qlib --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.

@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: operations
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+---
+
 # Windows 上的 LightGBM GPU
 
 Windows 不要求迁移到 Linux 才能使用 LightGBM 加速，但后端名称必须区分清楚：
@@ -12,7 +19,7 @@ Windows 不要求迁移到 Linux 才能使用 LightGBM 加速，但后端名称�
 
 ## 构建与验证
 
-在 Visual Studio x64 Developer PowerShell 中执行。项目命令使用仓库本地解释器：`$RepoPython = '.\.venv\python.exe'`。
+在 Visual Studio x64 Developer PowerShell 中执行。项目命令使用仓库本地解释器：`$RepoPython = '.\.venv\Scripts\python.exe'`。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/build_lightgbm_opencl_windows.ps1 `
@@ -22,10 +29,11 @@ powershell -ExecutionPolicy Bypass -File scripts/build_lightgbm_opencl_windows.p
   -OpenCLLibrary "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0\lib\x64\OpenCL.lib"
 ```
 
-路径仅为示例，应替换成机器上的实际版本。脚本先验证 Boost 路径，再从源码重装 LightGBM 4.7.0、启用 `USE_GPU=ON`，随后调用：
+路径仅为示例，应替换成机器上的实际版本。脚本先验证 Boost 路径，再从源码重装项目 pin 的
+LightGBM 4.6.0、启用 `USE_GPU=ON`，随后调用：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml runtime-probe `
+& $RepoPython -m tushare_qlib --config configs/pipeline.standalone.yaml runtime-probe `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 ```
 
@@ -34,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_lightgbm_opencl_windows.p
 ## 使用方式
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml train-select `
+& $RepoPython -m tushare_qlib --config configs/pipeline.standalone.yaml train-select `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 ```
 

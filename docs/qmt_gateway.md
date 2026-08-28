@@ -1,3 +1,11 @@
+---
+status: MOVED
+owner: architecture
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+canonical_repository: magic-alt/platform
+---
+
 # QMT gateway moved to platform
 
 The QMT read-only gateway is owned and operated by the sibling `platform`

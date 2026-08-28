@@ -1,4 +1,15 @@
+---
+status: HISTORICAL
+owner: research
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+superseded_by: alpha_research_phase_3.md
+---
+
 # Alpha Research Phase 2
+
+> Status: COMPLETED / FROZEN. This is the predecessor protocol for the active Phase 3-D program.
+> Do not treat its commands as the current research plan.
 
 Phase 2 asks which economically distinct signals add stable, implementable
 rolling-OOS information beyond the registered China A-share benchmark factors.
@@ -34,7 +45,7 @@ protocol, robustness gates, and final-holdout policy. Plans set
 
 ## DataRelease v2 boundary
 
-`lean-platform` publishes `ashare_qlib_research_v2`. The profile requires PIT
+`platform` publishes `ashare_qlib_research_v2`. The profile requires PIT
 industry, fundamentals schema `2`, and `qlib-staging-v2`. `qlib-platform`
 verifies the immutable manifest, component identities, file hashes and sizes,
 required roles, and exact component schemas before materialization. DataRelease

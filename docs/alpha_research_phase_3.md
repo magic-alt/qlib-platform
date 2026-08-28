@@ -1,3 +1,11 @@
+---
+status: ACTIVE
+owner: research
+applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
+last_verified: 2026-08-28
+program: ashare_alpha_stability_phase3_v1
+---
+
 # Alpha Research Phase 3 — Stability and Regime Diagnosis
 
 Phase 3 changes the research question from factor expansion to temporal alpha stability. Its immutable
