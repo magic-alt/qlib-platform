@@ -38,6 +38,16 @@ def test_accepts_governed_doc_with_existing_link_and_cli(tmp_path: Path):
     assert check_documentation(tmp_path) == []
 
 
+def test_validates_cli_positional_choices(tmp_path: Path):
+    path = _write_active_doc(tmp_path, "& $RepoPython -m tushare_qlib health dependencies")
+
+    assert check_documentation(tmp_path) == []
+
+    path.write_text(path.read_text(encoding="utf-8").replace("dependencies", "unknown"), encoding="utf-8")
+
+    assert "DOC-003" in {item.rule_id for item in check_documentation(tmp_path)}
+
+
 @pytest.mark.parametrize(
     ("body", "rule_id"),
     [
@@ -80,12 +90,7 @@ def test_rejects_direct_historical_link_from_current_entry_point(tmp_path: Path)
     target = tmp_path / "docs" / "history" / "research" / "alpha_research_phase_1.md"
     target.parent.mkdir(parents=True)
     target.write_text(
-        "---\n"
-        "status: HISTORICAL\n"
-        "owner: research\n"
-        "applies_to_commit: test\n"
-        "last_verified: 2026-08-28\n"
-        "---\n",
+        "---\nstatus: HISTORICAL\nowner: research\napplies_to_commit: test\nlast_verified: 2026-08-28\n---\n",
         encoding="utf-8",
     )
     (tmp_path / "README.md").write_text(

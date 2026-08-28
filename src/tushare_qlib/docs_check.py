@@ -59,6 +59,8 @@ def _commands(parser: argparse.ArgumentParser) -> dict[str, set[str]]:
             for child_action in child._actions:
                 if isinstance(child_action, argparse._SubParsersAction):
                     nested.update(child_action.choices)
+                elif not child_action.option_strings and child_action.choices is not None:
+                    nested.update(str(choice) for choice in child_action.choices)
             result[name] = nested
     return result
 
@@ -88,9 +90,7 @@ def _markdown_findings(root: Path, files: list[Path]) -> list[DocumentationFindi
                     )
                 for key in ("owner", "applies_to_commit", "last_verified"):
                     if not metadata.get(key):
-                        findings.append(
-                            DocumentationFinding("DOC-007", "P1", relative, 1, f"missing {key}")
-                        )
+                        findings.append(DocumentationFinding("DOC-007", "P1", relative, 1, f"missing {key}"))
                 try:
                     date.fromisoformat(str(metadata.get("last_verified")))
                 except ValueError:
@@ -252,9 +252,7 @@ def _governance_findings(root: Path, markdown: list[Path]) -> list[Documentation
         )
         if _document_status(text) == "ACTIVE" and execution_manual:
             findings.append(
-                DocumentationFinding(
-                    "ARCH-002", "P0", relative, 1, "execution-plane manual is marked ACTIVE"
-                )
+                DocumentationFinding("ARCH-002", "P0", relative, 1, "execution-plane manual is marked ACTIVE")
             )
     return findings
 
