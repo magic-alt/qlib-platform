@@ -1,49 +1,85 @@
 ---
 status: ACTIVE
 owner: operations
-applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
-last_verified: 2026-08-28
+applies_to_commit: 4f3f4369b6e55186967bc726bb8dd87fff0e5d70
+last_verified: 2026-08-31
 ---
 
 # CLI Reference
 
-Invoke commands as `<repo-python> -m tushare_qlib [--config PROFILE] COMMAND`. The default profile is
-`configs/pipeline.standalone.yaml`.
+Invoke the CLI as:
 
-## Read-only or validation-first commands
+```text
+<repo-python> -m tushare_qlib [--config PROFILE] COMMAND
+```
 
-| Area | Commands |
-| --- | --- |
-| Runtime | `status`, `health live`, `health ready`, `health dependencies`, `runtime-probe` |
-| Release | `release list`, `release verify` |
-| Dataset | `dataset-list`, `dataset-show`, `dataset-resolve`, `dataset-verify` |
-| Model | `model-status` |
-| Operations | `ops-query`, `ops-summary` |
-| Validation | `validate-qrun-contract`, `project-audit`, `research-audit` |
-| Phase 3 read-only | `phase3-portable-verify` |
+The default profile is `configs/pipeline.standalone.yaml`. Prefer the repository-local interpreter and an explicit config whenever a workflow depends on integrated data or a frozen research protocol.
 
-Some validation commands write an explicitly named report. Treat their output path as the authorized
-write target.
+This page documents the operational contract of the most important commands. `--help` remains authoritative for complete parser syntax.
 
-## Research artifact commands
+## Side-effect classes
 
-`feature-store`, `train-select`, `research-run`, `backtest-predictions`, `research-report`,
-`alpha-diagnose`, `regime-diagnose`, `attribution-diagnose`, `explanation-diagnose`,
-`build-target-portfolio`, `research-gate`, `artifact-v2-export` and `lean-register` create or
-register research evidence. Confirm immutable inputs and outputs first.
+| Class | Meaning | Examples |
+| --- | --- | --- |
+| Read-only | does not intentionally publish/modify governed state | `status`, `health ...`, `release list`, `model-status` |
+| Verification-first | reads payloads and may write an explicit verification/report artifact | `release verify`, `dataset-verify`, `project-audit`, `research-audit`, `phase3-portable-verify` |
+| Local state-changing | publishes data/artifacts or changes local registry/deployment/ops state | `dataset-build`, `dataset-promote`, `model-refit`, `model-deploy`, `live-inference`, `daily-signal-run` |
+| External delivery/integration | may send or register immutable artifacts outside this process | `outbox drain`, `outbox worker`, `lean-register` |
 
-Production feedback commands create immutable monitoring evidence:
+A command that writes an explicitly named output is still a write even when its computation is diagnostic.
 
-- `feedback-build-labels` validates label maturity against a pinned trading calendar and writes a
-  `REALIZED_LABEL_SNAPSHOT`;
-- `feedback-evaluate` verifies both parent snapshots, requires complete key coverage and writes a
-  `PREDICTION_EVALUATION_SNAPSHOT` with IC/RankIC/spread metrics.
+## Runtime and health
 
-They do not select, promote, deploy or publish models. Both commands require explicit output paths.
+```powershell
+& $RepoPython -m tushare_qlib status
+& $RepoPython -m tushare_qlib status --json
+& $RepoPython -m tushare_qlib health live
+& $RepoPython -m tushare_qlib health ready
+& $RepoPython -m tushare_qlib health dependencies
+```
 
-## Governed phase commands
+- `health live` checks process responsiveness only.
+- `health ready` checks local readiness under the selected profile.
+- `health dependencies` reports data and optional external dependency state.
+- Platform/TuShare degradation is not automatically a process-liveness failure.
 
-Phase 1 and Phase 2 commands remain for historical verification/replay. Phase 3-D exposes only:
+## DataRelease
+
+```text
+release list
+release verify <REFERENCE> [--mode manifest|sampled|deep] [--sample-size N] [--reuse-receipt] [--workers N]
+release import-qlib --path <QLIB_PROVIDER>
+release build-local [--start DATE --end DATE]
+release build-tushare --start DATE --end DATE
+release promote <REFERENCE> [--alias research-release-current]
+```
+
+`list` and `verify` are inspection/verification commands. Import/build/promote commands publish or move local governed state and require explicit source/date/alias authorization.
+
+`manifest`, `sampled` and `deep` are distinct verification strengths; governed research/promotion/certification should use the level required by its protocol, normally `deep`.
+
+## DatasetVersion
+
+```text
+dataset-list [--name NAME]
+dataset-show <REFERENCE>
+dataset-resolve [REFERENCE]
+dataset-verify <REFERENCE> [--mode manifest|sampled|deep] [--sample-size N] [--reuse-receipt] [--workers N]
+dataset-promote <REFERENCE> [--alias research-current]
+registry-rebuild [--root DATA_ROOT]
+```
+
+`--dataset-ref` consumers expect a DatasetVersion ID/alias, not a DataRelease ID. `dataset-verify` validates DatasetVersion identity/partitions; it does not replace independent `release verify` when the workflow requires upstream release verification.
+
+## Research and diagnostics
+
+Core research artifact commands include:
+
+`feature-store`, `train-select`, `research-run`, `backtest-predictions`, `research-report`, `alpha-diagnose`, `regime-diagnose`, `attribution-diagnose`, `explanation-diagnose`, `build-target-portfolio`, `research-gate`, `artifact-v2-export` and `lean-register`.
+
+These commands create, register or deliver evidence. Confirm immutable inputs and explicit outputs before execution.
+
+Phase 3-D exposes:
 
 - `phase3-validate`;
 - `phase3-plan`;
@@ -51,20 +87,86 @@ Phase 1 and Phase 2 commands remain for historical verification/replay. Phase 3-
 - `phase3-portable-export`;
 - `phase3-portable-verify`.
 
-`phase3-diagnose` and `phase3-portable-export` are state-changing. Phase 3-D does not expose a
-confirmation, candidate, selection, holdout-open or publishing command.
+`phase3-validate`, `phase3-plan`, `phase3-diagnose` and `phase3-portable-export` write explicitly named evidence. `phase3-portable-verify` is the cross-machine read-only verifier. Phase 3-D exposes no candidate-selection, final-holdout-open or publishing command.
 
-## Operational state-changing commands
+## Local model lifecycle
 
-- ingestion/build: `backfill`, `backfill-extended`, `sync-*`, `daily-sync`, `curate*`,
-  `stage-*`, `dump-*`, `dataset-build`, `migrate-qlib-layout --apply`, `registry-rebuild`;
-- release/aliases: `release import-qlib`, `release build-local`, `release build-tushare`,
-  `release promote`, `dataset-promote`;
+```text
+model-status
+model-refit --research-run <PROMOTED_WALK_FORWARD_RUN> --as-of <YYYY-MM-DD>
+model-deploy <DEPLOYMENT_ID> [--device cpu]
+model-rollback --to <DEPLOYMENT_ID> [--device cpu]
+```
+
+`model-refit` consumes the DatasetVersion pinned by the selected configuration and a promoted, complete-lineage walk-forward research release. It does not accept a `--dataset-ref` option itself.
+
+`model-deploy` and `model-rollback` change only the local ModelRegistry selection. They do not modify `platform` production state.
+
+## Live inference and daily signal
+
+```text
+live-inference --as-of <YYYY-MM-DD> [--deployment-id ID] [--dataset-ref VERSION_OR_ALIAS]
+               [--require-daily-sync] [--supersede]
+               [--compare-research PATH] [--parity-output PATH]
+
+daily-signal-run --as-of <YYYY-MM-DD> [--no-notify] [--skip-sync] [--supersede]
+```
+
+`live-inference` writes a local immutable live-signal directory containing score, TopK, health and manifest artifacts and registers signal state. It is not read-only.
+
+`daily-signal-run` uses the configured/pinned dataset and local deployed model. By default it runs `daily-sync`, then live inference, then optionally sends a Feishu notification. It writes local run/signal state. It does **not** automatically perform Artifact Contract v2 export or drain the artifact outbox.
+
+`--dataset-uri` exists as a lower-level compatibility override for `live-inference`; governed workflows should prefer an immutable DatasetVersion through `--dataset-ref`.
+
+## Production feedback
+
+```text
+feedback-build-labels \
+  --labels <PARQUET> --calendar <CALENDAR_FILE> --observed-through <DATE> \
+  --data-release-id <ID> --label-spec-id <ID> \
+  --horizon-days <N> --signal-lag-days <N> \
+  --source-artifact-id <ID> --output <OUTPUT>
+
+feedback-evaluate \
+  --predictions <PREDICTION_SNAPSHOT> \
+  --realized-labels <REALIZED_LABEL_SNAPSHOT> \
+  --output <OUTPUT> [--topk 50] [--min-cross-section 20] [--rolling-window 20]
+```
+
+Both commands create immutable monitoring evidence. `feedback-evaluate` exits non-zero when the generated evaluation decision is not `PASS`. Neither command selects, promotes, deploys or publishes a model.
+
+See [Production Feedback](production_feedback.md).
+
+## Artifact export and outbox
+
+```text
+artifact-v2-export <RESEARCH_MANIFEST> --output-dir <DIR> --git-commit <SHA> --container-digest <DIGEST> [--data-release-id ID]
+outbox drain [--endpoint URL] [--timeout-seconds N]
+outbox worker [--endpoint URL] [--timeout-seconds N] [--poll-seconds N] [--max-poll-seconds N] [--once]
+```
+
+`artifact-v2-export` writes a bundle and enqueues it locally. Network delivery is a separate outbox operation. `PLATFORM_ARTIFACT_ENDPOINT` may supply the endpoint when `--endpoint` is omitted.
+
+## Operations state
+
+The exact syntax is:
+
+```text
+ops-query --entity runs|deliveries [--business-date YYYY-MM-DD] [--status STATUS]
+ops-summary --business-date YYYY-MM-DD [--output PATH]
+ops-retry-delivery <IDEMPOTENCY_KEY>
+ops-ack --entity run|delivery --id <ID> --operator <NAME> --reason <TEXT>
+```
+
+`ops-query` and `ops-summary` are read/query surfaces, except that `ops-summary --output` writes the requested report file. `ops-retry-delivery` changes local delivery recovery state. `ops-ack` records an explicit operator acknowledgement and must not be used as a substitute for repairing the underlying failure.
+
+## Other state-changing commands
+
+- ingestion/build: `backfill`, `backfill-extended`, `sync-*`, `daily-sync`, `curate*`, `stage-*`, `dump-*`, `dataset-build`, `migrate-qlib-layout --apply`, `registry-rebuild`;
+- release/aliases: `release import-qlib`, `release build-local`, `release build-tushare`, `release promote`, `dataset-promote`;
 - auth/bootstrap: `bootstrap`, `auth bootstrap-admin`, `auth user-create`;
-- model/inference: `model-refit`, `model-deploy`, `model-rollback`, `live-inference`,
-  `daily-signal-run`;
-- delivery: `outbox drain`, `outbox worker`, `ops-retry-delivery`, `ops-ack`.
+- model/inference: `model-refit`, `model-deploy`, `model-rollback`, `live-inference`, `daily-signal-run`;
+- delivery/ops: `outbox drain`, `outbox worker`, `ops-retry-delivery`, `ops-ack`;
 - feedback artifacts: `feedback-build-labels`, `feedback-evaluate`.
 
-These commands require explicit authorization of date windows, references, deployment IDs, endpoints and
-outputs as applicable.
+Authorize the exact date windows, references, aliases, deployment IDs, endpoints and output paths applicable to the command.
