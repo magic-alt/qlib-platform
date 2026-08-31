@@ -724,7 +724,12 @@ class DailySyncService:
                         counters = value.get("counters", {})
                         if isinstance(counters, dict):
                             extended_changed += int(counters.get("changed", 0) or 0)
-            published = bool(raw_changes or dividend["changed_symbol_count"] or extended_changed or pit_changed)
+            published = bool(
+                raw_changes
+                or dividend["changed_symbol_count"]
+                or extended_changed
+                or pit_changed
+            )
             if qlib_result is not None:
                 published = published or qlib_result.get("mode") != "none"
             payload.update(
