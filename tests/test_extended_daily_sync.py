@@ -41,14 +41,17 @@ def _settings(tmp_path: Path) -> Settings:
     return Settings.load(config, create_dirs=True)
 
 
+def _open_dates(_start: str, _end: str) -> list[str]:
+    return ["20260812", "20260813", "20260814"]
+
+
 def test_daily_extended_gap_fills_market_and_refreshes_recent_financials(tmp_path: Path):
     settings = _settings(tmp_path)
     client = _Client()
-    open_dates = lambda _start, _end: ["20260812", "20260813", "20260814"]
     backfill = FastExtendedDataBackfill(
         settings,
         client=client,
-        open_dates=open_dates,
+        open_dates=_open_dates,
         max_workers=1,
     )
     store = PartitionStore(settings.paths.raw / "extended")
