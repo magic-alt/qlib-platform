@@ -16,7 +16,6 @@ contract.
 ```text
 data/
 ├── bronze/tushare/current/       # replaceable materialized view used by normalization
-├── bronze/tushare/revisions/     # immutable content-addressed source partitions
 ├── bronze/versions/              # immutable ingestion snapshots
 ├── silver/daily/current/         # normalized raw-price facts
 ├── silver/reference/current/     # calendars and security master
@@ -28,9 +27,11 @@ data/
 └── registry/qlib.sqlite          # rebuildable registry index
 ```
 
-`current` directories are working views, not auditable versions. Each successful dataset publication
-freezes Bronze, Silver, and Gold snapshots and records their parent relationships before publishing a
-Qlib version. Research resolves `research-current` once at process entry and thereafter uses the resolved
+`bronze/tushare/current` is the single complete local raw-data view; daily updates atomically replace
+changed partitions there and do not create a parallel `revisions` dataset. `current` directories are
+working views, not auditable versions. Each successful dataset publication freezes content-addressed
+Bronze, Silver, and Gold snapshots and records their parent relationships before publishing a Qlib
+version. Research resolves `research-current` once at process entry and thereafter uses the resolved
 immutable path.
 
 The v3 manifest derives `version_id` from sorted file checksums, the semantic contract, and declared

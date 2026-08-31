@@ -9,10 +9,11 @@ import pytest
 
 from tushare_qlib.client import FetchResult
 from tushare_qlib.corporate_actions import CorporateActionStore
+from tushare_qlib import daily_sync, qlib_export
 from tushare_qlib.daily_sync import DailySyncService, SingleInstanceLock
 from tushare_qlib.extract import Extractor
 from tushare_qlib.kline_export import build_kline
-from tushare_qlib import qlib_export
+from tushare_qlib.quality import QualityResult, make_report
 from tushare_qlib.settings import Paths, Settings
 from tushare_qlib.store import PartitionStore
 
@@ -133,6 +134,32 @@ def test_open_dates_orders_descending_provider_calendar(tmp_path: Path):
     assert dates == ["20260807", "20260810"]
 
 
+def test_market_dates_backfills_recent_raw_gap_beyond_lookback(tmp_path: Path):
+    settings = _settings(tmp_path)
+    extractor = _Extractor()
+    dates = [
+        "20260803",
+        "20260804",
+        "20260805",
+        "20260806",
+        "20260807",
+        "20260810",
+        "20260811",
+    ]
+    extractor.open_dates = lambda start, end: dates
+    store = PartitionStore(settings.paths.raw)
+    for date in ("20260803", "20260804", "20260807", "20260810", "20260811"):
+        store.write("daily", date, _daily(date))
+    service = DailySyncService(settings, extractor=extractor)
+
+    assert service._market_dates(pd.Timestamp("2026-08-11")) == [
+        "20260805",
+        "20260806",
+        "20260810",
+        "20260811",
+    ]
+
+
 def test_dividend_failure_does_not_promote_market_data(tmp_path: Path):
     settings = _settings(tmp_path)
     extractor = _Extractor()
@@ -147,6 +174,32 @@ def test_dividend_failure_does_not_promote_market_data(tmp_path: Path):
         service.run(as_of="20260810")
 
     assert not PartitionStore(settings.paths.raw).exists("daily", "20260810")
+
+
+def test_raw_integrity_failure_keeps_publish_pending_and_blocks_qlib(tmp_path: Path, monkeypatch):
+    settings = _settings(tmp_path)
+    service = DailySyncService(settings, extractor=_Extractor())
+    monkeypatch.setattr(
+        daily_sync,
+        "validate_raw_store",
+        lambda *args, **kwargs: make_report(
+            "raw_store:current",
+            [QualityResult("daily_calendar_coverage", False, "missing=['20260807']")],
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "_refresh_metadata",
+        lambda dates: pytest.fail("metadata refresh must not run after integrity failure"),
+    )
+
+    with pytest.raises(AssertionError, match="daily_calendar_coverage"):
+        service.run(as_of="20260810")
+
+    pending_path = settings.paths.state / "daily_sync" / "pending_publish.json"
+    pending = json.loads(pending_path.read_text(encoding="utf-8"))
+    assert pending["status"] == "pending"
+    assert pending["changed_trade_dates"] == ["20260807", "20260810"]
 
 
 def test_factor_jump_detection_and_single_instance_lock(tmp_path: Path):
@@ -165,7 +218,36 @@ def test_factor_jump_detection_and_single_instance_lock(tmp_path: Path):
                 pass
 
 
-def test_dividend_upsert_versions_changed_record(tmp_path: Path):
+def test_factor_history_reconcile_bootstraps_missing_partitions(tmp_path: Path):
+    settings = _settings(tmp_path)
+    extractor = _Extractor()
+    history = pd.concat(
+        [_factor("20260807", 1.0), _factor("20260810", 1.1)],
+        ignore_index=True,
+    )
+
+    def factor_history(endpoint, **kwargs):
+        assert endpoint == "adj_factor"
+        assert kwargs["ts_code"] == "000001.SZ"
+        return history.copy()
+
+    extractor.client.call = factor_history
+    service = DailySyncService(settings, extractor=extractor)
+    staged: dict[tuple[str, str], pd.DataFrame] = {}
+    metadata: dict[tuple[str, str], dict[str, object]] = {}
+
+    service._reconcile_factor_histories({"000001.SZ"}, staged, metadata, "20260810")
+
+    assert staged[("adj_factor", "20260807")].to_dict("records") == _factor("20260807", 1.0).to_dict(
+        "records"
+    )
+    assert staged[("adj_factor", "20260810")].to_dict("records") == _factor("20260810", 1.1).to_dict(
+        "records"
+    )
+    assert metadata[("adj_factor", "20260807")]["sync_mode"] == "factor_history_reconcile"
+
+
+def test_dividend_upsert_replaces_changed_record_in_current(tmp_path: Path):
     settings = _settings(tmp_path)
     store = CorporateActionStore(settings)
     first = pd.DataFrame(
@@ -182,8 +264,7 @@ def test_dividend_upsert_versions_changed_record(tmp_path: Path):
     revised = first.copy()
     revised["cash_div"] = 0.2
     assert store.upsert(revised)["changed_symbol_count"] == 1
-    archives = list((settings.paths.raw_revisions / "dividend" / "ts_code=000001.SZ").glob("*/data.parquet"))
-    assert len(archives) == 1
+    assert not (settings.paths.bronze / "revisions").exists()
     assert float(store.read("000001.SZ")["cash_div"].iloc[0]) == 0.2
 
 
@@ -227,3 +308,16 @@ def test_full_publish_keeps_old_dataset_when_fingerprint_fails(tmp_path: Path, m
     assert sentinel.read_text(encoding="utf-8") == "old"
     assert not list(target.parent.glob(f".{target.name}.building.*"))
     assert not list(target.parent.glob(f"{target.name}.backup.*"))
+
+
+def test_sync_calendar_rejects_changed_date_gap(tmp_path: Path):
+    candidate = tmp_path / "candidate"
+    calendar = candidate / "calendars" / "day.txt"
+    calendar.parent.mkdir(parents=True)
+    calendar.write_text("2026-08-14\n2026-08-24\n2026-08-25\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="2026-08-17"):
+        qlib_export._validate_sync_calendar(
+            candidate,
+            {"changed_trade_dates": ["20260817", "20260824"]},
+        )

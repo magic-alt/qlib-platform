@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -63,7 +62,6 @@ class CorporateActionStore:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.root = settings.paths.raw / "dividend"
-        self.revision_root = settings.paths.raw_revisions / "dividend"
 
     def data_path(self, ts_code: str) -> Path:
         return self.root / f"ts_code={ts_code.upper()}" / "data.parquet"
@@ -93,15 +91,6 @@ class CorporateActionStore:
                 continue
             target = self.data_path(code)
             manifest = self.manifest_path(code)
-            if target.is_file():
-                archive = self.revision_root / f"ts_code={code}" / current_hash
-                archive.mkdir(parents=True, exist_ok=True)
-                archived_data = archive / "data.parquet"
-                archived_manifest = archive / "manifest.json"
-                if not archived_data.is_file():
-                    shutil.copy2(target, archived_data)
-                if manifest.is_file() and not archived_manifest.is_file():
-                    shutil.copy2(manifest, archived_manifest)
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_suffix(".parquet.tmp")
             merged.to_parquet(temporary, index=False)

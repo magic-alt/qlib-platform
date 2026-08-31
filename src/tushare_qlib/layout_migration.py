@@ -188,7 +188,6 @@ class LayoutMigrator:
     def _mappings(self) -> list[tuple[Path, Path]]:
         return [
             (self.root / "raw", self.settings.paths.raw),
-            (self.root / "raw_revisions", self.settings.paths.raw_revisions),
             (self.root / "curated" / "daily", self.settings.paths.curated),
             (self.root / "metadata", self.settings.paths.metadata),
             (self.root / "staging" / "full", self.settings.paths.staging_full),

@@ -118,6 +118,7 @@ data_sync:
   # TuShare daily_basic normally completes by 17:00.
   ready_after: "17:30"
   market_lookback_trading_days: 5
+  market_catchup_trading_days: 60
   corporate_action_lookback_calendar_days: 5
 
 production:
