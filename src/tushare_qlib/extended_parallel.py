@@ -10,7 +10,12 @@ import pandas as pd
 from loguru import logger
 
 from .client import FetchResult
-from .extended_data import EXTENDED_ENDPOINTS, EXTENDED_GROUPS, ExtendedDataBackfill, ExtendedEndpoint
+from .extended_data import (
+    EXTENDED_ENDPOINTS,
+    EXTENDED_GROUPS,
+    ExtendedDataBackfill,
+    ExtendedEndpoint,
+)
 from .store import frame_content_sha256
 
 
@@ -34,7 +39,9 @@ def _changed_symbol_set(old: pd.DataFrame, new: pd.DataFrame) -> set[str]:
     old_groups = _fingerprints(old)
     new_groups = _fingerprints(new)
     return {
-        code for code in old_groups.keys() | new_groups.keys() if old_groups.get(code) != new_groups.get(code)
+        code
+        for code in old_groups.keys() | new_groups.keys()
+        if old_groups.get(code) != new_groups.get(code)
     }
 
 
@@ -290,10 +297,7 @@ class FastExtendedDataBackfill(ExtendedDataBackfill):
             raise ValueError("financial_lookback_calendar_days must be positive")
         end = pd.Timestamp(end_date).normalize()
         configured_start = pd.Timestamp(str(self.settings.data["start_date"])).normalize()
-        financial_start = max(
-            configured_start,
-            end - pd.Timedelta(days=financial_lookback_calendar_days),
-        )
+        financial_start = end - pd.Timedelta(days=financial_lookback_calendar_days)
         market_reference = self.backfill(
             configured_start.strftime("%Y%m%d"),
             end.strftime("%Y%m%d"),
