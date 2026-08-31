@@ -85,7 +85,7 @@ def freeze_pipeline_layers(
         settings,
         layer="bronze",
         sources=(("tushare", settings.paths.raw),),
-        semantic_contract={"source": "tushare", "immutability": "content_addressed_revisions"},
+        semantic_contract={"source": "tushare", "immutability": "content_addressed_snapshot"},
     )
     silver = freeze_layer(
         settings,

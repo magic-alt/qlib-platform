@@ -15,7 +15,7 @@ import pandas as pd
 from .corporate_actions import CorporateActionStore
 from .extract import Extractor
 from .file_lock import FileLock
-from .quality import assert_quality, validate_raw_day, write_report
+from .quality import assert_quality, validate_raw_day, validate_raw_store, write_report
 from .settings import Settings
 from .store import PartitionStore, frame_content_sha256
 from .symbols import ts_to_qlib
@@ -35,6 +35,7 @@ class DailySyncConfig:
     timezone_name: str = "Asia/Shanghai"
     ready_after: str = "17:30"
     market_lookback_trading_days: int = 5
+    market_catchup_trading_days: int = 60
     corporate_action_lookback_calendar_days: int = 5
 
     @classmethod
@@ -47,6 +48,9 @@ class DailySyncConfig:
             market_lookback_trading_days=int(
                 data.get("market_lookback_trading_days", cls.market_lookback_trading_days)
             ),
+            market_catchup_trading_days=int(
+                data.get("market_catchup_trading_days", cls.market_catchup_trading_days)
+            ),
             corporate_action_lookback_calendar_days=int(
                 data.get(
                     "corporate_action_lookback_calendar_days",
@@ -56,6 +60,10 @@ class DailySyncConfig:
         )
         if result.market_lookback_trading_days < 1:
             raise ValueError("data_sync.market_lookback_trading_days must be positive")
+        if result.market_catchup_trading_days < result.market_lookback_trading_days:
+            raise ValueError(
+                "data_sync.market_catchup_trading_days must be at least market_lookback_trading_days"
+            )
         if result.corporate_action_lookback_calendar_days < 1:
             raise ValueError("data_sync.corporate_action_lookback_calendar_days must be positive")
         datetime.strptime(result.ready_after, "%H:%M")
@@ -112,14 +120,21 @@ class DailySyncService:
         day = pd.Timestamp(now.date())
         return day if now.time() >= cutoff else day - pd.Timedelta(days=1)
 
-    def _market_dates(self, eligible: pd.Timestamp) -> list[str]:
+    def _market_date_plan(self, eligible: pd.Timestamp) -> tuple[list[str], list[str]]:
         all_dates = self.extractor.open_dates(
             str(self.settings.data["start_date"]),
             eligible.strftime("%Y%m%d"),
         )
         if not all_dates:
             raise ValueError(f"no open trading date on or before {eligible.date()}")
-        return all_dates[-self.config.market_lookback_trading_days :]
+        lookback = all_dates[-self.config.market_lookback_trading_days :]
+        catchup_window = all_dates[-self.config.market_catchup_trading_days :]
+        missing = [date for date in catchup_window if not self.store.exists("daily", date)]
+        selected = set(lookback) | set(missing)
+        return all_dates, [date for date in all_dates if date in selected]
+
+    def _market_dates(self, eligible: pd.Timestamp) -> list[str]:
+        return self._market_date_plan(eligible)[1]
 
     def _fetch_market_frames(
         self, dates: list[str]
@@ -205,8 +220,14 @@ class DailySyncService:
                 current = staged.get(key)
                 if current is None:
                     current = self.store.read(*key)
+                if current.empty:
+                    retained = current
+                elif "ts_code" not in current:
+                    raise ValueError(f"stored adj_factor partition is missing ts_code: {trade_date}")
+                else:
+                    retained = current.loc[current["ts_code"].astype(str).str.upper() != symbol]
                 merged = pd.concat(
-                    [current.loc[current["ts_code"].astype(str).str.upper() != symbol], additions],
+                    [retained, additions],
                     ignore_index=True,
                 )
                 staged[key] = merged.sort_values("ts_code", kind="stable").reset_index(drop=True)
@@ -254,7 +275,6 @@ class DailySyncService:
                     trade_date,
                     frame,
                     metadata[(dataset, trade_date)],
-                    revision_root=self.settings.paths.raw_revisions,
                 )
         return sorted(changed_dates), revised_symbols, changes
 
@@ -439,7 +459,7 @@ class DailySyncService:
         run_registry.start_pipeline_run(run_id, "daily_sync", manifest_path=manifest_path)
         try:
             eligible = self._eligible_date(as_of)
-            dates = self._market_dates(eligible)
+            expected_dates, dates = self._market_date_plan(eligible)
             staged, metadata = self._fetch_market_frames(dates)
             factor_events = self._factor_event_symbols(dates, staged)
             self._reconcile_factor_histories(factor_events, staged, metadata, dates[-1])
@@ -455,6 +475,7 @@ class DailySyncService:
             )
             metadata_result: dict[str, Any] | None = None
             qlib_result: dict[str, Any] | None = None
+            raw_integrity: dict[str, object] | None = None
             if not check_only:
                 pending_path = self.settings.paths.state / "daily_sync" / "pending_publish.json"
                 if pending_path.is_file():
@@ -473,6 +494,17 @@ class DailySyncService:
                     },
                     pending_path,
                 )
+                integrity_report = validate_raw_store(
+                    self.store,
+                    expected_dates=expected_dates,
+                    deep_dates=sorted(set(dates) | set(changed_dates)),
+                )
+                write_report(
+                    integrity_report,
+                    self.settings.paths.quality / "raw_dataset" / f"{run_id}.json",
+                )
+                raw_integrity = integrity_report.to_dict()
+                assert_quality(integrity_report)
                 metadata_result = self._refresh_metadata(dates)
                 sync_context: dict[str, object] = {
                     "run_id": run_id,
@@ -508,6 +540,7 @@ class DailySyncService:
                     "checked_trade_dates": dates,
                     "factor_event_symbols": sorted(factor_events),
                     "raw_changes": raw_changes,
+                    "raw_integrity": raw_integrity,
                     "changed_trade_dates": changed_dates,
                     "dividend": dividend,
                     "metadata": metadata_result,

@@ -114,8 +114,8 @@ class PartitionStore:
                 break
             time.sleep(0.1)
         else:
-            # Never truncate the current file in place: it may be hard-linked
-            # to an immutable Bronze revision.
+            # Never truncate the current file in place: published Bronze
+            # snapshots may still hard-link to the previous inode.
             fallback = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
             df.to_parquet(fallback, index=False)
             _atomic_replace(fallback, target)
@@ -133,9 +133,12 @@ class PartitionStore:
             }
             if metadata:
                 fallback_meta.update(metadata)
-            fallback_meta.setdefault("content_sha256", fallback_meta["sha256"])
-            fallback_manifest = self._write_manifest(dataset, trade_date, fallback_meta)
-            self._persist_immutable_revision(dataset, trade_date, target, fallback_manifest, fallback_meta)
+            fallback_meta.setdefault(
+                "content_sha256",
+                frame_content_sha256(df, key_columns=("ts_code", "trade_date")),
+            )
+            fallback_meta.setdefault("content_hash_kind", "logical_frame_v1")
+            self._write_manifest(dataset, trade_date, fallback_meta)
             return target
         _atomic_replace(tmp, target)
         actual_status = status or ("empty" if df.empty else "success")
@@ -152,9 +155,12 @@ class PartitionStore:
         }
         if metadata:
             meta.update(metadata)
-        meta.setdefault("content_sha256", meta["sha256"])
-        manifest_path = self._write_manifest(dataset, trade_date, meta)
-        self._persist_immutable_revision(dataset, trade_date, target, manifest_path, meta)
+        meta.setdefault(
+            "content_sha256",
+            frame_content_sha256(df, key_columns=("ts_code", "trade_date")),
+        )
+        meta.setdefault("content_hash_kind", "logical_frame_v1")
+        self._write_manifest(dataset, trade_date, meta)
         return target
 
     def write_if_changed(
@@ -165,32 +171,23 @@ class PartitionStore:
         metadata: dict[str, Any] | None = None,
         *,
         key_columns: Iterable[str] = ("ts_code", "trade_date"),
-        revision_root: Path | None = None,
         status: str | None = None,
     ) -> tuple[Path, bool, str]:
-        """Promote a logical partition and content-address the prior revision."""
+        """Atomically replace the current logical partition when content changed."""
 
         logical_hash = frame_content_sha256(df, key_columns=key_columns)
         current_manifest = self.read_manifest(dataset, trade_date)
         current_hash = str(current_manifest.get("content_sha256", ""))
-        if not current_hash and self.exists(dataset, trade_date):
+        if self.exists(dataset, trade_date) and (
+            not current_hash or current_manifest.get("content_hash_kind") != "logical_frame_v1"
+        ):
             current_hash = frame_content_sha256(self.read(dataset, trade_date), key_columns=key_columns)
         if current_hash == logical_hash:
             return self.data_path(dataset, trade_date), False, logical_hash
 
-        if revision_root is not None and self.exists(dataset, trade_date):
-            archive = Path(revision_root) / dataset / f"trade_date={trade_date}" / current_hash
-            archive.mkdir(parents=True, exist_ok=True)
-            archived_data = archive / "data.parquet"
-            archived_manifest = archive / "manifest.json"
-            if not archived_data.exists():
-                shutil.copy2(self.data_path(dataset, trade_date), archived_data)
-            manifest_path = self.manifest_path(dataset, trade_date)
-            if manifest_path.exists() and not archived_manifest.exists():
-                shutil.copy2(manifest_path, archived_manifest)
-
         promoted_metadata = dict(metadata or {})
         promoted_metadata["content_sha256"] = logical_hash
+        promoted_metadata["content_hash_kind"] = "logical_frame_v1"
         return (
             self.write(dataset, trade_date, df, promoted_metadata, status=status),
             True,
@@ -229,31 +226,6 @@ class PartitionStore:
         tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         _atomic_replace(tmp, path)
         return path
-
-    def _persist_immutable_revision(
-        self,
-        dataset: str,
-        trade_date: str,
-        data_path: Path,
-        manifest_path: Path,
-        metadata: dict[str, Any],
-    ) -> None:
-        if self.root.name != "current" or self.root.parent.name != "tushare":
-            return
-        revision_hash = str(metadata.get("content_sha256") or metadata.get("sha256") or "")
-        if not revision_hash:
-            return
-        revision = self.root.parent / "revisions" / dataset / f"trade_date={trade_date}" / revision_hash
-        revision.mkdir(parents=True, exist_ok=True)
-        immutable_data = revision / "data.parquet"
-        immutable_manifest = revision / "manifest.json"
-        if not immutable_data.exists():
-            try:
-                os.link(data_path, immutable_data)
-            except OSError:
-                shutil.copy2(data_path, immutable_data)
-        if not immutable_manifest.exists():
-            shutil.copy2(manifest_path, immutable_manifest)
 
     def read(self, dataset: str, trade_date: str) -> pd.DataFrame:
         path = self.data_path(dataset, trade_date)

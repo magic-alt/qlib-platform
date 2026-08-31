@@ -63,7 +63,6 @@ def _load_config(path: Path, seen: frozenset[Path] = frozenset()) -> dict[str, A
 class Paths:
     root: Path
     raw: Path
-    raw_revisions: Path
     curated: Path
     staging_full: Path
     staging_update: Path
@@ -86,7 +85,6 @@ class Paths:
         return cls(
             root=root,
             raw=root / "bronze" / "tushare" / "current",
-            raw_revisions=root / "bronze" / "tushare" / "revisions",
             curated=root / "silver" / "daily" / "current",
             staging_full=root / "gold" / "qlib_staging" / "full",
             staging_update=root / "gold" / "qlib_staging" / "update",

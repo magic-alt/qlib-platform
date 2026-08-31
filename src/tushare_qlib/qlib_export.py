@@ -236,6 +236,7 @@ def _publish_candidate(
     parent: ResolvedDataset | None = None,
     promote_alias: bool = True,
 ) -> Path:
+    _validate_sync_calendar(candidate, sync_context)
     _deduplicate_unchanged(parent, candidate)
     manifest_path = write_fingerprint(
         settings,
@@ -273,6 +274,37 @@ def _publish_candidate(
         "Published immutable Qlib dataset: alias={}, version={}", settings.qlib_dataset_ref, version_id
     )
     return final
+
+
+def _validate_sync_calendar(
+    candidate: Path,
+    sync_context: dict[str, object] | None,
+) -> None:
+    if not isinstance(sync_context, dict):
+        return
+    raw_changed = sync_context.get("changed_trade_dates", [])
+    changed = raw_changed if isinstance(raw_changed, list) else []
+    if not changed:
+        return
+    calendar_path = candidate / "calendars" / "day.txt"
+    if not calendar_path.is_file():
+        raise FileNotFoundError(f"Qlib candidate calendar is missing: {calendar_path}")
+    calendar = [
+        line.strip() for line in calendar_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    if not calendar:
+        raise ValueError("Qlib candidate calendar is empty")
+    first = datetime.strptime(calendar[0], "%Y-%m-%d").date()
+    last = datetime.strptime(calendar[-1], "%Y-%m-%d").date()
+    available = set(calendar)
+    missing: list[str] = []
+    for raw in changed:
+        parsed = datetime.strptime(str(raw).replace("-", ""), "%Y%m%d").date()
+        normalized = parsed.isoformat()
+        if first <= parsed <= last and normalized not in available:
+            missing.append(normalized)
+    if missing:
+        raise ValueError(f"Qlib candidate calendar omits changed trade dates: {missing}")
 
 
 def dump_full(

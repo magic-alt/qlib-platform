@@ -11,7 +11,9 @@ last_verified: 2026-08-28
 
 ## 当前数据平台口径
 
-- `data/bronze/tushare/current/` 是用于处理的可替换 working view；变更的原始分区会保留在 `data/bronze/tushare/revisions/`。
+- `data/bronze/tushare/current/` 是完整且唯一的本地 raw working view；变更分区会在此原子替换，
+  不再生成平行的 `revisions/` 数据集。可复现性由发布时冻结的 `data/bronze/versions/` 和
+  immutable DataRelease 保证。
 - 每次成功发布都会冻结 Bronze、Silver、Gold 快照，并把父版本关系写入 Registry，随后发布不可变的 `data/qlib/versions/<version_id>/`。
 - `research-current` 只能指向已发布版本。daily-sync 失败时不会替换该 alias；失败前已落盘的变更由 `data/state/daily_sync/pending_publish.json` 记录以便下次恢复。
 - 股票主数据和交易日历等元数据 working view 以原子替换写入，因此后续同步不会改写已发布版本硬链接的快照。
@@ -38,7 +40,14 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 & $RepoPython -m tushare_qlib dataset-resolve research-current
 ```
 
-每日同步会检查最近交易日、补齐公司行为和因子历史、刷新参考元数据，并按需要创建新的 immutable Qlib 版本。追加交易日和历史修订都通过 copy-on-write 候选目录发布；不要把 `curate-day`、`stage-update` 或 `dump-update` 当作正常日常入口。
+每日同步会检查最近交易日，并在最近 60 个交易日内自动补抓缺失的 raw daily 分区；停跑超过该窗口时，
+先使用显式 `backfill --start YYYYMMDD --end YYYYMMDD` 补齐，再运行 `daily-sync`。它还会补齐公司行为和
+因子历史、刷新参考元数据，并按需要创建新的 immutable Qlib 版本。发布前会按完整交易日历验证
+`daily`、`adj_factor`、`daily_basic` 在 raw `current` 中无缺口，并对本次涉及分区深检 manifest、文件
+SHA-256、行列数、必需字段、唯一键和分区日期；失败会保留 `pending_publish.json` 并 fail closed。
+同时会验证本次 changed trade dates 全部进入候选 Qlib 日历；存在中间缺口时不会切换
+`research-current`。追加交易日和历史修订都通过 copy-on-write 候选目录发布；不要把 `curate-day`、
+`stage-update` 或 `dump-update` 当作正常日常入口。
 
 ## 注册 Windows 任务
 
