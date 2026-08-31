@@ -1,26 +1,24 @@
 ---
 status: ACTIVE
 owner: research
-applies_to_commit: 8692afefe1f6cc82ab1f276fca788888f9f30f3e
-last_verified: 2026-08-28
+applies_to_commit: 4f3f4369b6e55186967bc726bb8dd87fff0e5d70
+last_verified: 2026-08-31
 ---
 
-# Portfolio V2 — Rank Buffer execution layer
+# Portfolio V2 — Rank Buffer research-backtest policy
 
-The 2×2 TopkDropout sweep (`Hold × Drop`) is closed. Its core finding is that
-`Hold=1` and `Drop=5` were not independent alpha sources but two ways to solve
-the same problem: **portfolio refresh speed**. Portfolio V2 therefore stops
-parameter-hunting `TopkDropout` and wires the existing-but-dangling
-`RankBufferPolicy` into the formal Qlib backtest, audit, lineage and gate chain.
+The 2×2 TopkDropout sweep (`Hold × Drop`) is closed. Its core finding is that `Hold=1` and `Drop=5` were not independent alpha sources but two ways to solve the same problem: **portfolio refresh speed**. Portfolio V2 therefore stops parameter-hunting `TopkDropout` and wires the existing `RankBufferPolicy` into the formal Qlib research-backtest, audit, lineage and gate chain.
+
+> **Terminology:** TopkDropout and RankBuffer run inside Qlib's simulated exchange. They are research-backtest strategy policies, not the repository's Execution Plane and not broker/QMT execution policies. Some manifest fields retain the historical namespace `execution.strategyPolicy`; that field name does not transfer execution ownership.
 
 ## Fixed benchmark lines
 
-| Role                          | Strategy          | Policy id          |
-| ----------------------------- | ----------------- | ------------------ |
-| Sticky baseline               | Top10 / Drop3 / H5 | `topk_dropout_v1`  |
-| Fast efficient baseline       | Top10 / Drop3 / H1 | `topk_dropout_v1`  |
-| Fast aggressive ceiling       | Top10 / Drop5 / H1 | `topk_dropout_v1`  |
-| New candidate                 | RB10/20/R3/H1     | `rank_buffer_v1`   |
+| Role | Strategy | Policy id |
+| --- | --- | --- |
+| Sticky baseline | Top10 / Drop3 / H5 | `topk_dropout_v1` |
+| Fast efficient baseline | Top10 / Drop3 / H1 | `topk_dropout_v1` |
+| Fast aggressive ceiling | Top10 / Drop5 / H1 | `topk_dropout_v1` |
+| New candidate | RB10/20/R3/H1 | `rank_buffer_v1` |
 
 C is a low-turnover control, not a primary candidate.
 
@@ -29,86 +27,63 @@ C is a low-turnover control, not a primary candidate.
 `configs/portfolio/rank_buffer_alpha158_v1.yaml`
 
 ```text
-target_size        10
-entry_rank         10
-exit_rank          20
-max_replacements    3
-hold_thresh         1
-risk_degree         0.95
+target_size         10
+entry_rank          10
+exit_rank           20
+max_replacements     3
+hold_thresh          1
+risk_degree          0.95
 ```
 
-The Phase 2 research asset `configs/portfolio/rank_buffer_phase2_v1.yaml` is
-**not modified**; this new file is a separate lineage.
+The Phase 2 research asset `configs/portfolio/rank_buffer_phase2_v1.yaml` is not modified; this file is a separate lineage.
 
-## What was wired up
+## What is wired up
 
-- `RankBufferPolicy.target_size` decouples the desired holding count from the
-  entry-rank eligibility (previously `slots = entry_rank - retained` conflated
-  the two).
-- `src/tushare_qlib/qlib_strategies.py::RankBufferStrategy(BaseSignalStrategy)`
-  implements the decision in Qlib's execution semantics: sell exit-rank
-  breaches (worst first, capped by `max_replacements`), refill open slots up to
-  `target_size` from names within `entry_rank` — fast escape, slow churn.
-- `src/tushare_qlib/strategy_factory.py` resolves the policy
-  (`topk_dropout_v1` | `rank_buffer_v1`) and builds the Qlib `PortAnaRecord`
-  strategy block, so `train_backtest_select` and `backtest_predictions` share
-  one path instead of hard-coding `TopkDropoutStrategy`.
-- `strategy_audit.build_strategy_audit` replays the same decision function
-  (`topk_dropout_decision` or `rank_buffer_decision`) and attaches Qlib's
-  actual fills; rank buffer rows carry `EXIT_RANK_BREACH`, `ENTRY_RANK`,
-  `INSIDE_HOLD_BUFFER`, `MAX_REPLACEMENTS`, `HOLD_THRESHOLD`,
-  `NOT_TRADABLE_SELL` / `NOT_TRADABLE_BUY`.
-- `ResearchExperimentSpec` accepts `rank_buffer_v1` and fingerprints the
-  **resolved** policy, keeping the historical topk hash identical.
-- Manifests record `execution.strategyPolicy` plus the policy-specific block
-  (`topkDropout` or `rankBuffer`), and `signal_scores_*.parquet` carries the
-  strategy columns for the active policy.
+- `RankBufferPolicy.target_size` decouples desired holding count from entry-rank eligibility.
+- `RankBufferStrategy(BaseSignalStrategy)` implements simulated Qlib decisions: sell exit-rank breaches (worst first, capped by `max_replacements`) and refill open slots up to `target_size` from names within `entry_rank`.
+- `strategy_factory.py` resolves `topk_dropout_v1 | rank_buffer_v1` and builds the Qlib `PortAnaRecord` strategy block so training/backtest paths share one policy implementation.
+- `strategy_audit.build_strategy_audit` replays the same decision function and reconciles it against Qlib's simulated fills. Rank-buffer audit reasons include `EXIT_RANK_BREACH`, `ENTRY_RANK`, `INSIDE_HOLD_BUFFER`, `MAX_REPLACEMENTS`, `HOLD_THRESHOLD`, `NOT_TRADABLE_SELL` and `NOT_TRADABLE_BUY`.
+- `ResearchExperimentSpec` fingerprints the resolved policy while preserving historical Topk identity behavior.
+- Research manifests record `execution.strategyPolicy` plus the policy-specific block (`topkDropout` or `rankBuffer`), and score artifacts carry strategy-specific audit columns.
 
 ## Evaluation objective
 
-Stop maximizing raw return; score candidates on
+Stop maximizing raw return; score candidates on:
 
 ```text
 Net Excess + ExcessIR + MDD + Turnover + CostStress
 ```
 
-with a true per-notional slippage stress (`filled_value * bps / 10000`,
-`extra_bps = (0, 1, 2, 3, 5, 10)`) instead of multiplying the explicit cost by
-a factor. Benchmark diagnostics (beta / tracking error / up-down capture /
-rolling 63D beta and excess) are produced by the attribution study so a
-candidate is also judged on whether it participated in the CSI300 rally.
+Cost stress uses additional slippage per filled notional (`filled_value * bps / 10000`, `extra_bps = (0, 1, 2, 3, 5, 10)`) rather than multiplying the explicit transaction cost by an arbitrary factor.
+
+Benchmark diagnostics include beta, tracking error, up/down capture and rolling 63-session beta/excess so a candidate is evaluated against its CSI300 participation rather than raw return alone.
 
 ## Research gate
 
-The frozen boolean gate is
-`(ICIR >= 0.50 OR RankICIR >= 0.50) AND ExcessIR >= 0.50`, plus all other
-research, portfolio and lineage conditions. Rank buffer fixes signal→PnL conversion, not signal
-stability; the remaining benchmark gap must not be hidden by loosening the gate.
+The frozen boolean gate remains:
+
+```text
+(ICIR >= 0.50 OR RankICIR >= 0.50)
+AND ExcessIR >= 0.50
+AND all other research, portfolio and lineage conditions
+```
+
+Rank Buffer addresses signal-to-research-PnL conversion. It does not repair unstable signal quality, and the gate must not be loosened to hide that distinction.
 
 ## Two portfolio layers
 
-`TopkDropout` and `RankBuffer` are stateful Qlib research-backtest execution policies. They drive
-simulated retain/sell/replace decisions and research PnL/audit.
+These layers are separate:
 
-`PortfolioPolicy` is a separate, implemented MODEL_TOPK-to-TARGET_PORTFOLIO layer. It applies weighting,
-`max_position`, `max_exposure`, `max_group_exposure` and `max_turnover` before Artifact Contract v2
-handoff. It is not the RankBuffer backtest policy. Future work is benchmark-relative constraints and a
-true CSI300 enhanced-index optimizer, not initial PortfolioPolicy wiring.
+1. **Qlib research-backtest strategy policy** — `TopkDropout` or `RankBuffer`; stateful retain/sell/replace simulation used to evaluate research PnL and audit decisions.
+2. **PortfolioPolicy** — implemented MODEL_TOPK-to-`TARGET_PORTFOLIO` target-weight layer; applies weighting, `max_position`, `max_exposure`, `max_group_exposure` and `max_turnover` before Artifact Contract v2 handoff.
 
-## Benchmark diagnostics (implemented)
+`PortfolioPolicy` is not the RankBuffer simulation policy. Future work may add benchmark-relative constraints and a true CSI300 enhanced-index optimizer without changing this ownership boundary.
 
-`portfolio_attribution.py` now derives the Portfolio V2.3 benchmark
-diagnostics directly from the existing daily gross/net/benchmark bridge:
+## Benchmark diagnostics
 
-- `derive_benchmark_diagnostics` — per-scope `portfolio_beta` (vs CSI300),
-  `tracking_error` (annualized net-excess vol), `up_capture` / `down_capture`
-  (gross vs benchmark on up/down days), `gross_active_return`,
-  `net_active_return`.
-- `derive_rolling_benchmark_diagnostics` — daily `rolling_beta` and
-  `rolling_excess_return` over a 63-session window (configurable), so beta
-  drift and alpha decay phases are visible without a risk model.
+`portfolio_attribution.py` derives:
 
-`attribution_study` publishes both as `benchmark_diagnostics.parquet` and
-`rolling_benchmark_diagnostics.parquet` alongside the existing attribution
-frames. These answer whether the Rank Buffer candidate participated in the
-CSI300 rally rather than just reporting raw return.
+- `derive_benchmark_diagnostics` — portfolio beta vs CSI300, annualized tracking error, up/down capture, gross/net active return;
+- `derive_rolling_benchmark_diagnostics` — rolling beta and rolling excess return over a configurable 63-session window.
+
+The attribution study publishes these as `benchmark_diagnostics.parquet` and `rolling_benchmark_diagnostics.parquet` alongside existing attribution frames.
