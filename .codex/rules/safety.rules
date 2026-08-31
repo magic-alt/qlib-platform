@@ -1,10 +1,10 @@
 # Repository safety rules. These prefix rules complement, rather than replace,
-# AGENTS.md authorization requirements and runtime validation.
+# AGENTS.md authorization requirements, the sandbox, and runtime validation.
 
 prefix_rule(
     pattern = ["git", "reset", "--hard"],
     decision = "forbidden",
-    justification = "Do not discard repository changes. Use an explicit, recoverable alternative or request a manual exception.",
+    justification = "Do not discard repository changes. Inspect the diff and use an explicit, recoverable alternative or request a manual exception.",
     match = ["git reset --hard", "git reset --hard HEAD"],
     not_match = ["git reset --soft HEAD~1"],
 )
@@ -20,23 +20,87 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "branch", "-D"],
     decision = "forbidden",
-    justification = "Do not forcibly delete branches. Use the documented post-merge cleanup workflow after verifying branch containment.",
+    justification = "Do not forcibly delete branches. Verify containment and use git branch -d after the documented post-merge cleanup.",
     match = ["git branch -D feature/example"],
     not_match = ["git branch -d feature/example"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "forbidden",
+    justification = "Plain force-push can overwrite remote work. Rebase deliberately and use --force-with-lease only when the published task branch must be updated.",
+    match = ["git push --force", "git push --force origin feature/example"],
+    not_match = ["git push --force-with-lease origin feature/example"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-f"],
+    decision = "forbidden",
+    justification = "Plain force-push can overwrite remote work. Use --force-with-lease for an explicitly authorized task-branch rewrite.",
+    match = ["git push -f origin feature/example"],
+    not_match = ["git push --force-with-lease origin feature/example"],
+)
+
+prefix_rule(
+    pattern = ["git", "restore"],
+    decision = "prompt",
+    justification = "git restore can discard working-tree changes. Confirm the exact paths and intent before running it.",
+    match = ["git restore src/example.py", "git restore ."],
+    not_match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", "--"],
+    decision = "prompt",
+    justification = "git checkout -- can discard working-tree changes. Confirm the exact paths and intent first.",
+    match = ["git checkout -- src/example.py", "git checkout -- ."],
+    not_match = ["git checkout feature/example"],
 )
 
 prefix_rule(
     pattern = ["git", "push"],
     decision = "prompt",
     justification = "Pushing changes is an external state change and requires explicit authorization.",
-    match = ["git push", "git push origin chore/example", "git push --force-with-lease"],
+    match = ["git push", "git push origin chore/example", "git push --force-with-lease origin chore/example"],
     not_match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["tq"],
+    decision = "forbidden",
+    justification = "Do not use a bare tq from PATH. Invoke the repository-local Python with -m tushare_qlib as required by AGENTS.md.",
+    match = ["tq status", "tq daily-sync --as-of 2026-08-31"],
+    not_match = [".venv/bin/python -m tushare_qlib status"],
+)
+
+prefix_rule(
+    pattern = ["qrun"],
+    decision = "forbidden",
+    justification = "Do not use a bare qrun from PATH. Use the repository-local qrun launcher documented in AGENTS.md.",
+    match = ["qrun configs/workflow_lightgbm.yaml"],
+    not_match = [".venv/bin/qrun configs/workflow_lightgbm.yaml"],
 )
 
 prefix_rule(
     pattern = ["schtasks"],
     decision = "prompt",
-    justification = "Scheduled-task changes are state-changing and require explicit authorization.",
+    justification = "Scheduled-task changes are machine state changes and require explicit authorization.",
     match = ["schtasks /create /tn example /tr example.exe /sc daily", "schtasks /delete /tn example"],
+    not_match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["systemctl"],
+    decision = "prompt",
+    justification = "Starting, enabling, disabling, or editing system/user services changes machine state. Confirm the exact unit and operation.",
+    match = ["systemctl --user enable qlib-sync.timer", "systemctl --user start qlib-sync.timer"],
+    not_match = ["git status --short"],
+)
+
+prefix_rule(
+    pattern = ["launchctl"],
+    decision = "prompt",
+    justification = "Loading, unloading, or changing launchd jobs changes machine state. Confirm the exact plist and operation.",
+    match = ["launchctl load example.plist", "launchctl unload example.plist"],
     not_match = ["git status --short"],
 )

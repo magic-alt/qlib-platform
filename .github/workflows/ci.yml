@@ -5,17 +5,153 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
 jobs:
+  change-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      heavy: ${{ steps.scope.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: scope
+        name: Classify change scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
+          else
+            base="$PUSH_BEFORE_SHA"
+          fi
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            base="$(git rev-parse HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+          fi
+
+          files="$(git diff --name-only "$base" "$GITHUB_SHA")"
+          heavy=false
+          if [[ -z "$files" ]]; then
+            heavy=true
+          else
+            while IFS= read -r file; do
+              case "$file" in
+                README.md|AGENTS.md|docs/*|.agents/*|.codex/*)
+                  ;;
+                *)
+                  heavy=true
+                  break
+                  ;;
+              esac
+            done <<< "$files"
+          fi
+
+          echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Change scope"
+            echo
+            echo "heavy=$heavy"
+            echo
+            echo '```text'
+            printf '%s\n' "$files"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  governance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Configure isolated Qlib paths
+        run: |
+          echo "QLIB_REPO=$RUNNER_TEMP/qlib-repo" >> "$GITHUB_ENV"
+          echo "QLIB_DATA_URI=$RUNNER_TEMP/qlib-data" >> "$GITHUB_ENV"
+          echo "QUANT_DATA_ROOT=$RUNNER_TEMP/quant-data" >> "$GITHUB_ENV"
+          echo "DATASET_RELEASE_ID=ds_0000000000000000000000000000000000000000000000000000000000000000" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data" "$RUNNER_TEMP/quant-data"
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Validate Skills, Codex agents, and workflow structure
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+          import yaml
+
+          config = tomllib.loads(Path('.codex/config.toml').read_text(encoding='utf-8'))
+          agents_config = config.get('agents', {})
+          assert agents_config.get('enabled', True) is True
+          assert int(agents_config.get('max_concurrent_threads_per_session', 0)) > 0
+
+          names = set()
+          for path in sorted(Path('.codex/agents').glob('*.toml')):
+              payload = tomllib.loads(path.read_text(encoding='utf-8'))
+              missing = {'name', 'description', 'developer_instructions'} - payload.keys()
+              assert not missing, f'{path}: missing {sorted(missing)}'
+              assert payload['name'] not in names, f'{path}: duplicate agent name {payload["name"]}'
+              names.add(payload['name'])
+              assert payload.get('sandbox_mode') == 'read-only', f'{path}: reviewer agents must be read-only'
+
+          for path in sorted(Path('.agents/skills').glob('*/SKILL.md')):
+              text = path.read_text(encoding='utf-8')
+              assert text.startswith('---\n'), f'{path}: missing YAML front matter'
+              _, front_matter, body = text.split('---', 2)
+              metadata = yaml.safe_load(front_matter) or {}
+              assert metadata.get('name') == path.parent.name, f'{path}: name must match directory'
+              assert str(metadata.get('description', '')).strip(), f'{path}: description is required'
+              assert body.strip(), f'{path}: skill body is empty'
+
+          rule_files = sorted(Path('.codex/rules').glob('*.rules'))
+          assert rule_files, '.codex/rules must contain at least one .rules file'
+          for path in rule_files:
+              text = path.read_text(encoding='utf-8')
+              assert 'prefix_rule(' in text, f'{path}: no prefix_rule definitions'
+              assert 'match =' in text and 'not_match =' in text, f'{path}: rules need inline match tests'
+
+          for path in sorted(Path('.github/workflows').glob('*.y*ml')):
+              payload = yaml.safe_load(path.read_text(encoding='utf-8'))
+              assert isinstance(payload, dict), f'{path}: workflow must parse to a mapping'
+          PY
+      - run: python scripts/check_docs.py --root .
+      - run: python -m tushare_qlib --config configs/pipeline.integrated.yaml validate-qrun-contract
+      - run: python -m tushare_qlib project-audit --root . --output "$RUNNER_TEMP/project_audit.json"
+
   test-matrix:
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10', '3.12']
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -29,14 +165,19 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-repo" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/qlib-data" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/quant-data" | Out-Null
-      - run: pip install -c constraints/ci.txt -e ".[dev]"
-      - run: pytest
+      - run: python -m pip install -c constraints/ci.txt -e ".[dev]"
+      - run: python -m pytest
 
   quality:
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip
@@ -47,17 +188,17 @@ jobs:
           echo "QUANT_DATA_ROOT=$RUNNER_TEMP/quant-data" >> "$GITHUB_ENV"
           echo "DATASET_RELEASE_ID=ds_0000000000000000000000000000000000000000000000000000000000000000" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/qlib-repo" "$RUNNER_TEMP/qlib-data" "$RUNNER_TEMP/quant-data"
-      - run: pip install -c constraints/ci.txt -e '.[dev]'
-      - run: ruff check src tests
-      - run: ruff format --check src tests
-      - run: mypy src
-      - run: python scripts/check_docs.py --root .
-      - run: tq --config configs/pipeline.yaml validate-qrun-contract
-      - run: pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
-      - run: tq project-audit --root . --output "$RUNNER_TEMP/project_audit.json"
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - run: python -m ruff check src tests
+      - run: python -m ruff format --check src tests
+      - run: python -m mypy src
+      - run: python -m pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
 
   standalone-isolation:
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       PLATFORM_URL: ""
       QUANT_DATA_ROOT: ""
@@ -65,15 +206,17 @@ jobs:
       TUSHARE_TOKEN: ""
       QLIB_DATA_ROOT: ""
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip
-      - run: pip install -c constraints/ci.txt -e '.[dev]'
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
       - name: Prove formal standalone CLI research and backtest isolation
         run: >-
-          pytest -q
+          python -m pytest -q
           tests/test_standalone_isolation.py
           tests/test_local_release_publisher.py
           tests/test_data_source_resolver.py
@@ -82,7 +225,10 @@ jobs:
           tests/test_platform_outbox.py
 
   clean-machine-wheel:
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       PLATFORM_URL: "http://127.0.0.1:9"
       QUANT_DATA_ROOT: ""
@@ -90,12 +236,14 @@ jobs:
       TUSHARE_TOKEN: ""
       QLIB_DATA_ROOT: ""
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip
-      - run: python -m pip install build
+      - run: python -m pip install 'build>=1.2,<2'
       - run: python -m build --wheel
       - run: python -m venv "$RUNNER_TEMP/qlib-clean-venv"
       - name: Install only the built wheel and smoke-test dependencies
@@ -118,7 +266,10 @@ jobs:
             --output-dir "$RUNNER_TEMP/rendered-systemd"
 
   clean-machine-lightgbm:
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       PLATFORM_URL: "http://127.0.0.1:9"
       QUANT_DATA_ROOT: ""
@@ -127,12 +278,14 @@ jobs:
       QLIB_DATA_ROOT: ""
       STANDALONE_MODEL_PROFILE: "configs/model_profiles/lightgbm_ci_smoke.yaml"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip
-      - run: python -m pip install build
+      - run: python -m pip install 'build>=1.2,<2'
       - run: python -m build --wheel
       - run: python -m venv "$RUNNER_TEMP/qlib-clean-venv"
       - name: Install only the built wheel with Qlib and LightGBM
@@ -150,12 +303,17 @@ jobs:
             "$RUNNER_TEMP/test_standalone_isolation.py"
 
   dnn-bundle-parity:
+    needs: change-scope
+    if: needs.change-scope.outputs.heavy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
           cache: pip
-      - run: pip install -c constraints/ci.txt -e '.[dev,pytorch]'
-      - run: pytest tests/test_model_bundle.py -q
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev,pytorch]'
+      - run: python -m pytest tests/test_model_bundle.py -q
