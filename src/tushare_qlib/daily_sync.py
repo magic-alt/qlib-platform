@@ -299,9 +299,7 @@ class DailySyncService:
         if not isinstance(payload, dict) or payload.get("status") != "pending":
             return {}
         has_work = bool(
-            payload.get("changed_trade_dates")
-            or payload.get("revised_symbols")
-            or payload.get("pit_changed")
+            payload.get("changed_trade_dates") or payload.get("revised_symbols") or payload.get("pit_changed")
         )
         if has_work:
             return payload
@@ -392,17 +390,19 @@ class DailySyncService:
             and state.get("source_fingerprint") == source_fingerprint
             and target.is_file()
         ):
-            return {
-                "status": "current",
-                "path": str(target),
-                "source_fingerprint": source_fingerprint,
-                "content_sha256": state.get("pit_content_sha256"),
-            }, False, set()
+            return (
+                {
+                    "status": "current",
+                    "path": str(target),
+                    "source_fingerprint": source_fingerprint,
+                    "content_sha256": state.get("pit_content_sha256"),
+                },
+                False,
+                set(),
+            )
 
         old = pd.read_parquet(target) if target.is_file() else pd.DataFrame()
-        old_hash = (
-            frame_content_sha256(old, key_columns=("ts_code", "trade_date")) if not old.empty else None
-        )
+        old_hash = frame_content_sha256(old, key_columns=("ts_code", "trade_date")) if not old.empty else None
         from .fundamentals import build_pit_from_extended
 
         built = build_pit_from_extended(self.settings)
@@ -419,15 +419,19 @@ class DailySyncService:
             },
             state_path,
         )
-        return {
-            "status": "rebuilt",
-            "path": str(built),
-            "source_fingerprint": source_fingerprint,
-            "old_content_sha256": old_hash,
-            "content_sha256": new_hash,
-            "changed": changed,
-            "changed_symbol_count": len(changed_symbols),
-        }, changed, changed_symbols
+        return (
+            {
+                "status": "rebuilt",
+                "path": str(built),
+                "source_fingerprint": source_fingerprint,
+                "old_content_sha256": old_hash,
+                "content_sha256": new_hash,
+                "changed": changed,
+                "changed_symbol_count": len(changed_symbols),
+            },
+            changed,
+            changed_symbols,
+        )
 
     def _qlib_last_date(self) -> str | None:
         from .dataset_resolver import resolve_dataset
@@ -725,10 +729,7 @@ class DailySyncService:
                         if isinstance(counters, dict):
                             extended_changed += int(counters.get("changed", 0) or 0)
             published = bool(
-                raw_changes
-                or dividend["changed_symbol_count"]
-                or extended_changed
-                or pit_changed
+                raw_changes or dividend["changed_symbol_count"] or extended_changed or pit_changed
             )
             if qlib_result is not None:
                 published = published or qlib_result.get("mode") != "none"

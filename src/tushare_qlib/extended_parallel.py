@@ -39,9 +39,7 @@ def _changed_symbol_set(old: pd.DataFrame, new: pd.DataFrame) -> set[str]:
     old_groups = _fingerprints(old)
     new_groups = _fingerprints(new)
     return {
-        code
-        for code in old_groups.keys() | new_groups.keys()
-        if old_groups.get(code) != new_groups.get(code)
+        code for code in old_groups.keys() | new_groups.keys() if old_groups.get(code) != new_groups.get(code)
     }
 
 
@@ -255,8 +253,7 @@ class FastExtendedDataBackfill(ExtendedDataBackfill):
                 "counters": counters,
                 "changed_by_endpoint": changed_by_endpoint,
                 "changed_symbols_by_endpoint": {
-                    endpoint: sorted(symbols)
-                    for endpoint, symbols in changed_symbols_by_endpoint.items()
+                    endpoint: sorted(symbols) for endpoint, symbols in changed_symbols_by_endpoint.items()
                 },
                 "error": str(exc),
             }
