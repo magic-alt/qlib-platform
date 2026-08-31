@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import uuid
@@ -37,6 +38,7 @@ class DailySyncConfig:
     market_lookback_trading_days: int = 5
     market_catchup_trading_days: int = 60
     corporate_action_lookback_calendar_days: int = 5
+    extended_financial_lookback_calendar_days: int = 400
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "DailySyncConfig":
@@ -57,6 +59,12 @@ class DailySyncConfig:
                     cls.corporate_action_lookback_calendar_days,
                 )
             ),
+            extended_financial_lookback_calendar_days=int(
+                data.get(
+                    "extended_financial_lookback_calendar_days",
+                    cls.extended_financial_lookback_calendar_days,
+                )
+            ),
         )
         if result.market_lookback_trading_days < 1:
             raise ValueError("data_sync.market_lookback_trading_days must be positive")
@@ -66,6 +74,8 @@ class DailySyncConfig:
             )
         if result.corporate_action_lookback_calendar_days < 1:
             raise ValueError("data_sync.corporate_action_lookback_calendar_days must be positive")
+        if result.extended_financial_lookback_calendar_days < 1:
+            raise ValueError("data_sync.extended_financial_lookback_calendar_days must be positive")
         datetime.strptime(result.ready_after, "%H:%M")
         ZoneInfo(result.timezone_name)
         return result
@@ -278,6 +288,151 @@ class DailySyncService:
                 )
         return sorted(changed_dates), revised_symbols, changes
 
+    def _pending_publish_path(self) -> Path:
+        return self.settings.paths.state / "daily_sync" / "pending_publish.json"
+
+    def _load_pending_publish(self) -> dict[str, Any]:
+        path = self._pending_publish_path()
+        if not path.is_file():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("status") != "pending":
+            return {}
+        has_work = bool(
+            payload.get("changed_trade_dates") or payload.get("revised_symbols") or payload.get("pit_changed")
+        )
+        if has_work:
+            return payload
+        _atomic_json(
+            {
+                "schema_version": "1.1",
+                "status": "clear",
+                "run_id": payload.get("run_id"),
+                "changed_trade_dates": [],
+                "revised_symbols": [],
+                "pit_changed": False,
+                "cleanup_reason": "empty_pending_state",
+            },
+            path,
+        )
+        return {}
+
+    def _write_pending_publish(
+        self,
+        *,
+        run_id: str,
+        changed_dates: list[str],
+        revised_symbols: set[str],
+        pit_changed: bool,
+    ) -> None:
+        has_work = bool(changed_dates or revised_symbols or pit_changed)
+        _atomic_json(
+            {
+                "schema_version": "1.1",
+                "status": "pending" if has_work else "clear",
+                "run_id": run_id,
+                "changed_trade_dates": changed_dates if has_work else [],
+                "revised_symbols": sorted(revised_symbols) if has_work else [],
+                "pit_changed": bool(pit_changed) if has_work else False,
+            },
+            self._pending_publish_path(),
+        )
+
+    def _sync_extended(self, eligible: pd.Timestamp) -> dict[str, Any]:
+        from .extended_parallel import FastExtendedDataBackfill
+
+        backfill = FastExtendedDataBackfill(
+            self.settings,
+            client=self.extractor.client,
+            open_dates=self.extractor.open_dates,
+        )
+        return backfill.sync_daily(
+            eligible.strftime("%Y%m%d"),
+            financial_lookback_calendar_days=self.config.extended_financial_lookback_calendar_days,
+        )
+
+    def _pit_source_fingerprint(self) -> str | None:
+        source_root = self.settings.paths.raw / "extended" / "fina_indicator_vip"
+        entries: list[dict[str, str]] = []
+        for data_path in sorted(source_root.glob("trade_date=*/data.parquet")):
+            partition = data_path.parent.name.removeprefix("trade_date=")
+            manifest = self.store.__class__(self.settings.paths.raw / "extended").read_manifest(
+                "fina_indicator_vip", partition
+            )
+            digest = str(manifest.get("content_sha256") or manifest.get("sha256") or "")
+            if not digest:
+                digest = frame_content_sha256(
+                    pd.read_parquet(data_path),
+                    key_columns=("ts_code", "end_date", "ann_date"),
+                )
+            entries.append(
+                {
+                    "partition": partition,
+                    "status": str(manifest.get("status", "")),
+                    "content_sha256": digest,
+                }
+            )
+        if not entries:
+            return None
+        encoded = json.dumps(entries, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    def _refresh_pit_from_extended(self) -> tuple[dict[str, Any], bool, set[str]]:
+        source_fingerprint = self._pit_source_fingerprint()
+        target = self.settings.paths.gold / "pit" / "current" / "fundamentals_daily.parquet"
+        if source_fingerprint is None:
+            return {"status": "unavailable", "reason": "fina_indicator_vip_missing"}, False, set()
+
+        state_path = self.settings.paths.state / "daily_sync" / "pit_source_state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.is_file() else {}
+        if (
+            isinstance(state, dict)
+            and state.get("source_fingerprint") == source_fingerprint
+            and target.is_file()
+        ):
+            return (
+                {
+                    "status": "current",
+                    "path": str(target),
+                    "source_fingerprint": source_fingerprint,
+                    "content_sha256": state.get("pit_content_sha256"),
+                },
+                False,
+                set(),
+            )
+
+        old = pd.read_parquet(target) if target.is_file() else pd.DataFrame()
+        old_hash = frame_content_sha256(old, key_columns=("ts_code", "trade_date")) if not old.empty else None
+        from .fundamentals import build_pit_from_extended
+
+        built = build_pit_from_extended(self.settings)
+        new = pd.read_parquet(built)
+        new_hash = frame_content_sha256(new, key_columns=("ts_code", "trade_date"))
+        changed = old_hash != new_hash
+        changed_symbols = _changed_symbols(old, new) if changed else set()
+        _atomic_json(
+            {
+                "schema_version": "1.0",
+                "source_fingerprint": source_fingerprint,
+                "pit_content_sha256": new_hash,
+                "built_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+            state_path,
+        )
+        return (
+            {
+                "status": "rebuilt",
+                "path": str(built),
+                "source_fingerprint": source_fingerprint,
+                "old_content_sha256": old_hash,
+                "content_sha256": new_hash,
+                "changed": changed,
+                "changed_symbol_count": len(changed_symbols),
+            },
+            changed,
+            changed_symbols,
+        )
+
     def _qlib_last_date(self) -> str | None:
         from .dataset_resolver import resolve_dataset
 
@@ -318,6 +473,7 @@ class DailySyncService:
         revised_symbols: set[str],
         *,
         force_full: bool,
+        pit_changed: bool,
         sync_context: dict[str, object],
     ) -> dict[str, Any]:
         from .normalize import (
@@ -330,9 +486,13 @@ class DailySyncService:
         from .qlib_export import dump_full, dump_update_and_fix
         from .lakehouse import freeze_pipeline_layers
 
-        for trade_date in changed_dates:
-            if self.store.exists("daily", trade_date):
+        if pit_changed:
+            for trade_date in self.store.list_dates("daily"):
                 build_curated_day(self.settings, trade_date, force=True)
+        else:
+            for trade_date in changed_dates:
+                if self.store.exists("daily", trade_date):
+                    build_curated_day(self.settings, trade_date, force=True)
         last_date = self._qlib_last_date()
         release_store = self.settings.data.get("release_store", {})
         publish_release = (
@@ -340,7 +500,9 @@ class DailySyncService:
             and isinstance(release_store, dict)
             and bool(release_store.get("publish_on_sync", False))
         )
-        if publish_release and (force_full or last_date is None or changed_dates or revised_symbols):
+        if publish_release and (
+            force_full or last_date is None or changed_dates or revised_symbols or pit_changed
+        ):
             from .dataset_registry import DatasetRegistry
             from .releases import publish_local_research_release
 
@@ -385,6 +547,7 @@ class DailySyncService:
                 "mode": "full_release",
                 "append_dates": changed_dates,
                 "repair_symbols": sorted(revised_symbols),
+                "pit_rebuild": pit_changed,
                 "data_release_id": release.data_release_id,
             }
         if force_full or last_date is None:
@@ -399,7 +562,12 @@ class DailySyncService:
                 {"version_id": snapshots[-1]["version_id"], "relation": "converted_from"}
             ]
             dump_full(self.settings, sync_context=sync_context)
-            return {"mode": "full", "append_dates": [], "repair_symbols": []}
+            return {
+                "mode": "full",
+                "append_dates": [],
+                "repair_symbols": [],
+                "pit_rebuild": pit_changed,
+            }
 
         append_dates = [date for date in self.store.list_dates("daily") if date > last_date]
         repair_symbols = sorted(
@@ -432,7 +600,12 @@ class DailySyncService:
                 repair=bool(repair_symbols),
                 sync_context=sync_context,
             )
-        return {"mode": mode, "append_dates": append_dates, "repair_symbols": repair_symbols}
+        return {
+            "mode": mode,
+            "append_dates": append_dates,
+            "repair_symbols": repair_symbols,
+            "pit_rebuild": pit_changed,
+        }
 
     def run(
         self,
@@ -446,7 +619,7 @@ class DailySyncService:
         run_dir = self.settings.paths.state / "daily_sync" / "runs" / run_id
         manifest_path = run_dir / "manifest.json"
         payload: dict[str, Any] = {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "run_id": run_id,
             "status": "running",
             "check_only": check_only,
@@ -457,7 +630,9 @@ class DailySyncService:
 
         run_registry = DatasetRegistry(self.settings.registry_path)
         run_registry.start_pipeline_run(run_id, "daily_sync", manifest_path=manifest_path)
+        pending_path = self._pending_publish_path()
         try:
+            pending = self._load_pending_publish() if not check_only else {}
             eligible = self._eligible_date(as_of)
             expected_dates, dates = self._market_date_plan(eligible)
             staged, metadata = self._fetch_market_frames(dates)
@@ -476,23 +651,21 @@ class DailySyncService:
             metadata_result: dict[str, Any] | None = None
             qlib_result: dict[str, Any] | None = None
             raw_integrity: dict[str, object] | None = None
+            extended_result: dict[str, Any] | None = None
+            pit_result: dict[str, Any] | None = None
+            pit_changed = False
             if not check_only:
-                pending_path = self.settings.paths.state / "daily_sync" / "pending_publish.json"
-                if pending_path.is_file():
-                    pending = json.loads(pending_path.read_text(encoding="utf-8"))
+                if pending:
                     changed_dates = sorted(
                         set(changed_dates) | {str(value) for value in pending.get("changed_trade_dates", [])}
                     )
                     revised_symbols.update(str(value) for value in pending.get("revised_symbols", []))
-                _atomic_json(
-                    {
-                        "schema_version": "1.0",
-                        "status": "pending",
-                        "run_id": run_id,
-                        "changed_trade_dates": changed_dates,
-                        "revised_symbols": sorted(revised_symbols),
-                    },
-                    pending_path,
+                    pit_changed = bool(pending.get("pit_changed", False))
+                self._write_pending_publish(
+                    run_id=run_id,
+                    changed_dates=changed_dates,
+                    revised_symbols=revised_symbols,
+                    pit_changed=pit_changed,
                 )
                 integrity_report = validate_raw_store(
                     self.store,
@@ -505,6 +678,19 @@ class DailySyncService:
                 )
                 raw_integrity = integrity_report.to_dict()
                 assert_quality(integrity_report)
+
+                extended_result = self._sync_extended(eligible)
+                pit_result, newly_changed_pit, pit_symbols = self._refresh_pit_from_extended()
+                if newly_changed_pit:
+                    pit_changed = True
+                    revised_symbols.update(pit_symbols)
+                self._write_pending_publish(
+                    run_id=run_id,
+                    changed_dates=changed_dates,
+                    revised_symbols=revised_symbols,
+                    pit_changed=pit_changed,
+                )
+
                 metadata_result = self._refresh_metadata(dates)
                 sync_context: dict[str, object] = {
                     "run_id": run_id,
@@ -513,24 +699,38 @@ class DailySyncService:
                     "revised_symbols": sorted(revised_symbols),
                     "factor_event_symbols": sorted(factor_events),
                     "dividend_changed_symbols": dividend["changed_symbols"],
+                    "extended": extended_result,
+                    "pit": pit_result,
+                    "pit_changed": pit_changed,
                 }
                 qlib_result = self._publish_qlib(
                     changed_dates,
                     revised_symbols,
                     force_full=force_full,
+                    pit_changed=pit_changed,
                     sync_context=sync_context,
                 )
-                _atomic_json(
-                    {
-                        "schema_version": "1.0",
-                        "status": "clear",
-                        "run_id": run_id,
-                        "changed_trade_dates": [],
-                        "revised_symbols": [],
-                    },
-                    pending_path,
+                self._write_pending_publish(
+                    run_id=run_id,
+                    changed_dates=[],
+                    revised_symbols=set(),
+                    pit_changed=False,
                 )
-            published = bool(raw_changes or dividend["changed_symbol_count"])
+            else:
+                extended_result = {"status": "skipped", "reason": "check_only"}
+                pit_result = {"status": "skipped", "reason": "check_only"}
+
+            extended_changed = 0
+            if extended_result and extended_result.get("status") == "complete":
+                for section in ("market_reference", "financial"):
+                    value = extended_result.get(section, {})
+                    if isinstance(value, dict):
+                        counters = value.get("counters", {})
+                        if isinstance(counters, dict):
+                            extended_changed += int(counters.get("changed", 0) or 0)
+            published = bool(
+                raw_changes or dividend["changed_symbol_count"] or extended_changed or pit_changed
+            )
             if qlib_result is not None:
                 published = published or qlib_result.get("mode") != "none"
             payload.update(
@@ -543,6 +743,9 @@ class DailySyncService:
                     "raw_integrity": raw_integrity,
                     "changed_trade_dates": changed_dates,
                     "dividend": dividend,
+                    "extended": extended_result,
+                    "pit": pit_result,
+                    "pit_changed": pit_changed,
                     "metadata": metadata_result,
                     "qlib": qlib_result,
                     "finished_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -565,6 +768,21 @@ class DailySyncService:
             )
             return manifest_path
         except Exception as exc:
+            if pending_path.is_file():
+                pending = json.loads(pending_path.read_text(encoding="utf-8"))
+                if (
+                    isinstance(pending, dict)
+                    and pending.get("status") == "pending"
+                    and not pending.get("changed_trade_dates")
+                    and not pending.get("revised_symbols")
+                    and not pending.get("pit_changed")
+                ):
+                    self._write_pending_publish(
+                        run_id=run_id,
+                        changed_dates=[],
+                        revised_symbols=set(),
+                        pit_changed=False,
+                    )
             payload.update(
                 {
                     "status": "failed",
