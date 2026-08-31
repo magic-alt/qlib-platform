@@ -49,12 +49,13 @@ preserving ordinary paths and the existing DataRelease/DatasetVersion verificati
 DatasetVersion and DataRelease verification expose three explicit levels:
 
 - `manifest` validates schema, content identity, semantic bindings and declared inventory
-  without opening every payload file; ordinary source resolution uses this level.
-- `sampled` deterministically covers the first/last files, every declared directory and a
-  SHA-derived fixed sample, checking both size and content SHA-256.
+  without opening every payload file; use it only for explicit metadata inspection.
+- `sampled` deterministically covers the first/last files and a bounded, SHA-derived sample
+  with directory diversity, checking both size and content SHA-256.
 - `deep` reads every declared payload and writes a content-bound receipt under
-  `<QLIB_DATA_ROOT>/state/verification_receipts`. Receipt reuse is opt-in with
-  `--reuse-receipt`; omitting it always performs the physical deep read.
+  `<QLIB_DATA_ROOT>/state/verification_receipts`. Active research resolution, promotion,
+  migration and certification use this fail-closed level. `--reuse-receipt` validates and
+  references existing evidence but still revalidates the current payload files.
 
 Legacy migration acceptance is deliberately separate from bootstrap:
 

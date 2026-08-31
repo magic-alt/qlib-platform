@@ -38,7 +38,7 @@ class FileReleaseStore:
         self,
         reference: str,
         *,
-        mode: str = "manifest",
+        mode: str = "deep",
         receipt_dir: str | Path | None = None,
         reuse_receipt: bool = False,
         sample_size: int = 64,

@@ -34,25 +34,39 @@ def deterministic_sample(
     ordered = sorted(entries, key=lambda item: str(item.get(path_key) or ""))
     if not ordered:
         return []
-    selected: dict[str, Mapping[str, object]] = {
-        str(ordered[0].get(path_key) or ""): ordered[0],
-        str(ordered[-1].get(path_key) or ""): ordered[-1],
-    }
+    if sample_size < 1:
+        raise ValueError("verification sample size must be positive")
+    target = min(sample_size, len(ordered))
+    selected: dict[str, Mapping[str, object]] = {}
+
+    def add(item: Mapping[str, object]) -> None:
+        if len(selected) < target:
+            selected[str(item.get(path_key) or "")] = item
+
+    add(ordered[0])
+    if target > 1:
+        add(ordered[-1])
     directories: dict[str, Mapping[str, object]] = {}
     for item in ordered:
         path = str(item.get(path_key) or "")
         directories.setdefault(Path(path).parent.as_posix(), item)
-    for item in directories.values():
-        selected[str(item.get(path_key) or "")] = item
+    directory_representatives = sorted(
+        directories.values(),
+        key=lambda item: hashlib.sha256(
+            f"{identity}\0directory\0{str(item.get(path_key) or '')}".encode()
+        ).digest(),
+    )
+    for item in directory_representatives:
+        add(item)
+        if len(selected) >= target:
+            break
     ranked = sorted(
         ordered,
         key=lambda item: hashlib.sha256(f"{identity}\0{str(item.get(path_key) or '')}".encode()).digest(),
     )
-    target = max(sample_size, len(selected))
     for item in ranked:
-        path = str(item.get(path_key) or "")
-        selected[path] = item
-        if len(selected) >= min(target, len(ordered)):
+        add(item)
+        if len(selected) >= target:
             break
     return [selected[path] for path in sorted(selected)]
 

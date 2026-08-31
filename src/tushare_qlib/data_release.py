@@ -321,14 +321,14 @@ def verify_data_release(
             ):
                 raise ValueError("verification receipt file inventory mismatch")
     selected: list[Mapping[str, object]] = []
-    if receipt is None and normalized_mode == "sampled":
+    if normalized_mode == "sampled":
         selected = deterministic_sample(
             declared_files,
             identity=release_id,
             path_key="path",
             sample_size=sample_size,
         )
-    elif receipt is None and normalized_mode == "deep":
+    elif normalized_mode == "deep":
         selected = declared_files
 
     def verify_file(item: Mapping[str, object]) -> str | None:
@@ -370,10 +370,10 @@ def verify_data_release(
         evidence.update(
             {
                 "mode": normalized_mode,
-                "verificationSource": "receipt" if receipt is not None else "files",
+                "verificationSource": "receipt+files" if receipt is not None else "files",
                 "manifestSha256": recorded_manifest_sha,
                 "fileCount": len(declared_files),
-                "verifiedFileCount": 0 if receipt is not None else len(selected),
+                "verifiedFileCount": len(selected),
                 "verifiedUniqueObjects": len(verified_objects),
                 "workers": workers,
                 "totalBytes": total_bytes,

@@ -222,14 +222,14 @@ def verify_dataset_manifest(
             ):
                 raise ValueError("verification receipt file inventory mismatch")
     selected: list[Mapping[str, object]] = []
-    if receipt is None and normalized_mode == "sampled":
+    if normalized_mode == "sampled":
         selected = deterministic_sample(
             partitions,
             identity=str(payload["version_id"]),
             path_key="path",
             sample_size=sample_size,
         )
-    elif receipt is None and normalized_mode == "deep":
+    elif normalized_mode == "deep":
         selected = partitions
     resolved_cas = Path(cas_root).expanduser().resolve() if cas_root is not None else None
 
@@ -276,10 +276,10 @@ def verify_dataset_manifest(
         evidence.update(
             {
                 "mode": normalized_mode,
-                "verificationSource": "receipt" if receipt is not None else "files",
+                "verificationSource": "receipt+files" if receipt is not None else "files",
                 "manifestSha256": manifest_sha256,
                 "fileCount": len(partitions),
-                "verifiedFileCount": 0 if receipt is not None else len(selected),
+                "verifiedFileCount": len(selected),
                 "verifiedViaCasCount": verified_via_cas,
                 "workers": workers,
                 "totalBytes": total_bytes,

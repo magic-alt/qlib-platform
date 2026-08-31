@@ -7,6 +7,7 @@ import pytest
 
 from tushare_qlib.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
 from tushare_qlib.releases import FileReleaseStore, LocalReleasePublisher
+from tushare_qlib.verification import deterministic_sample
 
 
 def _dataset(tmp_path: Path) -> Path:
@@ -53,8 +54,8 @@ def test_dataset_modes_and_deep_receipt_are_explicit(tmp_path: Path):
         reuse_receipt=True,
         evidence=reused,
     )
-    assert reused["verificationSource"] == "receipt"
-    assert reused["verifiedFileCount"] == 0
+    assert reused["verificationSource"] == "receipt+files"
+    assert reused["verifiedFileCount"] == 2
 
 
 def test_manifest_mode_is_metadata_only_and_sampled_fails_closed(tmp_path: Path):
@@ -81,14 +82,35 @@ def test_tampered_receipt_is_rejected(tmp_path: Path):
         verify_dataset_manifest(manifest, receipt_dir=receipts, reuse_receipt=True)
 
 
-def test_release_resolve_is_fast_but_explicit_deep_detects_corruption(tmp_path: Path):
+def test_reused_receipt_does_not_hide_missing_payload(tmp_path: Path):
+    manifest = _dataset(tmp_path)
+    receipts = tmp_path / "receipts"
+    verify_dataset_manifest(manifest, receipt_dir=receipts)
+    (manifest.parent / "calendars" / "day.txt").unlink()
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        verify_dataset_manifest(manifest, receipt_dir=receipts, reuse_receipt=True)
+
+
+def test_deterministic_sample_is_bounded_and_rejects_invalid_size():
+    entries = [{"path": f"features/symbol_{index}/close.bin"} for index in range(200)]
+
+    first = deterministic_sample(entries, identity="dataset", path_key="path", sample_size=16)
+    second = deterministic_sample(reversed(entries), identity="dataset", path_key="path", sample_size=16)
+
+    assert len(first) == 16
+    assert first == second
+    with pytest.raises(ValueError, match="sample size must be positive"):
+        deterministic_sample(entries, identity="dataset", path_key="path", sample_size=0)
+
+
+def test_release_resolve_is_fail_closed_but_manifest_mode_is_explicit(tmp_path: Path):
     release = LocalReleasePublisher(tmp_path / "releases").import_qlib(_provider(tmp_path / "legacy"))
     item = release.manifest["components"][0]["files"][0]
-    target = release.manifest_path.parent / str(item["path"]).removeprefix("components/qlib_dataset/")
     target = release.manifest_path.parent / str(item["path"])
     target.write_bytes(b"tampered")
     store = FileReleaseStore(tmp_path / "releases")
 
-    assert store.resolve(release.data_release_id).data_release_id == release.data_release_id
+    assert store.resolve(release.data_release_id, mode="manifest").data_release_id == release.data_release_id
     with pytest.raises(ValueError, match="checksum mismatch|size mismatch"):
-        store.resolve(release.data_release_id, mode="deep")
+        store.resolve(release.data_release_id)

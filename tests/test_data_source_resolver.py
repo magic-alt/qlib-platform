@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from tushare_qlib.data_source_resolver import resolve_source
+from tushare_qlib.releases import import_qlib_dataset
 from tushare_qlib.settings import Settings
 
 
@@ -82,3 +84,20 @@ def test_resolver_selects_exploratory_market_profile_for_minimal_raw(tmp_path: P
     assert result.status == "BUILD_REQUIRED"
     assert result.profile == "ashare_market_import_v1"
     assert "pit_fundamentals_source" in result.missing_components
+
+
+def test_resolver_rejects_corrupt_active_dataset(tmp_path: Path):
+    settings = _settings(tmp_path)
+    source = tmp_path / "legacy"
+    (source / "calendars").mkdir(parents=True)
+    (source / "instruments").mkdir()
+    (source / "features" / "sh600000").mkdir(parents=True)
+    (source / "calendars" / "day.txt").write_text("2026-08-24\n", encoding="utf-8")
+    (source / "instruments" / "all.txt").write_text("SH600000\t2026-08-24\t2026-08-24\n", encoding="utf-8")
+    (source / "features" / "sh600000" / "close.day.bin").write_bytes(b"close")
+    _, dataset = import_qlib_dataset(settings, source)
+    partition = dataset.data_path / "calendars" / "day.txt"
+    partition.write_text("tampered\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="checksum mismatch|size drift"):
+        resolve_source(settings)
