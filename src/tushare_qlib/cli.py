@@ -85,6 +85,10 @@ def parser() -> argparse.ArgumentParser:
     dataset_verify = sub.add_parser("dataset-verify")
     dataset_verify.add_argument("reference")
     dataset_verify.add_argument("--metadata-only", action="store_true")
+    dataset_verify.add_argument("--mode", choices=["manifest", "sampled", "deep"], default="deep")
+    dataset_verify.add_argument("--sample-size", type=int, default=64)
+    dataset_verify.add_argument("--reuse-receipt", action="store_true")
+    dataset_verify.add_argument("--workers", type=int, default=4)
     dataset_resolve = sub.add_parser("dataset-resolve")
     dataset_resolve.add_argument("reference", nargs="?")
     dataset_promote = sub.add_parser("dataset-promote")
@@ -357,11 +361,22 @@ def parser() -> argparse.ArgumentParser:
     bootstrap_cmd.add_argument("--path")
     bootstrap_cmd.add_argument("--start")
     bootstrap_cmd.add_argument("--end")
+    migration_acceptance = sub.add_parser("migration-acceptance")
+    migration_acceptance.add_argument("--source", choices=["qlib", "research"], required=True)
+    migration_acceptance.add_argument("--source-root", required=True)
+    migration_acceptance.add_argument("--acceptance-root", required=True)
+    migration_acceptance.add_argument("--start")
+    migration_acceptance.add_argument("--end")
+    migration_acceptance.add_argument("--single-thread", action="store_true")
     release = sub.add_parser("release")
     release_sub = release.add_subparsers(dest="release_command", required=True)
     release_sub.add_parser("list")
     release_verify = release_sub.add_parser("verify")
     release_verify.add_argument("reference")
+    release_verify.add_argument("--mode", choices=["manifest", "sampled", "deep"], default="deep")
+    release_verify.add_argument("--sample-size", type=int, default=64)
+    release_verify.add_argument("--reuse-receipt", action="store_true")
+    release_verify.add_argument("--workers", type=int, default=4)
     release_import = release_sub.add_parser("import-qlib")
     release_import.add_argument("--path", required=True)
     release_build_local = release_sub.add_parser("build-local")
@@ -733,6 +748,20 @@ def main() -> None:
         )
         print(json.dumps(result, ensure_ascii=False, default=str))
         return
+    if args.command == "migration-acceptance":
+        from .migration_acceptance import run_migration_acceptance
+
+        evidence = run_migration_acceptance(
+            settings,
+            source_kind=args.source,
+            source_root=args.source_root,
+            acceptance_root=args.acceptance_root,
+            start=args.start,
+            end=args.end,
+            single_thread=args.single_thread,
+        )
+        print(json.dumps({"evidence": str(evidence)}, ensure_ascii=False))
+        return
     if args.command == "release":
         from .dataset_registry import DatasetRegistry
         from .releases import FileReleaseStore, import_qlib_dataset, release_store_root
@@ -754,13 +783,23 @@ def main() -> None:
                 )
             )
         elif args.release_command == "verify":
-            release_value = store.resolve(args.reference)
+            verification: dict[str, object] = {}
+            release_value = store.resolve(
+                args.reference,
+                mode=args.mode,
+                receipt_dir=settings.paths.state / "verification_receipts",
+                reuse_receipt=args.reuse_receipt,
+                sample_size=args.sample_size,
+                evidence=verification,
+                workers=args.workers,
+            )
             print(
                 json.dumps(
                     {
                         "verified": True,
                         "dataReleaseId": release_value.data_release_id,
                         "manifestSha256": release_value.manifest_sha256,
+                        "verification": verification,
                     }
                 )
             )
@@ -885,10 +924,28 @@ def main() -> None:
             elif args.command == "dataset-show":
                 print(resolved.manifest_path.read_text(encoding="utf-8"))
             else:
+                verification = {}
+                mode = "manifest" if args.metadata_only else args.mode
+                if args.metadata_only and args.mode == "sampled":
+                    raise ValueError("--metadata-only cannot be combined with an explicit --mode")
                 verified = verify_dataset_manifest(
-                    resolved.manifest_path, verify_files=not args.metadata_only
+                    resolved.manifest_path,
+                    mode=mode,
+                    receipt_dir=settings.paths.state / "verification_receipts",
+                    reuse_receipt=args.reuse_receipt,
+                    sample_size=args.sample_size,
+                    evidence=verification,
+                    workers=args.workers,
                 )
-                print(json.dumps({"versionId": verified["version_id"], "verified": True}))
+                print(
+                    json.dumps(
+                        {
+                            "versionId": verified["version_id"],
+                            "verified": True,
+                            "verification": verification,
+                        }
+                    )
+                )
         return
 
     dataset_ref = getattr(args, "dataset_ref", None)

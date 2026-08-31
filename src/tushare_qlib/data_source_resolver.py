@@ -118,7 +118,7 @@ def resolve_source(
         release = store.resolve(release_alias)
         dataset = registry.inspect(settings.qlib_dataset_ref)
         if dataset is not None and dataset.data_release_id == release.data_release_id:
-            verify_dataset_manifest(dataset.manifest_path)
+            verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
             return SourceResolution("READY", "data_release", release.data_release_id, dataset.data_path)
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
@@ -129,7 +129,7 @@ def resolve_source(
         )
     dataset = registry.inspect(settings.qlib_dataset_ref)
     if dataset is not None:
-        verify_dataset_manifest(dataset.manifest_path)
+        verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
         return SourceResolution("READY", "dataset_version", dataset.version_id, dataset.data_path)
     records = list(store.list())
     if len(records) == 1:

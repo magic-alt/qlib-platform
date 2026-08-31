@@ -86,7 +86,7 @@ After Bronze data and extended financial data exist:
   --start 20160201 --end 20260810 --single-thread
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-list
 & $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-resolve research-current
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current
+& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current --mode deep
 ```
 
 `dataset-build` runs PIT materialization, Silver normalization, Gold export, Qlib conversion, smoke tests,
@@ -104,9 +104,15 @@ Other registry operations:
 ```text
 dataset-show <alias-or-version>
 dataset-promote <version> --alias research-current
-dataset-verify <alias-or-version> [--metadata-only]
+dataset-verify <alias-or-version> [--mode manifest|sampled|deep] [--reuse-receipt]
 registry-rebuild [--root <data-root>]
 ```
+
+`--metadata-only` remains as a compatibility alias for `--mode manifest`. Use `manifest`
+only for explicit metadata inspection, `sampled` for bounded routine integrity monitoring,
+and `deep` for active research resolution, promotion, migration, and certification. Deep
+verification writes an external receipt; receipt reuse is never implicit and never skips
+validation of the current payload files.
 
 The legacy `curate`, `stage-*`, and `dump-*` commands remain low-level recovery tools. Normal full builds
 must use `dataset-build` so PIT generation and Bronze/Silver/Gold lineage cannot be skipped.

@@ -46,6 +46,38 @@ support safely fall back to copies. Qlib imports use the same copy-on-write mate
 for their bound DatasetVersion, removing the previous second full provider copy while
 preserving ordinary paths and the existing DataRelease/DatasetVersion verification rules.
 
+DatasetVersion and DataRelease verification expose three explicit levels:
+
+- `manifest` validates schema, content identity, semantic bindings and declared inventory
+  without opening every payload file; use it only for explicit metadata inspection.
+- `sampled` deterministically covers the first/last files and a bounded, SHA-derived sample
+  with directory diversity, checking both size and content SHA-256.
+- `deep` reads every declared payload and writes a content-bound receipt under
+  `<QLIB_DATA_ROOT>/state/verification_receipts`. Active research resolution, promotion,
+  migration and certification use this fail-closed level. `--reuse-receipt` validates and
+  references existing evidence but still revalidates the current payload files.
+
+Legacy migration acceptance is deliberately separate from bootstrap:
+
+```powershell
+& $RepoPython -m tushare_qlib migration-acceptance --source qlib `
+  --source-root <READ_ONLY_LEGACY_PROVIDER> `
+  --acceptance-root <NEW_EMPTY_ACCEPTANCE_ROOT>
+
+& $RepoPython -m tushare_qlib migration-acceptance --source research `
+  --source-root <READ_ONLY_LEGACY_DATA_ROOT> `
+  --acceptance-root <NEW_EMPTY_ACCEPTANCE_ROOT> `
+  --start <YYYY-MM-DD> --end <YYYY-MM-DD> --single-thread
+```
+
+The command rejects overlapping or non-empty targets, disables TuShare credentials in the
+isolated settings, never runs sync/download commands, deep-verifies the resulting release
+and DatasetVersion, and records CAS/hardlink/timing evidence in
+`acceptance_evidence.json`. The `qlib` source proves exploratory CAS migration; only the
+`research` source publishes `ashare_qlib_research_v2`. Research acceptance fails before
+writing unless both qlib-platform and Qlib are clean fixed commits, and it verifies that
+the DatasetVersion lineage records those exact commits and the exact DataRelease identity.
+
 When only market inputs are available, `bootstrap --source auto` reports the
 certified components that are absent and can still publish
 `ashare_market_import_v1`. Its required components are `bars`,
