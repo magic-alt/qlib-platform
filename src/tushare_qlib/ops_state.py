@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 
-OPS_SCHEMA_VERSION = 3
+OPS_SCHEMA_VERSION = 4
 
 
 class DeploymentStatus(str, Enum):
@@ -127,6 +127,20 @@ class OpsState:
                     finished_at_utc TEXT,
                     details_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS task_runs (
+                    run_id TEXT NOT NULL REFERENCES pipeline_runs(run_id),
+                    task_name TEXT NOT NULL,
+                    attempt INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at_utc TEXT NOT NULL,
+                    finished_at_utc TEXT,
+                    artifact_ref TEXT,
+                    error_code TEXT,
+                    details_json TEXT NOT NULL,
+                    PRIMARY KEY(run_id, task_name, attempt)
+                );
+                CREATE INDEX IF NOT EXISTS task_run_status
+                    ON task_runs(run_id, status, task_name);
                 CREATE TABLE IF NOT EXISTS signals (
                     signal_id TEXT PRIMARY KEY,
                     signal_date TEXT NOT NULL,
@@ -317,12 +331,109 @@ class OpsState:
 
     def finish_run(self, run_id: str, status: RunStatus, details: Mapping[str, Any]) -> None:
         with self.transaction() as connection:
+            unfinished = connection.execute(
+                "SELECT COUNT(*) FROM task_runs WHERE run_id = ? AND status = 'RUNNING'", (run_id,)
+            ).fetchone()[0]
+            if unfinished:
+                raise ValueError(f"pipeline run {run_id} has {unfinished} unfinished task(s)")
             cursor = connection.execute(
                 "UPDATE pipeline_runs SET status = ?, finished_at_utc = ?, details_json = ? WHERE run_id = ?",
                 (status.value, _utc_now(), json.dumps(dict(details), sort_keys=True, default=str), run_id),
             )
             if cursor.rowcount != 1:
                 raise KeyError(f"unknown pipeline run: {run_id}")
+
+    def start_task(
+        self,
+        run_id: str,
+        task_name: str,
+        *,
+        details: Mapping[str, Any] | None = None,
+    ) -> int:
+        """Start the next durable attempt for a task within a running pipeline."""
+
+        if not task_name.strip():
+            raise ValueError("task_name is required")
+        with self.transaction() as connection:
+            parent = connection.execute(
+                "SELECT status FROM pipeline_runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if parent is None:
+                raise KeyError(f"unknown pipeline run: {run_id}")
+            if parent["status"] != RunStatus.RUNNING.value:
+                raise ValueError(f"pipeline run {run_id} is not RUNNING")
+            active = connection.execute(
+                "SELECT 1 FROM task_runs WHERE run_id = ? AND task_name = ? AND status = 'RUNNING'",
+                (run_id, task_name.strip()),
+            ).fetchone()
+            if active is not None:
+                raise ValueError(f"task {task_name} already has a RUNNING attempt")
+            attempt = int(
+                connection.execute(
+                    "SELECT COALESCE(MAX(attempt), 0) + 1 FROM task_runs WHERE run_id = ? AND task_name = ?",
+                    (run_id, task_name.strip()),
+                ).fetchone()[0]
+            )
+            connection.execute(
+                """
+                INSERT INTO task_runs(
+                    run_id, task_name, attempt, status, started_at_utc, details_json
+                ) VALUES(?, ?, ?, 'RUNNING', ?, ?)
+                """,
+                (
+                    run_id,
+                    task_name.strip(),
+                    attempt,
+                    _utc_now(),
+                    json.dumps(details or {}, sort_keys=True, default=str),
+                ),
+            )
+        return attempt
+
+    def finish_task(
+        self,
+        run_id: str,
+        task_name: str,
+        attempt: int,
+        status: RunStatus,
+        *,
+        artifact_ref: str | None = None,
+        error_code: str | None = None,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        if status is RunStatus.RUNNING:
+            raise ValueError("a task cannot finish with RUNNING status")
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE task_runs
+                SET status = ?, finished_at_utc = ?, artifact_ref = ?, error_code = ?, details_json = ?
+                WHERE run_id = ? AND task_name = ? AND attempt = ? AND status = 'RUNNING'
+                """,
+                (
+                    status.value,
+                    _utc_now(),
+                    artifact_ref,
+                    error_code,
+                    json.dumps(details or {}, sort_keys=True, default=str),
+                    run_id,
+                    task_name.strip(),
+                    attempt,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("task attempt is missing or is not RUNNING")
+
+    def list_tasks(self, run_id: str) -> list[dict[str, Any]]:
+        with self.reading() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM task_runs WHERE run_id = ?
+                ORDER BY task_name, attempt
+                """,
+                (run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def register_signal(self, record: Mapping[str, str], *, supersede: bool = False) -> bool:
         """Register a signal; return False for an exact idempotent replay."""

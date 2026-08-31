@@ -39,6 +39,22 @@ A bundle must be rejected when:
 The local exporter currently carries DatasetVersion/FeatureSnapshot/PredictionSnapshot lineage through
 the source manifest rather than separate v2 nodes. Consumers must not infer missing graph nodes.
 
+## Feedback boundary
+
+`REALIZED_LABEL_SNAPSHOT` and `PREDICTION_EVALUATION_SNAPSHOT` are local Production ML feedback
+artifacts. They are not Artifact Contract v2 graph nodes and do not change the sole execution-semantic
+handoff. A realized-label snapshot binds a DataRelease, LabelSpec, source artifact and trading-calendar
+observation cut; an evaluation snapshot binds that artifact to exactly one verified PredictionSnapshot.
+Both are content-addressed and fail closed on binding or payload drift.
+
+## Feedback boundary
+
+`REALIZED_LABEL_SNAPSHOT` and `PREDICTION_EVALUATION_SNAPSHOT` are local Production ML feedback
+artifacts. They are not Artifact Contract v2 graph nodes and do not change the sole execution-semantic
+handoff. A realized-label snapshot binds a DataRelease, LabelSpec, source artifact and trading-calendar
+observation cut; an evaluation snapshot binds that artifact to exactly one verified PredictionSnapshot.
+Both are content-addressed and fail closed on binding or payload drift.
+
 ## Vendored schemas
 
 The vendored schema provenance and file digests are recorded in

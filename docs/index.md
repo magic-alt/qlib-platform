@@ -16,6 +16,7 @@ holdout 与 publishing 状态；README 不再承担历史状态存储。
 - [Architecture Boundary](architecture_boundary.md)
 - [Identity and Lineage](identity_and_lineage.md)
 - [Artifact Contract v2](artifact_contract_v2.md)
+- [Production ML Phase 4](production_ml_phase4.md)
 - [Configuration](configuration.md)
 - [CLI Reference](cli_reference.md)
 - [Glossary](glossary.md)

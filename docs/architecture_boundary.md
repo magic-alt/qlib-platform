@@ -58,6 +58,18 @@ verified Artifact v2 bundles remain in the local durable outbox until an adapter
 deliver and acknowledge them. OMS, broker, hard-risk, order, fill, and ledger semantics
 never enter this repository.
 
+Production feedback returns across a separate, non-execution boundary. This repository may
+consume immutable realized-label or aggregate execution-evaluation artifacts that are bound to
+one DataRelease and verify their identity/checksum before producing monitoring evidence. It must
+not ingest or become the source of truth for mutable orders, fills, holdings, broker state or the
+execution ledger. Feedback evidence cannot itself promote, deploy or publish a model.
+
+Production feedback returns across a separate, non-execution boundary. This repository may
+consume immutable realized-label or aggregate execution-evaluation artifacts that are bound to
+one DataRelease and verify their identity/checksum before producing monitoring evidence. It must
+not ingest or become the source of truth for mutable orders, fills, holdings, broker state or the
+execution ledger. Feedback evidence cannot itself promote, deploy or publish a model.
+
 ## Strategy policy layer
 
 Portfolio construction is a first-class, policy-typed research stage. The
