@@ -18,4 +18,4 @@ Preserve these non-negotiable properties:
 
 Treat weak IC, IR, net return, or a rejected research gate as research evidence, not a reason to silently change certified infrastructure semantics. Changes to temporal or selection semantics require explicit leakage/holdout tests. Keep a research change on a task branch and document changed definitions, configurations, and validation evidence in the PR.
 
-If the task concerns Phase 3, use `phase3-diagnostics` instead of applying this skill alone.
+For diagnostic-only work, use `research-diagnostics`. If a diagnostic requires a new fitted state or changes research identity, apply both skills. The Phase 3-D profile is routed from `research-diagnostics`.
