@@ -387,6 +387,24 @@ def parser() -> argparse.ArgumentParser:
     daily_signal.add_argument("--no-notify", action="store_true")
     daily_signal.add_argument("--skip-sync", action="store_true")
     daily_signal.add_argument("--supersede", action="store_true")
+    realized_labels = sub.add_parser("feedback-build-labels")
+    realized_labels.add_argument("--labels", required=True)
+    realized_labels.add_argument("--calendar", required=True)
+    realized_labels.add_argument("--observed-through", required=True)
+    realized_labels.add_argument("--data-release-id", required=True)
+    realized_labels.add_argument("--label-spec-id", required=True)
+    realized_labels.add_argument("--horizon-days", required=True, type=int)
+    realized_labels.add_argument("--signal-lag-days", required=True, type=int)
+    realized_labels.add_argument("--price-field", choices=["open", "close"], default="close")
+    realized_labels.add_argument("--source-artifact-id", required=True)
+    realized_labels.add_argument("--output", required=True)
+    feedback_evaluate = sub.add_parser("feedback-evaluate")
+    feedback_evaluate.add_argument("--predictions", required=True)
+    feedback_evaluate.add_argument("--realized-labels", required=True)
+    feedback_evaluate.add_argument("--output", required=True)
+    feedback_evaluate.add_argument("--topk", type=int, default=50)
+    feedback_evaluate.add_argument("--min-cross-section", type=int, default=20)
+    feedback_evaluate.add_argument("--rolling-window", type=int, default=20)
     ops_query = sub.add_parser("ops-query", help="query production state")
     ops_query.add_argument("--entity", choices=["runs", "deliveries"], required=True)
     ops_query.add_argument("--business-date")
@@ -975,6 +993,44 @@ def main() -> None:
                 default=str,
             )
         )
+        return
+    if args.command == "feedback-build-labels":
+        from .feedback.realized_labels import RealizedLabelSpec, write_realized_label_snapshot
+
+        labels = pd.read_parquet(Path(args.labels).expanduser().resolve())
+        if {"datetime", "instrument"}.issubset(labels.columns):
+            labels = labels.set_index(["datetime", "instrument"])
+        calendar = Path(args.calendar).expanduser().resolve().read_text(encoding="utf-8").splitlines()
+        manifest = write_realized_label_snapshot(
+            args.output,
+            labels,
+            spec=RealizedLabelSpec(
+                data_release_id=args.data_release_id,
+                label_spec_id=args.label_spec_id,
+                horizon_days=args.horizon_days,
+                signal_lag_days=args.signal_lag_days,
+                price_field=args.price_field,
+                source_artifact_id=args.source_artifact_id,
+            ),
+            trading_calendar=calendar,
+            observed_through=args.observed_through,
+        )
+        print(json.dumps(manifest, ensure_ascii=False))
+        return
+    if args.command == "feedback-evaluate":
+        from .feedback.prediction_evaluation import evaluate_prediction_snapshot
+
+        manifest = evaluate_prediction_snapshot(
+            args.output,
+            prediction_snapshot=args.predictions,
+            realized_label_snapshot=args.realized_labels,
+            topk=args.topk,
+            min_cross_section=args.min_cross_section,
+            rolling_window=args.rolling_window,
+        )
+        print(json.dumps(manifest, ensure_ascii=False))
+        if manifest["decision"]["status"] != "PASS":
+            raise SystemExit(2)
         return
     if args.command == "ops-retry-delivery":
         from .ops_cli import state_from_settings

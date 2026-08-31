@@ -32,6 +32,15 @@ write target.
 `build-target-portfolio`, `research-gate`, `artifact-v2-export` and `lean-register` create or
 register research evidence. Confirm immutable inputs and outputs first.
 
+Production feedback commands create immutable monitoring evidence:
+
+- `feedback-build-labels` validates label maturity against a pinned trading calendar and writes a
+  `REALIZED_LABEL_SNAPSHOT`;
+- `feedback-evaluate` verifies both parent snapshots, requires complete key coverage and writes a
+  `PREDICTION_EVALUATION_SNAPSHOT` with IC/RankIC/spread metrics.
+
+They do not select, promote, deploy or publish models. Both commands require explicit output paths.
+
 ## Governed phase commands
 
 Phase 1 and Phase 2 commands remain for historical verification/replay. Phase 3-D exposes only:
@@ -55,6 +64,7 @@ confirmation, candidate, selection, holdout-open or publishing command.
 - model/inference: `model-refit`, `model-deploy`, `model-rollback`, `live-inference`,
   `daily-signal-run`;
 - delivery: `outbox drain`, `outbox worker`, `ops-retry-delivery`, `ops-ack`.
+- feedback artifacts: `feedback-build-labels`, `feedback-evaluate`.
 
 These commands require explicit authorization of date windows, references, deployment IDs, endpoints and
 outputs as applicable.

@@ -14,6 +14,8 @@ DataRelease
     -> DatasetVersion
     -> FeatureSnapshot
     -> PredictionSnapshot
+    -> RealizedLabelSnapshot
+    -> PredictionEvaluationSnapshot
     -> research manifest / MODEL_RELEASE
     -> MODEL_TOPK
     -> PortfolioPolicy
@@ -28,6 +30,8 @@ These identities are related but not interchangeable.
 | DatasetVersion | immutable Qlib materialization | version identity, partition checksums, semantic parent binding |
 | FeatureSnapshot | fitted feature recipe plus immutable partitions | governed verifier checks recipe, coverage, files and upstream bindings |
 | PredictionSnapshot | score/label payload under a complete research contract | snapshot identity, payload SHA/schema/rows/coverage |
+| RealizedLabelSnapshot | matured outcomes from one DataRelease and LabelSpec | maturity/calendar binding, snapshot identity, payload SHA/schema/rows/coverage |
+| PredictionEvaluationSnapshot | monitoring evidence joining one prediction and realized-label snapshot | exact parent IDs, DataRelease/LabelSpec equality, payload SHA/schema/rows |
 | ModelRelease | governed fitted model artifact | model/runtime/research manifest lineage |
 | TARGET_PORTFOLIO | research target weights after PortfolioPolicy | payload checksum, policy identity, parent artifact graph, DataRelease binding |
 
@@ -54,6 +58,15 @@ verification; callers of the general loader must request checksum verification w
 `snapshotId` binds the complete prediction contract and payload metadata. The contract includes
 DataRelease, AlphaPack, FeatureSnapshot, LabelSpec, SplitSpec, model/profile, fold and feature-set
 identities. Loading rechecks payload SHA, schema, rows and coverage.
+
+### Production feedback snapshots
+
+`RealizedLabelSnapshot` accepts labels only when every signal date is mature under the supplied pinned
+trading calendar and observation cut. Its identity binds that calendar hash, DataRelease, LabelSpec,
+source artifact and payload. `PredictionEvaluationSnapshot` requires complete key coverage and equal
+DataRelease/LabelSpec bindings before computing daily IC, RankIC, top-bottom spread and rolling RankIC.
+These artifacts are monitoring evidence only: they cannot access the sealed final holdout or trigger
+candidate selection, deployment or publication.
 
 ## Artifact Contract v2 handoff graph
 
