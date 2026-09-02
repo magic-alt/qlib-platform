@@ -9,7 +9,7 @@ superseded_by: ../examples/local_qlib_backtest/README.md
 # 本地 CSI300 / Alpha158 / Qlib `qrun` 回测指南
 
 > DEPRECATED / HISTORICAL. 当前唯一维护的 qrun 教程是
-> [examples/local_qlib_backtest](../../../examples/local_qlib_backtest/README.md)。
+> [examples/local_qlib_backtest](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest)。
 > 本页不得用于当前 fit 参数、数据路径或时间窗口决策。
 
 本文记录 `workflow_local_lightgbm.yaml` 的本地研究流程。它复现 Qlib 官方的
@@ -28,7 +28,7 @@ A 股交易约束。该流程只生成研究产物和模拟回测，不能用于
 | 测试 | 2025-01-02 至 2026-08-10 | 预测与信号评价 |
 | 组合回测 | 2025-01-02 至 2026-08-07 | T+1 日频执行；末日保留一个后续交易日供 Qlib 结算 |
 
-数据路径在 [workflow_local_lightgbm.yaml](../../../workflow_local_lightgbm.yaml) 的
+数据路径在 [workflow_local_lightgbm.yaml](https://github.com/magic-alt/qlib-platform/blob/main/workflow_local_lightgbm.yaml) 的
 `qlib_init.provider_uri` 中固定为不可变版本。不要把它改成 `current`、工作目录或未经
 `dataset-verify` 验证的数据路径；这样才可复现本报告的输入。
 
