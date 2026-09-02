@@ -5,8 +5,26 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tushare-qlib-a-share"
 version = "0.3.0"
-description = "Auditable platform DataRelease to Qlib research and Artifact Contract v2 pipeline"
+description = "Auditable A-share quant research and alpha factory built on Microsoft Qlib"
+readme = "README.md"
 requires-python = ">=3.10,<3.13"
+keywords = [
+  "qlib",
+  "quantitative-finance",
+  "a-share",
+  "alpha-research",
+  "machine-learning",
+  "backtesting",
+  "walk-forward",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
   "pandas>=2.0,<3.0",
   "numpy>=1.24,<2.0",
@@ -21,6 +39,12 @@ dependencies = [
   "fastjsonschema>=2.20,<3",
   "argon2-cffi>=23.1,<26",
 ]
+
+[project.urls]
+Homepage = "https://github.com/magic-alt/qlib-platform"
+Repository = "https://github.com/magic-alt/qlib-platform"
+Documentation = "https://github.com/magic-alt/qlib-platform/blob/main/docs/index.md"
+Issues = "https://github.com/magic-alt/qlib-platform/issues"
 
 [project.optional-dependencies]
 data = [
