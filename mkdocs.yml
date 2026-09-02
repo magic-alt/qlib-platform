@@ -83,26 +83,44 @@ nav:
       - Architecture Overview: architecture.md
       - Architecture Boundary: architecture_boundary.md
       - Identity and Lineage: identity_and_lineage.md
+      - Standalone Sovereignty: standalone_sovereignty.md
       - Glossary: glossary.md
   - Use the Platform:
       - Configuration: configuration.md
       - CLI Reference: cli_reference.md
       - Qlib Data Platform: qlib_data_platform.md
       - Data Schema: data_schema.md
+      - TuShare Daily Sync: daily_sync.md
       - Research Lifecycle: research_lifecycle.md
       - Portfolio Policy: portfolio_v2_rank_buffer.md
+      - Windows LightGBM GPU: windows_lightgbm_gpu.md
   - Research & ML:
       - Active Phase 3-D: alpha_research_phase_3.md
       - Model Lifecycle: model_lifecycle.md
       - Production Feedback: production_feedback.md
+      - Production ML Phase 4: production_ml_phase4.md
       - Full Walk-forward Acceptance: full_walk_forward_acceptance.md
   - Contracts & Operations:
       - Artifact Contract v2: artifact_contract_v2.md
       - Operations Runbook: OPERATIONS_RUNBOOK.md
+      - Daily Research: operations/daily-research.md
+      - Health & Observability: operations/health-and-observability.md
+      - Outbox Delivery: operations/outbox.md
+      - Recovery: operations/recovery.md
+      - Incident Response: operations/incident-response.md
       - Testing & Certification: testing_and_certification.md
+      - Research Infrastructure Certification: research_infrastructure_certification.md
       - Troubleshooting: troubleshooting.md
   - Maintainers:
       - Release Process: maintainers/releasing.md
       - Repository Settings: maintainers/repository-settings.md
       - Brand Guide: maintainers/branding.md
-  - History: history/README.md
+  - History & Moved:
+      - History Index: history/README.md
+      - Historical Research:
+          - Phase 1: history/research/alpha_research_phase_1.md
+          - Phase 2: history/research/alpha_research_phase_2.md
+          - P0 Research Baseline: history/research/p0_research_baseline.md
+      - Deprecated qrun Guide: history/qrun/local_alpha158_qrun_backtest.md
+      - QMT Gateway Pointer: qmt_gateway.md
+      - Legacy QMT Source Manual: QMT_极速策略交易系统_使用教程与API接口说明.md
