@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: maintainers
+applies_to_commit: 08f4d40397a7c0a215428ccdbdc4597865cfa5fe
 last_verified: 2026-09-02
 ---
 
@@ -8,7 +9,7 @@ last_verified: 2026-09-02
 
 This document defines the intended GitHub governance and software supply-chain posture for `qlib-platform`.
 
-It covers repository settings that are partly stored outside Git, plus tracked automation such as Dependabot, CodeQL, Dependency Review, release provenance, and Pages deployment.
+It covers repository settings that are partly stored outside Git, plus tracked automation such as Dependabot, CodeQL, Dependency Review, release validation/provenance, and Pages deployment.
 
 ## Current ruleset audit
 
@@ -53,6 +54,7 @@ Use stable check names and update the ruleset whenever workflow names change. Re
 - `CI / test-matrix (ubuntu-latest, 3.12)`
 - `CI / test-matrix (windows-latest, 3.12)`
 - `Docs / build`
+- `Release Check / package-sbom`
 - `Dependency Review / dependency-review`
 - `CodeQL / Analyze (python)`
 
@@ -79,11 +81,7 @@ Why not run Renovate simultaneously:
 - duplicated update streams create review noise and ambiguous ownership;
 - a single dependency policy is easier to audit.
 
-`.github/dependabot.yml` covers:
-
-- Python dependencies;
-- GitHub Actions;
-- weekly grouped minor/patch updates.
+`.github/dependabot.yml` covers Python dependencies and GitHub Actions with weekly grouped minor/patch updates.
 
 `pyqlib` and LightGBM are deliberately excluded from unattended version changes because they are governed compatibility-sensitive dependencies. Upgrade them in a dedicated PR with Qlib/backtest compatibility evidence.
 
@@ -93,35 +91,41 @@ Dependency PRs do not receive a reduced merge standard. They must pass the same 
 
 `.github/workflows/dependency-review.yml` runs on pull requests and fails on newly introduced dependencies with a **high or critical** known vulnerability.
 
-The check is a merge gate, not a replacement for maintainers reading dependency changes.
-
-If the repository's GitHub dependency graph is disabled, enable it before making this check required.
+The GitHub Dependency graph must be enabled under **Settings → Security & analysis** before this workflow can pass. Keep the workflow fail-closed rather than suppressing this prerequisite.
 
 ## CodeQL
 
-`.github/workflows/codeql.yml` runs Python CodeQL analysis on:
-
-- pull requests to `main`;
-- pushes to `main`;
-- a scheduled weekly scan.
+`.github/workflows/codeql.yml` runs Python CodeQL analysis on pull requests to `main`, pushes to `main`, and a scheduled weekly scan.
 
 CodeQL alerts are security findings, not automatic proof of exploitability. Triage findings in context, but do not silence alerts merely to make the workflow green.
 
-## Release supply chain
+## Release validation and supply chain
 
-`.github/workflows/release.yml` creates a GitHub software release only from an explicit `vX.Y.Z` tag.
+Release packaging is checked in two stages.
 
-The workflow:
+### Pull-request release check
+
+`.github/workflows/release-check.yml` runs when packaging/source/release-workflow inputs change. It is read-only and verifies before merge that the repository can:
+
+1. build wheel and source distribution;
+2. install the built wheel in a clean environment;
+3. import the package and resolve package metadata;
+4. generate a reproducible CycloneDX JSON SBOM from the clean wheel environment;
+5. generate and verify `SHA256SUMS`.
+
+This prevents the first `vX.Y.Z` tag from being the first real execution of the packaging/SBOM path.
+
+### Tagged release
+
+`.github/workflows/release.yml` creates a GitHub software release only from an explicit `vX.Y.Z` tag. It additionally:
 
 1. verifies the tag version matches `pyproject.toml`;
 2. verifies the tagged commit is on `main`;
-3. builds wheel and source distribution;
-4. smoke-installs the built wheel;
-5. generates a reproducible CycloneDX JSON SBOM;
-6. generates `SHA256SUMS`;
-7. creates SLSA-style GitHub build-provenance attestations with `actions/attest`;
-8. creates an SBOM attestation for the wheel;
-9. publishes the artifacts to a GitHub Release.
+3. rebuilds and smoke-tests the distribution;
+4. generates the CycloneDX SBOM and `SHA256SUMS`;
+5. creates SLSA-style GitHub build-provenance attestations with `actions/attest`;
+6. creates an SBOM attestation for the wheel;
+7. publishes the artifacts to a GitHub Release.
 
 This is a **software release**. It does not certify a strategy, change research promotion state, or authorize production trading.
 
@@ -138,13 +142,7 @@ PyPI publishing is intentionally not part of this workflow yet. If added later, 
 
 The release SBOM is generated from a clean virtual environment containing the built wheel and its resolved runtime dependencies.
 
-The SBOM is:
-
-- CycloneDX JSON;
-- generated reproducibly where supported;
-- attached to the GitHub Release;
-- itself covered by the release checksum manifest;
-- used as the predicate for the wheel's SBOM attestation.
+The SBOM is CycloneDX JSON, generated reproducibly where supported, attached to the GitHub Release, covered by the release checksum manifest, and used as the predicate for the wheel's SBOM attestation.
 
 An SBOM is inventory evidence, not a vulnerability assessment.
 
@@ -158,7 +156,7 @@ python -m mkdocs build --strict
 
 PRs only build; they do not deploy.
 
-After this PR is merged, an administrator must configure **Settings → Pages → Source: GitHub Actions** and enable the repository variable documented by the workflow if the deployment gate is retained. The expected site is:
+After this PR is merged, an administrator must configure **Settings → Pages → Source: GitHub Actions** and set `DOCS_PAGES_ENABLED=true`. The expected site is:
 
 `https://magic-alt.github.io/qlib-platform/`
 
@@ -168,11 +166,11 @@ Once Pages is live, set the repository About website to that URL.
 
 Workflow permissions should be least-privilege:
 
-- ordinary CI/docs build: `contents: read`;
+- ordinary CI/docs/release check: `contents: read`;
 - Dependency Review: `contents: read`;
 - CodeQL: `contents: read`, `security-events: write`;
 - Pages deploy: `pages: write`, `id-token: write`;
-- release: `contents: write`, `id-token: write`, `attestations: write`, `artifact-metadata: write`.
+- tagged release: `contents: write`, `id-token: write`, `attestations: write`, `artifact-metadata: write`.
 
 Third-party actions should be avoided when a GitHub-native or simple CLI implementation is sufficient. Actions used in this repository should be pinned to immutable commit SHAs and maintained by Dependabot.
 
@@ -192,6 +190,6 @@ At least quarterly, or after a major GitHub Actions/security change:
 - inspect Dependabot backlog and ignored dependencies;
 - review CodeQL/security alerts;
 - verify release workflow permissions and action SHAs;
-- run a docs strict build;
+- run a release check and docs strict build;
 - verify Pages and repository About metadata;
 - prune stale `good first issue` / `help wanted` tasks.

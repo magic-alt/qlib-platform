@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: maintainers
+applies_to_commit: 08f4d40397a7c0a215428ccdbdc4597865cfa5fe
 last_verified: 2026-09-02
 ---
 
@@ -20,16 +21,14 @@ A source-compatible change may still deserve a larger bump when it changes gover
 
 ## Release architecture
 
-The release process separates **review** from **publication**:
-
 ```text
 release preparation PR
   -> required CI/security/docs checks
+  -> Release Check: wheel/sdist + clean install + SBOM + checksums
   -> merge to main
   -> immutable vX.Y.Z tag
   -> Release workflow
-  -> wheel + sdist
-  -> clean-wheel smoke test
+  -> rebuild + smoke test
   -> CycloneDX SBOM + SHA256SUMS
   -> provenance + SBOM attestations
   -> GitHub Release
@@ -37,11 +36,23 @@ release preparation PR
 
 The tag is the explicit publication trigger. The release workflow must not create a release from an arbitrary branch or a version that differs from `pyproject.toml`.
 
+## Pre-merge release check
+
+`.github/workflows/release-check.yml` is the non-publishing packaging gate. It runs when source/package/release workflow inputs change and proves that the exact packaging path can:
+
+- build wheel and source distribution;
+- install the wheel in a clean virtual environment;
+- import the installed package and read its version metadata;
+- generate the CycloneDX SBOM;
+- generate and verify the checksum manifest.
+
+It has read-only repository permissions and cannot create releases or attestations.
+
 ## Prepare the release PR
 
 Before tagging:
 
-1. Ensure `main` and the release PR are green under required CI, docs, security, and dependency checks.
+1. Ensure `main` and the release PR are green under required CI, docs, security, dependency-review, and release-check gates.
 2. Confirm [Current Governance State](../current_state.md) is accurate; do not rewrite frozen evidence to match current code.
 3. Move relevant entries from `CHANGELOG.md` **Unreleased** into a dated version section.
 4. Set the same version in `pyproject.toml`.
@@ -49,18 +60,7 @@ Before tagging:
 6. Confirm user-facing docs and examples match supported behavior.
 7. Verify that no credentials, account identifiers, local paths, private datasets, or generated research evidence are accidentally included.
 
-Higher-risk release changes include:
-
-- `DataRelease` / `DatasetVersion` identity or verification;
-- feature, label, PIT timing, or fold semantics;
-- model bundle / prediction snapshot identity;
-- portfolio-policy or research-backtest accounting;
-- Artifact Contract schemas or handoff;
-- outbox/acknowledgement semantics;
-- production-refit/live-inference behavior;
-- governance gates, holdout access, or promotion rules.
-
-Those require targeted validation in addition to the ordinary package pipeline.
+Higher-risk release changes include `DataRelease`/`DatasetVersion` identity, PIT timing, model/prediction identity, portfolio/backtest accounting, Artifact Contract schemas, outbox semantics, live inference, and governance gates. Those require targeted validation in addition to package checks.
 
 ## Create the release tag
 
@@ -82,9 +82,9 @@ Never create the tag before the version/changelog PR has merged. The workflow ve
 
 A `v*` tag ruleset should prevent deletion or movement of published tags. See [Repository Governance](repository-governance.md).
 
-## Automated artifacts
+## Automated release artifacts
 
-`.github/workflows/release.yml` performs publication. It builds and uploads:
+`.github/workflows/release.yml` builds and uploads:
 
 - Python wheel;
 - source distribution;
@@ -102,8 +102,6 @@ PyPI publication is intentionally not enabled yet. If added later, use PyPI Trus
 
 ## Verify a release
 
-A consumer or maintainer should be able to verify downloaded artifacts independently:
-
 ```bash
 sha256sum -c SHA256SUMS
 gh attestation verify <artifact> --repo magic-alt/qlib-platform
@@ -113,14 +111,7 @@ A clean wheel install should also succeed without a source checkout.
 
 ## Release notes
 
-Release notes should explain:
-
-- user/integrator-visible changes;
-- breaking API/schema/identity/contract changes;
-- required migrations;
-- material research-semantic changes;
-- important fixes or security changes;
-- known limitations.
+Release notes should explain user-visible changes, breaking contracts/migrations, material research-semantic changes, important fixes/security changes, and known limitations.
 
 Do not describe a software release as successful alpha/model certification unless an independent governed research process explicitly supports that claim.
 
@@ -134,5 +125,3 @@ If a release is defective:
 2. fix forward in a new patch release;
 3. document the defect and remediation in `CHANGELOG.md`;
 4. create new immutable research evidence/identities if the defect affects governed outputs rather than mutating historical artifacts.
-
-If the release workflow fails before publication, fix the release automation or release-preparation commit, merge the correction, increment/recreate an appropriate not-yet-published tag only if no public immutable tag/release has been established. Once a tag is public and governed as immutable, prefer a new version.

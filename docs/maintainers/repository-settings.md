@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: maintainers
+applies_to_commit: 08f4d40397a7c0a215428ccdbdc4597865cfa5fe
 last_verified: 2026-09-02
 ---
 
@@ -73,6 +74,16 @@ The repository tracks MkDocs Material plus a strict build/deploy workflow. To ma
 6. Set the About **Website** field to that URL.
 
 PRs build with `mkdocs build --strict` but do not deploy.
+
+## Security & analysis prerequisites
+
+Under **Settings → Security & analysis**:
+
+- enable **Dependency graph** before making Dependency Review a required check;
+- enable Dependabot alerts/security updates where available;
+- keep CodeQL/default code scanning results visible to maintainers.
+
+The repository intentionally keeps Dependency Review fail-closed when the dependency graph is unavailable rather than silently downgrading the check.
 
 ## Milestones
 

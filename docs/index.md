@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
+applies_to_commit: 08f4d40397a7c0a215428ccdbdc4597865cfa5fe
 last_verified: 2026-09-02
 ---
 
