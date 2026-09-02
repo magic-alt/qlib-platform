@@ -104,4 +104,5 @@ nav:
   - Maintainers:
       - Release Process: maintainers/releasing.md
       - Repository Settings: maintainers/repository-settings.md
+      - Brand Guide: maintainers/branding.md
   - History: history/README.md
