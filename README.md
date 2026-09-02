@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/brand/qlib-platform-logo.svg" alt="qlib-platform" width="760">
+
 # qlib-platform
 
 ### Auditable A-share Quant Research & Alpha Factory on Microsoft Qlib
@@ -8,13 +10,15 @@
 
 <p>
   <a href="https://github.com/magic-alt/qlib-platform/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/magic-alt/qlib-platform/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/magic-alt/qlib-platform/actions/workflows/docs.yml"><img alt="Docs" src="https://github.com/magic-alt/qlib-platform/actions/workflows/docs.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-D22128.svg"></a>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10--3.12-3776AB?logo=python&logoColor=white">
   <img alt="Qlib" src="https://img.shields.io/badge/Microsoft%20Qlib-0.9.7-5C2D91">
   <img alt="Market" src="https://img.shields.io/badge/Market-A--share-C62828">
   <img alt="Artifact Contract" src="https://img.shields.io/badge/Artifact%20Contract-v2-2EA44F">
 </p>
 
-[Quick Start](#quick-start) · [Architecture](#architecture) · [Documentation](docs/index.md) · [CLI Reference](docs/cli_reference.md) · [Current Governance State](docs/current_state.md)
+[Quick Start](#quick-start) · [Architecture](#architecture) · [Documentation](docs/index.md) · [CLI Reference](docs/cli_reference.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Current Governance State](docs/current_state.md)
 
 </div>
 
@@ -54,24 +58,11 @@ A successful backtest is not enough for production-grade quantitative research. 
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    DR[Immutable DataRelease] --> DV[DatasetVersion]
-    DV --> FS[FeatureSnapshot]
-    FS --> RR[Research / Walk-forward]
-    RR --> PS[PredictionSnapshot]
-    PS --> BT[Research Backtest]
-    PS --> PP[PortfolioPolicy]
-    BT --> EV[Research Evidence / Audit]
-    PP --> TP[TARGET_PORTFOLIO]
-    TP --> AC[Artifact Contract v2]
-    AC --> PX[platform / Execution Plane]
+<p align="center">
+  <img src="docs/assets/architecture/system-overview.svg" alt="qlib-platform architecture overview" width="100%">
+</p>
 
-    DR --> RL[RealizedLabelSnapshot]
-    PS --> PE[PredictionEvaluationSnapshot]
-    RL --> PE
-    PE --> MON[Monitoring Evidence]
-```
+The diagram is an orientation view. Normative ownership and identity rules live in [Architecture Overview](docs/architecture.md), [Architecture Boundary](docs/architecture_boundary.md) and [Identity and Lineage](docs/identity_and_lineage.md).
 
 ### Research Plane — this repository
 
@@ -94,8 +85,6 @@ flowchart LR
 - OMS and QMT / broker gateway
 - orders, fills, positions and ledger
 - `LEAN_VALIDATED`, `PAPER`, `PRODUCTION`, `RETIRED`
-
-See [Architecture Overview](docs/architecture.md), [Architecture Boundary](docs/architecture_boundary.md) and [Identity and Lineage](docs/identity_and_lineage.md).
 
 ---
 
@@ -220,6 +209,7 @@ Changing data, features, labels, split rules, model profile, portfolio policy or
 | `pytorch` | PyTorch research |
 | `all` | data + Qlib + LightGBM + XGBoost |
 | `dev` | tests, lint, typing and research dependencies |
+| `docs` | MkDocs Material documentation-site tooling |
 
 Examples:
 
@@ -229,6 +219,10 @@ $RepoPython -m pip install -e '.[all,dev]'
 
 # Add PyTorch to the governed development environment
 $RepoPython -m pip install -c constraints/ci.txt -e '.[dev,pytorch]'
+
+# Build the documentation site
+$RepoPython -m pip install -e '.[docs]'
+$RepoPython -m mkdocs build --strict
 ```
 
 See [Configuration](docs/configuration.md) for canonical dependency and profile rules.
@@ -329,11 +323,15 @@ qlib-platform/
 ├─ scripts/                 # validation and utility scripts
 ├─ src/tushare_qlib/        # application and research implementation
 ├─ tests/                   # unit / integration / contract tests
-├─ .github/                 # CI and community workflow metadata
+├─ .github/                 # CI, CODEOWNERS and community workflow metadata
 ├─ .env.example             # environment-variable template
 ├─ AGENTS.md                # guidance for coding agents
+├─ CHANGELOG.md             # user-visible software changes and release baseline
+├─ CODE_OF_CONDUCT.md       # collaboration and research-integrity policy
 ├─ CONTRIBUTING.md          # contributor workflow and validation rules
+├─ LICENSE                  # Apache License 2.0
 ├─ SECURITY.md              # vulnerability reporting policy
+├─ mkdocs.yml               # documentation-site configuration
 ├─ pyproject.toml           # package metadata and dependency profiles
 └─ README.md
 ```
@@ -355,6 +353,8 @@ The canonical entry point is the **[Documentation Index](docs/index.md)**.
 | [Research Lifecycle](docs/research_lifecycle.md) | governed research stages |
 | [Operations Runbook](docs/OPERATIONS_RUNBOOK.md) | operational procedures and recovery entry points |
 | [Testing and Certification](docs/testing_and_certification.md) | validation and certification model |
+| [Release Process](docs/maintainers/releasing.md) | software versioning, release notes and rollback |
+| [Brand Guide](docs/maintainers/branding.md) | logo, palette, typography and diagram policy |
 | [Troubleshooting](docs/troubleshooting.md) | common failures and recovery guidance |
 
 Historical protocols and deprecated tutorials live under [`docs/history`](docs/history/README.md) and must not be treated as current operating instructions.
@@ -394,11 +394,19 @@ Upstream: [microsoft/qlib](https://github.com/microsoft/qlib)
 
 ---
 
-## Contributing & security
+## Contributing & community
 
-Contributions that improve reproducibility, data integrity, research tooling, documentation, testing or operational safety are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and use the repository issue / pull-request templates.
+Contributions that improve reproducibility, data integrity, research tooling, documentation, testing or operational safety are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and use the repository issue / pull-request templates.
 
 For suspected vulnerabilities, credential exposure, artifact-integrity bypasses or security-boundary issues, follow [SECURITY.md](SECURITY.md). Do not publish secrets, broker credentials or exploit details in a public issue.
+
+Software release history is tracked in [CHANGELOG.md](CHANGELOG.md); maintainer release procedure lives in [docs/maintainers/releasing.md](docs/maintainers/releasing.md).
+
+---
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). Third-party projects, datasets and dependencies retain their own licenses and attribution requirements.
 
 ---
 
