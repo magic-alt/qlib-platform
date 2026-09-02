@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">qlib-platform architecture overview</title>
+  <desc id="desc">A visual overview from immutable data release through research, backtesting, portfolio policy, artifact contract, and the external execution plane.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#312E81"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L12,6 L0,12 z" fill="#64748B"/>
+    </marker>
+    <style>
+      .title { font: 700 42px Inter,Segoe UI,Arial,sans-serif; fill: #0F172A; }
+      .subtitle { font: 500 21px Inter,Segoe UI,Arial,sans-serif; fill: #64748B; }
+      .lane { font: 700 19px Inter,Segoe UI,Arial,sans-serif; letter-spacing: 1.4px; fill: #475569; }
+      .box-title { font: 700 21px Inter,Segoe UI,Arial,sans-serif; fill: #0F172A; }
+      .box-text { font: 500 16px Inter,Segoe UI,Arial,sans-serif; fill: #475569; }
+      .small { font: 600 14px Inter,Segoe UI,Arial,sans-serif; fill: #64748B; }
+      .arrow { fill: none; stroke: #64748B; stroke-width: 4; marker-end: url(#arrow); }
+      .dash { fill: none; stroke: #94A3B8; stroke-width: 3; stroke-dasharray: 9 9; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" rx="28" fill="#F8FAFC"/>
+  <rect x="44" y="38" width="1512" height="124" rx="24" fill="url(#header)"/>
+  <text x="84" y="96" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="39" font-weight="760" fill="#F8FAFC">qlib-platform · Research Plane / Alpha Factory</text>
+  <text x="84" y="132" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="500" fill="#CBD5E1">Immutable identity → causal research → auditable backtest → governed target portfolio → execution boundary</text>
+
+  <text x="80" y="218" class="lane">DATA IDENTITY</text>
+  <text x="454" y="218" class="lane">RESEARCH & EVIDENCE</text>
+  <text x="1030" y="218" class="lane">PORTFOLIO HANDOFF</text>
+  <text x="1327" y="218" class="lane">EXECUTION</text>
+
+  <rect x="68" y="250" width="282" height="132" rx="20" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="3"/>
+  <text x="94" y="292" class="box-title">Immutable DataRelease</text>
+  <text x="94" y="324" class="box-text">raw facts · calendar · PIT inputs</text>
+  <text x="94" y="351" class="small">verify · promote · immutable hash</text>
+
+  <rect x="68" y="442" width="282" height="132" rx="20" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="3"/>
+  <text x="94" y="484" class="box-title">DatasetVersion</text>
+  <text x="94" y="516" class="box-text">Qlib materialization + registry</text>
+  <text x="94" y="543" class="small">portable identity · aliases · verify</text>
+
+  <rect x="430" y="250" width="300" height="132" rx="20" fill="#FFFFFF" stroke="#A5F3FC" stroke-width="3"/>
+  <text x="456" y="292" class="box-title">FeatureSnapshot</text>
+  <text x="456" y="324" class="box-text">PIT features · Alpha158 · custom</text>
+  <text x="456" y="351" class="small">causal processors · reproducible inputs</text>
+
+  <rect x="430" y="442" width="300" height="132" rx="20" fill="#FFFFFF" stroke="#DDD6FE" stroke-width="3"/>
+  <text x="456" y="484" class="box-title">Walk-forward Research</text>
+  <text x="456" y="516" class="box-text">LightGBM · XGBoost · PyTorch</text>
+  <text x="456" y="543" class="small">OOS folds · IC/RankIC · diagnostics</text>
+
+  <rect x="786" y="250" width="300" height="132" rx="20" fill="#FFFFFF" stroke="#DDD6FE" stroke-width="3"/>
+  <text x="812" y="292" class="box-title">PredictionSnapshot</text>
+  <text x="812" y="324" class="box-text">model output + immutable lineage</text>
+  <text x="812" y="351" class="small">model profile · code revision · hashes</text>
+
+  <rect x="786" y="442" width="300" height="132" rx="20" fill="#FFFFFF" stroke="#FDE68A" stroke-width="3"/>
+  <text x="812" y="484" class="box-title">Research Backtest</text>
+  <text x="812" y="516" class="box-text">simulated fills · accounting · audit</text>
+  <text x="812" y="543" class="small">evidence, not broker authority</text>
+
+  <rect x="1138" y="250" width="260" height="132" rx="20" fill="#FFFFFF" stroke="#BBF7D0" stroke-width="3"/>
+  <text x="1164" y="292" class="box-title">PortfolioPolicy</text>
+  <text x="1164" y="324" class="box-text">top-k / rank-buffer decisions</text>
+  <text x="1164" y="351" class="small">explicit policy identity</text>
+
+  <rect x="1138" y="442" width="260" height="132" rx="20" fill="#ECFDF5" stroke="#34D399" stroke-width="4"/>
+  <text x="1164" y="484" class="box-title">TARGET_PORTFOLIO</text>
+  <text x="1164" y="516" class="box-text">sole execution-semantic handoff</text>
+  <text x="1164" y="543" class="small">bound to immutable DataRelease</text>
+
+  <rect x="1430" y="346" width="132" height="228" rx="20" fill="#111827"/>
+  <text x="1496" y="390" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="18" font-weight="700" fill="#F8FAFC">platform</text>
+  <text x="1496" y="422" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="14" font-weight="600" fill="#A5B4FC">Execution Plane</text>
+  <text x="1496" y="468" text-anchor="middle" class="small" fill="#CBD5E1">LEAN</text>
+  <text x="1496" y="495" text-anchor="middle" class="small" fill="#CBD5E1">hard risk</text>
+  <text x="1496" y="522" text-anchor="middle" class="small" fill="#CBD5E1">OMS / QMT</text>
+  <text x="1496" y="549" text-anchor="middle" class="small" fill="#CBD5E1">fills / ledger</text>
+
+  <path d="M210 382 V442" class="arrow"/>
+  <path d="M350 508 H430" class="arrow"/>
+  <path d="M580 382 V442" class="arrow"/>
+  <path d="M730 508 H786" class="arrow"/>
+  <path d="M936 382 V442" class="arrow"/>
+  <path d="M1086 316 H1138" class="arrow"/>
+  <path d="M1268 382 V442" class="arrow"/>
+  <path d="M1398 508 H1430" class="arrow"/>
+
+  <rect x="430" y="650" width="656" height="132" rx="20" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="3" stroke-dasharray="10 8"/>
+  <text x="456" y="692" class="box-title">Monitoring evidence branch</text>
+  <text x="456" y="724" class="box-text">RealizedLabelSnapshot + PredictionEvaluationSnapshot</text>
+  <text x="456" y="753" class="small">observability only · cannot authorize candidate selection, promotion, publication, or execution</text>
+  <path d="M210 574 C210 716 304 716 430 716" class="dash"/>
+  <path d="M936 574 C936 620 920 642 900 650" class="dash"/>
+
+  <rect x="1128" y="650" width="434" height="132" rx="20" fill="#FFF7ED" stroke="#FDBA74" stroke-width="3"/>
+  <text x="1154" y="692" class="box-title">Boundary invariant</text>
+  <text x="1154" y="724" class="box-text">Research owns target intent.</text>
+  <text x="1154" y="753" class="box-text">Execution owns real orders, fills, positions, and ledger.</text>
+
+  <text x="80" y="846" class="small">Static orientation diagram · normative ownership remains in docs/architecture_boundary.md and docs/identity_and_lineage.md</text>
+</svg>
