@@ -1,11 +1,13 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 2d3a7bc490550801c2b9d7748e274f6c9064f184
+applies_to_commit: 85bac85356d8092adfe98cd82ee59f81a242cf53
 last_verified: 2026-09-02
 ---
 
 # qlib-platform Documentation
+
+![qlib-platform](assets/brand/qlib-platform-logo.svg)
 
 This is the canonical navigation page for `qlib-platform` documentation.
 
@@ -41,6 +43,8 @@ After these five pages, most contributors can navigate the repository without re
 | Work on local model deployment / signals | [Model Lifecycle](model_lifecycle.md) | [Production Feedback](production_feedback.md), [Current State](current_state.md) |
 | Debug a failure | [Troubleshooting](troubleshooting.md) | [Operations Runbook](OPERATIONS_RUNBOOK.md), [Recovery](operations/recovery.md) |
 | Validate a change | [Testing and Certification](testing_and_certification.md) | [CONTRIBUTING](../CONTRIBUTING.md), [Current State](current_state.md) |
+| Cut a software release | [Release Process](maintainers/releasing.md) | [CHANGELOG](../CHANGELOG.md), [Repository Settings](maintainers/repository-settings.md) |
+| Work on public branding/docs UX | [Brand Guide](maintainers/branding.md) | [Repository Settings](maintainers/repository-settings.md), [`mkdocs.yml`](../mkdocs.yml) |
 
 ---
 
@@ -141,6 +145,16 @@ For code contributions, pair these with **[CONTRIBUTING.md](../CONTRIBUTING.md)*
 
 ---
 
+## Maintainer and project operations
+
+- **[Release Process](maintainers/releasing.md)** — software versioning, release checks, tag/release flow, and rollback policy.
+- **[Repository Settings](maintainers/repository-settings.md)** — GitHub About/Topics, Pages, merge policy, and recommended ruleset settings that live outside tracked files.
+- **[Brand Guide](maintainers/branding.md)** — logo assets, palette, typography, diagram policy, and external-use guidance.
+- **[CHANGELOG](../CHANGELOG.md)** — user-visible software changes and version history.
+- **[Code of Conduct](../CODE_OF_CONDUCT.md)** — collaboration and research-integrity expectations.
+
+---
+
 ## Certification and frozen evidence
 
 - **[Research Infrastructure Certification](research_infrastructure_certification.md)** — certification statement bound to its frozen certified baseline.
@@ -172,6 +186,7 @@ When changing documentation:
 - link moving governance facts to [Current State](current_state.md) instead of copying them;
 - do not rewrite frozen certification/history files to describe current main;
 - keep execution-owned concepts (orders, fills, positions, ledger, hard risk) on the `platform` side of the boundary;
-- run `scripts/check_docs.py --root .` before opening a pull request.
+- run `scripts/check_docs.py --root .` before opening a pull request;
+- run `python -m mkdocs build --strict` when changing the documentation site or navigation.
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the complete contributor workflow.
