@@ -1,0 +1,56 @@
+name: Contributor task proposal
+description: Propose a bounded, newcomer-friendly maintenance or documentation task
+title: "[contributor-task] "
+labels:
+  - "help wanted"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for small, public, independently verifiable contribution tasks.
+        Maintainers apply `good first issue` only after confirming the scope meets the project policy.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What friction, missing test, documentation gap, or small maintenance problem should be addressed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Proposed scope
+      description: Which files or subsystem should change?
+      placeholder: "Example: docs/... and one focused test file; no research-semantic changes."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that define completion.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Suggested validation
+      description: Which existing checks or tests should prove the change?
+      placeholder: "python scripts/check_docs.py --root ."
+
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Scope check
+      options:
+        - label: This task does not require secrets, broker access, proprietary data, or sealed-holdout access.
+          required: true
+        - label: This task does not intentionally change research gates, PIT semantics, promotion semantics, or execution ownership.
+          required: true
