@@ -1,0 +1,111 @@
+:root {
+  --qp-radius: 14px;
+  --qp-shadow: 0 12px 36px rgba(15, 23, 42, 0.08);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body,
+.md-typeset {
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+}
+
+.md-typeset code,
+.md-typeset kbd,
+.md-typeset pre {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.md-header__title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  letter-spacing: -0.025em;
+}
+
+.md-typeset h1 {
+  font-weight: 760;
+}
+
+.md-typeset h2 {
+  margin-top: 2.2em;
+  font-weight: 700;
+}
+
+.md-typeset a {
+  text-underline-offset: 0.15em;
+}
+
+.md-typeset table:not([class]) {
+  border-radius: var(--qp-radius);
+  box-shadow: var(--qp-shadow);
+  overflow: hidden;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--qp-radius);
+}
+
+.md-typeset pre > code {
+  border-radius: 10px;
+}
+
+.qp-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  gap: 2rem;
+  align-items: center;
+  margin: 1.25rem 0 2.5rem;
+}
+
+.qp-hero img {
+  width: 100%;
+  max-width: 520px;
+  margin-inline: auto;
+}
+
+.qp-kicker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.qp-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0 2rem;
+}
+
+.qp-card {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--qp-radius);
+  background: var(--md-default-bg-color);
+  box-shadow: var(--qp-shadow);
+}
+
+.qp-card > :first-child {
+  margin-top: 0;
+}
+
+.qp-card > :last-child {
+  margin-bottom: 0;
+}
+
+@media screen and (max-width: 760px) {
+  .qp-hero,
+  .qp-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

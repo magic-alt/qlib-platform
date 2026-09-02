@@ -1,8 +1,8 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 4f3f4369b6e55186967bc726bb8dd87fff0e5d70
-last_verified: 2026-08-31
+applies_to_commit: 85bac85356d8092adfe98cd82ee59f81a242cf53
+last_verified: 2026-09-02
 ---
 
 # Configuration Profiles
@@ -63,6 +63,7 @@ The base package contains the platform/core data-manifest dependencies. Optional
 | `xgboost` | XGBoost runtime |
 | `all` | data + Qlib/LightGBM + XGBoost; **does not include PyTorch** |
 | `dev` | Qlib/LightGBM/XGBoost plus pytest, coverage, Ruff, mypy and type stubs |
+| `docs` | MkDocs Material documentation-site tooling (`mkdocs-material==9.7.7`) |
 
 Examples:
 
@@ -71,9 +72,16 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 & $RepoPython -m pip install -c constraints/ci.txt -e ".[dev]"
 & $RepoPython -m pip install -c constraints/ci.txt -e ".[all,dev]"
 & $RepoPython -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"
+& $RepoPython -m pip install -e ".[docs]"
 ```
 
 The project pins `pyqlib==0.9.7` and `lightgbm==4.6.0`. A Windows OpenCL build must compile the same LightGBM version; it is not a separate dependency version profile.
+
+The documentation dependency is deliberately separated from `dev` so ordinary research/development environments do not need the site generator. Build the site with:
+
+```powershell
+& $RepoPython -m mkdocs build --strict
+```
 
 ## Safe profile smoke checks
 

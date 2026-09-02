@@ -80,4 +80,4 @@ See [Production Feedback](production_feedback.md).
 
 ## Vendored schemas
 
-The vendored schema provenance and file digests are recorded in [contracts/README.md](../contracts/README.md). Schema conformance, payload verification and governance checks are distinct layers; the presence of a vendored schema does not by itself prove that an export path has run every governed validation.
+The vendored schema provenance and file digests are recorded in the repository [contracts README](https://github.com/magic-alt/qlib-platform/blob/main/contracts/README.md). Schema conformance, payload verification and governance checks are distinct layers; the presence of a vendored schema does not by itself prove that an export path has run every governed validation.

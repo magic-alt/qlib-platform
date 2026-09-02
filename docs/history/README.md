@@ -14,7 +14,7 @@ handoff contracts.
 - [Phase 2](research/alpha_research_phase_2.md) — completed/frozen predecessor of Phase 3-D.
 - [P0 research baseline](research/p0_research_baseline.md) — historical research simulation/audit protocol.
 - [Old local qrun guide](qrun/local_alpha158_qrun_backtest.md) — superseded by the maintained
-  [local example](../../examples/local_qlib_backtest/README.md).
+  [local example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest).
 - [Full walk-forward acceptance](../full_walk_forward_acceptance.md) — frozen certification protocol
   bound to the certified baseline.
 

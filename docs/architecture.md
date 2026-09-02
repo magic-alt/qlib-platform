@@ -11,6 +11,10 @@ last_verified: 2026-08-31
 
 ## System view
 
+![qlib-platform system overview](assets/architecture/system-overview.svg)
+
+The static overview above is an onboarding aid. The Mermaid graph below remains close to the normative concepts and is easier to keep aligned with textual architecture changes.
+
 ```mermaid
 flowchart LR
     DR[Immutable DataRelease] --> DV[DatasetVersion]

@@ -1,0 +1,126 @@
+site_name: qlib-platform
+site_description: Auditable A-share quant research and alpha factory built on Microsoft Qlib
+site_author: qlib-platform contributors
+site_url: https://magic-alt.github.io/qlib-platform/
+repo_name: magic-alt/qlib-platform
+repo_url: https://github.com/magic-alt/qlib-platform
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 qlib-platform contributors · Apache-2.0
+
+theme:
+  name: material
+  language: en
+  logo: assets/brand/qlib-platform-mark.svg
+  favicon: assets/brand/qlib-platform-mark.svg
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/magic-alt/qlib-platform
+      name: qlib-platform on GitHub
+
+nav:
+  - Home: index.md
+  - Start Here:
+      - Current Governance State: current_state.md
+      - Architecture Overview: architecture.md
+      - Architecture Boundary: architecture_boundary.md
+      - Identity and Lineage: identity_and_lineage.md
+      - Standalone Sovereignty: standalone_sovereignty.md
+      - Glossary: glossary.md
+  - Use the Platform:
+      - Configuration: configuration.md
+      - CLI Reference: cli_reference.md
+      - Qlib Data Platform: qlib_data_platform.md
+      - Data Schema: data_schema.md
+      - TuShare Daily Sync: daily_sync.md
+      - Research Lifecycle: research_lifecycle.md
+      - Portfolio Policy: portfolio_v2_rank_buffer.md
+      - Windows LightGBM GPU: windows_lightgbm_gpu.md
+  - Research & ML:
+      - Active Phase 3-D: alpha_research_phase_3.md
+      - Model Lifecycle: model_lifecycle.md
+      - Production Feedback: production_feedback.md
+      - Production ML Phase 4: production_ml_phase4.md
+      - Full Walk-forward Acceptance: full_walk_forward_acceptance.md
+  - Contracts & Operations:
+      - Artifact Contract v2: artifact_contract_v2.md
+      - Operations Runbook: OPERATIONS_RUNBOOK.md
+      - Daily Research: operations/daily-research.md
+      - Health & Observability: operations/health-and-observability.md
+      - Outbox Delivery: operations/outbox.md
+      - Recovery: operations/recovery.md
+      - Incident Response: operations/incident-response.md
+      - Testing & Certification: testing_and_certification.md
+      - Research Infrastructure Certification: research_infrastructure_certification.md
+      - Troubleshooting: troubleshooting.md
+  - Maintainers:
+      - Release Process: maintainers/releasing.md
+      - Repository Settings: maintainers/repository-settings.md
+      - Brand Guide: maintainers/branding.md
+  - History & Moved:
+      - History Index: history/README.md
+      - Historical Research:
+          - Phase 1: history/research/alpha_research_phase_1.md
+          - Phase 2: history/research/alpha_research_phase_2.md
+          - P0 Research Baseline: history/research/p0_research_baseline.md
+      - Deprecated qrun Guide: history/qrun/local_alpha158_qrun_backtest.md
+      - QMT Gateway Pointer: qmt_gateway.md
+      - Legacy QMT Source Manual: QMT_极速策略交易系统_使用教程与API接口说明.md

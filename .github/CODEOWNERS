@@ -1,0 +1,37 @@
+# qlib-platform ownership map
+#
+# Keep the default owner last-resort explicit. More specific paths below make
+# review intent visible without changing the repository's branch-protection policy.
+
+* @magic-alt
+
+# Research implementation and tests
+/src/ @magic-alt
+/tests/ @magic-alt
+
+# Governed configuration, schemas, and data contracts
+/configs/ @magic-alt
+/contracts/ @magic-alt
+/constraints/ @magic-alt
+
+# Documentation, examples, and public project surface
+/docs/ @magic-alt
+/examples/ @magic-alt
+/README.md @magic-alt
+/CONTRIBUTING.md @magic-alt
+/SECURITY.md @magic-alt
+/CODE_OF_CONDUCT.md @magic-alt
+/CHANGELOG.md @magic-alt
+/LICENSE @magic-alt
+/mkdocs.yml @magic-alt
+
+# Repository governance and automation
+/.github/ @magic-alt
+/.agents/ @magic-alt
+/.codex/ @magic-alt
+/AGENTS.md @magic-alt
+
+# Packaging and deployment
+/pyproject.toml @magic-alt
+/deploy/ @magic-alt
+/scripts/ @magic-alt

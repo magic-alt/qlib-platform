@@ -1,11 +1,13 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 2d3a7bc490550801c2b9d7748e274f6c9064f184
+applies_to_commit: 85bac85356d8092adfe98cd82ee59f81a242cf53
 last_verified: 2026-09-02
 ---
 
 # qlib-platform Documentation
+
+![qlib-platform](assets/brand/qlib-platform-logo.svg)
 
 This is the canonical navigation page for `qlib-platform` documentation.
 
@@ -16,9 +18,9 @@ If you are new to the repository, do **not** start by reading every design docum
 
 ## 5-minute onboarding path
 
-1. **[README](../README.md)** — understand what the project is, what it owns and where research stops.
+1. **[README](https://github.com/magic-alt/qlib-platform#readme)** — understand what the project is, what it owns and where research stops.
 2. **[Architecture](architecture.md)** — learn the Research Plane layers, identity flow and failure model.
-3. **[Local Qlib Backtest Example](../examples/local_qlib_backtest/README.md)** — run the smallest maintained Qlib workflow.
+3. **[Local Qlib Backtest Example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest)** — run the smallest maintained Qlib workflow.
 4. **[CLI Reference](cli_reference.md)** — map commands to configuration, inputs, outputs and side effects.
 5. **[Current State](current_state.md)** — check the active governance state before governed research or publication.
 
@@ -31,8 +33,8 @@ After these five pages, most contributors can navigate the repository without re
 | I want to... | Start with | Then read |
 | --- | --- | --- |
 | Understand the system | [Architecture](architecture.md) | [Architecture Boundary](architecture_boundary.md), [Identity and Lineage](identity_and_lineage.md) |
-| Install and configure locally | [README Quick Start](../README.md#quick-start) | [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
-| Run Qlib research | [Local Qlib Backtest Example](../examples/local_qlib_backtest/README.md) | [Research Lifecycle](research_lifecycle.md), [CLI Reference](cli_reference.md) |
+| Install and configure locally | [README Quick Start](https://github.com/magic-alt/qlib-platform#quick-start) | [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
+| Run Qlib research | [Local Qlib Backtest Example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest) | [Research Lifecycle](research_lifecycle.md), [CLI Reference](cli_reference.md) |
 | Work with data releases / datasets | [Qlib Data Platform](qlib_data_platform.md) | [Data Schema](data_schema.md), [Identity and Lineage](identity_and_lineage.md) |
 | Develop features / alphas / diagnostics | [Research Lifecycle](research_lifecycle.md) | [Active Phase 3-D](alpha_research_phase_3.md), [Portfolio Policy Layers](portfolio_v2_rank_buffer.md) |
 | Operate daily research jobs | [Operations Runbook](OPERATIONS_RUNBOOK.md) | [Daily Research](operations/daily-research.md), [Health and Observability](operations/health-and-observability.md) |
@@ -40,7 +42,9 @@ After these five pages, most contributors can navigate the repository without re
 | Integrate with `magic-alt/platform` | [Architecture Boundary](architecture_boundary.md) | [Artifact Contract v2](artifact_contract_v2.md), [Identity and Lineage](identity_and_lineage.md) |
 | Work on local model deployment / signals | [Model Lifecycle](model_lifecycle.md) | [Production Feedback](production_feedback.md), [Current State](current_state.md) |
 | Debug a failure | [Troubleshooting](troubleshooting.md) | [Operations Runbook](OPERATIONS_RUNBOOK.md), [Recovery](operations/recovery.md) |
-| Validate a change | [Testing and Certification](testing_and_certification.md) | [CONTRIBUTING](../CONTRIBUTING.md), [Current State](current_state.md) |
+| Validate a change | [Testing and Certification](testing_and_certification.md) | [CONTRIBUTING](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md), [Current State](current_state.md) |
+| Cut a software release | [Release Process](maintainers/releasing.md) | [CHANGELOG](https://github.com/magic-alt/qlib-platform/blob/main/CHANGELOG.md), [Repository Settings](maintainers/repository-settings.md) |
+| Work on public branding/docs UX | [Brand Guide](maintainers/branding.md) | [Repository Settings](maintainers/repository-settings.md), [`mkdocs.yml`](https://github.com/magic-alt/qlib-platform/blob/main/mkdocs.yml) |
 
 ---
 
@@ -92,7 +96,7 @@ Architecture
 - **[Active Phase 3-D](alpha_research_phase_3.md)** — active diagnostic protocol; always cross-check [Current State](current_state.md).
 - **[Portfolio Policy Layers](portfolio_v2_rank_buffer.md)** — typed portfolio construction and rank-buffer/top-k policy behavior.
 - **[Standalone Sovereignty](standalone_sovereignty.md)** — guarantees and expectations for standalone operation.
-- **[Local Qlib Backtest Example](../examples/local_qlib_backtest/README.md)** — maintained runnable qrun/Qlib example.
+- **[Local Qlib Backtest Example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest)** — maintained runnable qrun/Qlib example.
 
 ### Research identity flow
 
@@ -137,7 +141,17 @@ Before model selection, holdout access, publication or promotion, check [Current
 - **[Testing and Certification](testing_and_certification.md)** — validation layers, certification scope and evidence expectations.
 - **[Troubleshooting](troubleshooting.md)** — common installation/runtime/research problems.
 
-For code contributions, pair these with **[CONTRIBUTING.md](../CONTRIBUTING.md)** and the pull-request template.
+For code contributions, pair these with **[CONTRIBUTING.md](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md)** and the pull-request template.
+
+---
+
+## Maintainer and project operations
+
+- **[Release Process](maintainers/releasing.md)** — software versioning, release checks, tag/release flow, and rollback policy.
+- **[Repository Settings](maintainers/repository-settings.md)** — GitHub About/Topics, Pages, merge policy, and recommended ruleset settings that live outside tracked files.
+- **[Brand Guide](maintainers/branding.md)** — logo assets, palette, typography, diagram policy, and external-use guidance.
+- **[CHANGELOG](https://github.com/magic-alt/qlib-platform/blob/main/CHANGELOG.md)** — user-visible software changes and version history.
+- **[Code of Conduct](https://github.com/magic-alt/qlib-platform/blob/main/CODE_OF_CONDUCT.md)** — collaboration and research-integrity expectations.
 
 ---
 
@@ -172,6 +186,7 @@ When changing documentation:
 - link moving governance facts to [Current State](current_state.md) instead of copying them;
 - do not rewrite frozen certification/history files to describe current main;
 - keep execution-owned concepts (orders, fills, positions, ledger, hard risk) on the `platform` side of the boundary;
-- run `scripts/check_docs.py --root .` before opening a pull request.
+- run `scripts/check_docs.py --root .` before opening a pull request;
+- run `python -m mkdocs build --strict` when changing the documentation site or navigation.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the complete contributor workflow.
+See [CONTRIBUTING.md](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md) for the complete contributor workflow.

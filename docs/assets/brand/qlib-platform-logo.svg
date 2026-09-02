@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 320" role="img" aria-labelledby="title desc">
+  <title id="title">qlib-platform</title>
+  <desc id="desc">qlib-platform wordmark with geometric research and data mark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="20" y1="20" x2="280" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#312E81"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="70" y1="80" x2="230" y2="228" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67E8F9"/>
+      <stop offset="0.52" stop-color="#818CF8"/>
+      <stop offset="1" stop-color="#C084FC"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="288" height="288" rx="66" fill="url(#bg)"/>
+  <circle cx="151" cy="151" r="80" fill="none" stroke="#F8FAFC" stroke-width="24" stroke-linecap="round"/>
+  <path d="M203 203 L256 256" fill="none" stroke="#F8FAFC" stroke-width="24" stroke-linecap="round"/>
+  <path d="M82 181 C105 164 122 176 139 151 C157 124 176 143 194 116 C207 97 221 98 237 86"
+        fill="none" stroke="url(#signal)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="82" cy="181" r="10" fill="#67E8F9"/>
+  <circle cx="139" cy="151" r="10" fill="#60A5FA"/>
+  <circle cx="194" cy="116" r="10" fill="#A78BFA"/>
+  <circle cx="237" cy="86" r="10" fill="#E879F9"/>
+
+  <text x="352" y="151" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="88" font-weight="760" letter-spacing="-3" fill="#111827">qlib-platform</text>
+  <text x="356" y="208" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="25" font-weight="650" letter-spacing="4" fill="#4F46E5">AUDITABLE QUANT RESEARCH · A-SHARE · MICROSOFT QLIB</text>
+  <text x="356" y="252" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="22" font-weight="450" fill="#64748B">Immutable lineage · PIT-aware workflows · Walk-forward evaluation · Governed handoff</text>
+</svg>

@@ -3,6 +3,9 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/magic-alt/qlib-platform/blob/main/SECURITY.md
     about: Read the private-reporting guidance before sharing security-sensitive details.
+  - name: Code of Conduct
+    url: https://github.com/magic-alt/qlib-platform/blob/main/CODE_OF_CONDUCT.md
+    about: Review collaboration standards and reporting guidance for community conduct concerns.
   - name: Documentation index
     url: https://github.com/magic-alt/qlib-platform/blob/main/docs/index.md
     about: Check architecture, CLI, operations and research documentation before opening an issue.
