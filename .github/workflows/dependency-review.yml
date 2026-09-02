@@ -24,6 +24,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
+          REPOSITORY_VISIBILITY: ${{ github.event.repository.visibility }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -38,13 +39,23 @@ jobs:
             --header 'X-GitHub-Api-Version: 2026-03-10' \
             "$url")"
 
+          fallback=false
           case "$status" in
             200)
               echo "available=true" >> "$GITHUB_OUTPUT"
               ;;
             404)
-              echo "available=false" >> "$GITHUB_OUTPUT"
-              echo "::warning::GitHub Dependency Graph is disabled; using the fail-closed Python dependency fallback. Enable Dependency Graph in Settings > Security > Advanced Security to restore the native dependency review path."
+              fallback=true
+              ;;
+            403)
+              if [[ "$REPOSITORY_VISIBILITY" == "public" ]] \
+                && grep -Eq '"message"[[:space:]]*:[[:space:]]*"Forbidden"' "$response"; then
+                fallback=true
+              else
+                echo "::error::Dependency Review API probe failed with HTTP 403."
+                cat "$response"
+                exit 1
+              fi
               ;;
             *)
               echo "::error::Dependency Review API probe failed with HTTP ${status}."
@@ -52,6 +63,11 @@ jobs:
               exit 1
               ;;
           esac
+
+          if [[ "$fallback" == "true" ]]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GitHub Dependency Graph is unavailable; using the fail-closed Python dependency fallback. Enable Dependency Graph in Settings > Security > Advanced Security to restore the native dependency review path."
+          fi
 
       - name: Review dependency changes
         if: steps.dependency-graph.outputs.available == 'true'
