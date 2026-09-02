@@ -1,6 +1,6 @@
 # Direct dependency lock shared by Ubuntu/Windows and Python 3.10/3.11/3.12 CI.
 pandas==2.3.3
-numpy==1.26.4
+numpy==2.2.6
 pyarrow==19.0.1
 duckdb==1.5.5
 PyYAML==6.0.3
