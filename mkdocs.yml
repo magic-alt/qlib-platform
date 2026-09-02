@@ -85,6 +85,9 @@ nav:
       - Identity and Lineage: identity_and_lineage.md
       - Standalone Sovereignty: standalone_sovereignty.md
       - Glossary: glossary.md
+  - Project:
+      - Roadmap & Milestones: project/roadmap.md
+      - Good First Issue Policy: project/good-first-issues.md
   - Use the Platform:
       - Configuration: configuration.md
       - CLI Reference: cli_reference.md
@@ -112,6 +115,7 @@ nav:
       - Research Infrastructure Certification: research_infrastructure_certification.md
       - Troubleshooting: troubleshooting.md
   - Maintainers:
+      - Repository Governance: maintainers/repository-governance.md
       - Release Process: maintainers/releasing.md
       - Repository Settings: maintainers/repository-settings.md
       - Brand Guide: maintainers/branding.md

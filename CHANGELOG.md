@@ -8,14 +8,22 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Added
 
-- Apache License 2.0 project licensing.
-- Repository CODEOWNERS and project Code of Conduct.
+- Apache License 2.0 project licensing and package metadata.
+- Repository CODEOWNERS and a research-integrity-aware Code of Conduct.
 - Maintainer-facing release policy and generated-release-note categories.
-- MkDocs Material documentation-site configuration and documentation build workflow.
-- Project brand assets and architecture overview artwork.
+- MkDocs Material documentation-site configuration, strict documentation CI, and version-controlled project brand/architecture assets.
+- Dependabot policy for Python and GitHub Actions, with governed Qlib/LightGBM upgrades kept manual.
+- CodeQL Python security analysis and pull-request Dependency Review.
+- Tagged GitHub Release automation with wheel/source build, clean-environment smoke test, CycloneDX SBOM, SHA-256 manifest, build-provenance attestation, and SBOM attestation.
+- Public project roadmap, milestone model, repository-governance guide, Good First Issue policy, and contributor-task issue form.
 
 ### Changed
 
+- README branding no longer repeats the project title beneath the wordmark.
+- README no longer duplicates the CLI command catalog; command syntax and side-effect classification remain in the dedicated CLI Reference.
+- `CONTRIBUTING.md` now provides first-contributor routing, risk-based change classification, review expectations, research-integrity rules, and dependency-bot policy.
+- `CODE_OF_CONDUCT.md` now more clearly separates technical disagreement, research-integrity violations, conduct reporting, maintainer conflicts, and enforcement boundaries.
+- Documentation navigation now exposes project roadmap, contributor onboarding, and repository/supply-chain governance as first-class sections.
 - Public repository metadata and package metadata are being aligned with the open-source project surface.
 
 ## 0.3.0 baseline — 2026-09-02

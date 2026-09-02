@@ -1,52 +1,68 @@
 ---
 status: ACTIVE
 owner: maintainers
-applies_to_commit: 85bac85356d8092adfe98cd82ee59f81a242cf53
+applies_to_commit: 08f4d40397a7c0a215428ccdbdc4597865cfa5fe
 last_verified: 2026-09-02
 ---
 
 # Release Process
 
-This page defines the maintainer workflow for versioned `qlib-platform` releases. It governs software/package releases; it does **not** authorize research promotion, final-holdout access, model publishing, broker execution, or any other research lifecycle transition.
+This page defines the maintainer workflow for versioned `qlib-platform` software releases. It does **not** authorize research promotion, final-holdout access, model publishing, broker execution, or any other research lifecycle transition.
 
-## Versioning model
+## Versioning
 
-Use `MAJOR.MINOR.PATCH` version numbers.
+Use `MAJOR.MINOR.PATCH`.
 
-- **MAJOR** — incompatible public API, artifact-contract, identity/lineage, persisted-schema, or operational-contract changes that require coordinated migration.
-- **MINOR** — backward-compatible features, new commands, model/research capabilities, new artifact types, or materially expanded supported workflows.
-- **PATCH** — backward-compatible bug fixes, correctness hardening, documentation fixes, packaging fixes, and operational repairs that do not introduce a new public contract.
+- **MAJOR** — incompatible public API, artifact-contract, identity/lineage, persisted-schema, or operational-contract changes requiring coordinated migration.
+- **MINOR** — backward-compatible features, commands, model/research capabilities, artifact types, or materially expanded workflows.
+- **PATCH** — backward-compatible fixes, correctness hardening, documentation/packaging fixes, and operational repairs.
 
-A change can be technically source-compatible and still require a larger version bump when it changes governed research semantics. Examples include a new label definition, a changed portfolio-policy decision function, a new causal-timing rule, or a schema change that affects artifact identity.
+A source-compatible change may still deserve a larger bump when it changes governed semantics such as label definitions, causal timing, portfolio-policy decisions, or artifact identity.
 
-## Release prerequisites
+## Release architecture
 
-Before cutting a release:
+```text
+release preparation PR
+  -> required CI/security/docs checks
+  -> Release Check: wheel/sdist + clean install + SBOM + checksums
+  -> merge to main
+  -> immutable vX.Y.Z tag
+  -> Release workflow
+  -> rebuild + smoke test
+  -> CycloneDX SBOM + SHA256SUMS
+  -> provenance + SBOM attestations
+  -> GitHub Release
+```
 
-1. Ensure `main` is green under required CI and governance checks.
-2. Confirm [`Current State`](../current_state.md) accurately describes moving governance facts. Do not rewrite frozen certification history to match current `main`.
-3. Update `CHANGELOG.md`: move relevant entries from **Unreleased** into a dated version section.
-4. Update the package version in `pyproject.toml`.
-5. Review contract/schema changes and migration requirements explicitly.
-6. Confirm documentation examples still match the parser and supported configuration profiles.
-7. Verify no credentials, account identifiers, workstation-local paths, private datasets, or generated research evidence are accidentally included.
+The tag is the explicit publication trigger. The release workflow must not create a release from an arbitrary branch or a version that differs from `pyproject.toml`.
 
-## Release classification checklist
+## Pre-merge release check
 
-Treat a release as higher risk when it changes any of the following:
+`.github/workflows/release-check.yml` is the non-publishing packaging gate. It runs when source/package/release workflow inputs change and proves that the exact packaging path can:
 
-- `DataRelease` / `DatasetVersion` identity or verification;
-- feature, label, PIT timing, or fold construction semantics;
-- model-bundle or prediction-snapshot identity;
-- portfolio-policy decisions or backtest accounting;
-- Artifact Contract schemas or cross-repository handoff;
-- durable outbox / acknowledgement semantics;
-- production-refit or live-inference behavior;
-- governance gates, holdout access, or promotion rules.
+- build wheel and source distribution;
+- install the wheel in a clean virtual environment;
+- import the installed package and read its version metadata;
+- generate the CycloneDX SBOM;
+- generate and verify the checksum manifest.
 
-Those changes require targeted validation beyond a routine package build.
+It has read-only repository permissions and cannot create releases or attestations.
 
-## Recommended tag and GitHub Release flow
+## Prepare the release PR
+
+Before tagging:
+
+1. Ensure `main` and the release PR are green under required CI, docs, security, dependency-review, and release-check gates.
+2. Confirm [Current Governance State](../current_state.md) is accurate; do not rewrite frozen evidence to match current code.
+3. Move relevant entries from `CHANGELOG.md` **Unreleased** into a dated version section.
+4. Set the same version in `pyproject.toml`.
+5. Review API/schema/identity/contract migration implications.
+6. Confirm user-facing docs and examples match supported behavior.
+7. Verify that no credentials, account identifiers, local paths, private datasets, or generated research evidence are accidentally included.
+
+Higher-risk release changes include `DataRelease`/`DatasetVersion` identity, PIT timing, model/prediction identity, portfolio/backtest accounting, Artifact Contract schemas, outbox semantics, live inference, and governance gates. Those require targeted validation in addition to package checks.
+
+## Create the release tag
 
 After the release PR is merged and `main` is green:
 
@@ -59,39 +75,53 @@ git push origin vX.Y.Z
 
 If signed tags are not configured, use an annotated tag rather than a lightweight tag.
 
-Create a GitHub Release from `vX.Y.Z`, use GitHub generated release notes as a starting point, and reconcile them against `CHANGELOG.md`. `.github/release.yml` groups generated notes by research/data/backtest/contracts/operations/documentation areas.
+Never create the tag before the version/changelog PR has merged. The workflow verifies both:
 
-## Release notes structure
+- `vX.Y.Z` matches `project.version` in `pyproject.toml`;
+- the tagged commit is reachable from `main`.
 
-Release notes should answer:
+A `v*` tag ruleset should prevent deletion or movement of published tags. See [Repository Governance](repository-governance.md).
 
-- What changed for users or integrators?
-- Are there breaking API, schema, identity, or artifact-contract changes?
-- Are migrations required?
-- Which validation evidence supports the release?
-- Does the release affect research semantics or only infrastructure?
-- What remains intentionally unsupported?
+## Automated release artifacts
 
-Do not describe an infrastructure release as a successful alpha/model certification unless the relevant governed research process independently authorizes that claim.
+`.github/workflows/release.yml` builds and uploads:
 
-## Package smoke test
+- Python wheel;
+- source distribution;
+- `sbom.cdx.json` — CycloneDX dependency inventory from a clean wheel environment;
+- `SHA256SUMS` — checksums for package and SBOM artifacts.
 
-For a normal release candidate, verify at minimum:
+It also creates GitHub artifact attestations:
+
+- **build provenance** for the release artifacts;
+- **SBOM attestation** binding the wheel to `sbom.cdx.json`.
+
+The workflow then creates the GitHub Release using generated release notes. `.github/release.yml` controls note categories; `CHANGELOG.md` remains the curated user-visible version history.
+
+PyPI publication is intentionally not enabled yet. If added later, use PyPI Trusted Publishing rather than a long-lived API token.
+
+## Verify a release
 
 ```bash
-python -m build --wheel
-python -m pytest
-python -m tushare_qlib status
-python -m tushare_qlib health dependencies
+sha256sum -c SHA256SUMS
+gh attestation verify <artifact> --repo magic-alt/qlib-platform
 ```
 
-Use the repository's CI jobs as the canonical cross-platform validation surface. Clean-machine wheel tests are especially important because editable installs can hide packaging omissions.
+A clean wheel install should also succeed without a source checkout.
 
-## Rollback
+## Release notes
 
-Do not move or overwrite an existing published tag. If a release is defective:
+Release notes should explain user-visible changes, breaking contracts/migrations, material research-semantic changes, important fixes/security changes, and known limitations.
 
-1. mark the GitHub Release as affected/deprecated when appropriate;
-2. fix forward with a new patch version;
+Do not describe a software release as successful alpha/model certification unless an independent governed research process explicitly supports that claim.
+
+## Failure and rollback
+
+Do not move or overwrite a published tag or silently replace release assets.
+
+If a release is defective:
+
+1. mark the release as affected/deprecated when appropriate;
+2. fix forward in a new patch release;
 3. document the defect and remediation in `CHANGELOG.md`;
-4. if the defect affects immutable evidence or research identity, create new evidence/versions rather than mutating old artifacts in place.
+4. create new immutable research evidence/identities if the defect affects governed outputs rather than mutating historical artifacts.

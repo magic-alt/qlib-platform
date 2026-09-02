@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 85bac85356d8092adfe98cd82ee59f81a242cf53
+applies_to_commit: 08f4d40397a7c0a215428ccdbdc4597865cfa5fe
 last_verified: 2026-09-02
 ---
 
@@ -9,24 +9,18 @@ last_verified: 2026-09-02
 
 ![qlib-platform](assets/brand/qlib-platform-logo.svg)
 
-This is the canonical navigation page for `qlib-platform` documentation.
-
-If you are new to the repository, do **not** start by reading every design document. Use the short onboarding path below, then branch into the area that matches your task.
+This site is the canonical navigation surface for `qlib-platform` documentation. Use it to understand the Research Plane, run and extend the platform, and maintain the repository without mixing current operating guidance with frozen research evidence.
 
 > [!IMPORTANT]
-> Fast-changing governance facts live only in [Current State](current_state.md). README pages, frozen certification documents and historical protocols must not duplicate moving values such as the active research phase, reviewed SHA, holdout authorization or publishing state.
+> Fast-changing research authorization lives only in [Current Governance State](current_state.md). A roadmap item, GitHub milestone, software release, or available CLI command does not authorize holdout access, research promotion, or production trading.
 
-## 5-minute onboarding path
+## Start here
 
-1. **[README](https://github.com/magic-alt/qlib-platform#readme)** — understand what the project is, what it owns and where research stops.
-2. **[Architecture](architecture.md)** — learn the Research Plane layers, identity flow and failure model.
-3. **[Local Qlib Backtest Example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest)** — run the smallest maintained Qlib workflow.
-4. **[CLI Reference](cli_reference.md)** — map commands to configuration, inputs, outputs and side effects.
-5. **[Current State](current_state.md)** — check the active governance state before governed research or publication.
-
-After these five pages, most contributors can navigate the repository without reading the documentation linearly.
-
----
+1. **[Architecture](architecture.md)** — Research Plane layers, data flow, and failure model.
+2. **[Local Qlib backtest example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest)** — smallest maintained runnable Qlib workflow.
+3. **[CLI Reference](cli_reference.md)** — command syntax, inputs, outputs, and side effects.
+4. **[Current Governance State](current_state.md)** — current research restrictions before governed work.
+5. **[Roadmap](project/roadmap.md)** — public engineering direction and milestone criteria.
 
 ## Choose your task
 
@@ -34,48 +28,42 @@ After these five pages, most contributors can navigate the repository without re
 | --- | --- | --- |
 | Understand the system | [Architecture](architecture.md) | [Architecture Boundary](architecture_boundary.md), [Identity and Lineage](identity_and_lineage.md) |
 | Install and configure locally | [README Quick Start](https://github.com/magic-alt/qlib-platform#quick-start) | [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
-| Run Qlib research | [Local Qlib Backtest Example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest) | [Research Lifecycle](research_lifecycle.md), [CLI Reference](cli_reference.md) |
-| Work with data releases / datasets | [Qlib Data Platform](qlib_data_platform.md) | [Data Schema](data_schema.md), [Identity and Lineage](identity_and_lineage.md) |
-| Develop features / alphas / diagnostics | [Research Lifecycle](research_lifecycle.md) | [Active Phase 3-D](alpha_research_phase_3.md), [Portfolio Policy Layers](portfolio_v2_rank_buffer.md) |
-| Operate daily research jobs | [Operations Runbook](OPERATIONS_RUNBOOK.md) | [Daily Research](operations/daily-research.md), [Health and Observability](operations/health-and-observability.md) |
-| Sync TuShare data | [TuShare Daily Sync](daily_sync.md) | [Configuration](configuration.md), [Recovery](operations/recovery.md) |
-| Integrate with `magic-alt/platform` | [Architecture Boundary](architecture_boundary.md) | [Artifact Contract v2](artifact_contract_v2.md), [Identity and Lineage](identity_and_lineage.md) |
-| Work on local model deployment / signals | [Model Lifecycle](model_lifecycle.md) | [Production Feedback](production_feedback.md), [Current State](current_state.md) |
-| Debug a failure | [Troubleshooting](troubleshooting.md) | [Operations Runbook](OPERATIONS_RUNBOOK.md), [Recovery](operations/recovery.md) |
-| Validate a change | [Testing and Certification](testing_and_certification.md) | [CONTRIBUTING](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md), [Current State](current_state.md) |
-| Cut a software release | [Release Process](maintainers/releasing.md) | [CHANGELOG](https://github.com/magic-alt/qlib-platform/blob/main/CHANGELOG.md), [Repository Settings](maintainers/repository-settings.md) |
-| Work on public branding/docs UX | [Brand Guide](maintainers/branding.md) | [Repository Settings](maintainers/repository-settings.md), [`mkdocs.yml`](https://github.com/magic-alt/qlib-platform/blob/main/mkdocs.yml) |
+| Run Qlib research | [Local example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest) | [Research Lifecycle](research_lifecycle.md), [CLI Reference](cli_reference.md) |
+| Work with releases/datasets | [Qlib Data Platform](qlib_data_platform.md) | [Data Schema](data_schema.md), [Identity and Lineage](identity_and_lineage.md) |
+| Develop alphas or diagnostics | [Research Lifecycle](research_lifecycle.md) | [Active Phase 3-D](alpha_research_phase_3.md), [Portfolio Policy](portfolio_v2_rank_buffer.md) |
+| Operate research jobs | [Operations Runbook](OPERATIONS_RUNBOOK.md) | [Daily Research](operations/daily-research.md), [Recovery](operations/recovery.md) |
+| Integrate with `magic-alt/platform` | [Architecture Boundary](architecture_boundary.md) | [Artifact Contract v2](artifact_contract_v2.md) |
+| Validate a contribution | [CONTRIBUTING](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md) | [Testing & Certification](testing_and_certification.md) |
+| Find a first contribution | [Good First Issue Policy](project/good-first-issues.md) | [CONTRIBUTING](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md) |
+| Plan project work | [Roadmap](project/roadmap.md) | [Current Governance State](current_state.md) |
+| Maintain GitHub/security automation | [Repository Governance](maintainers/repository-governance.md) | [Repository Settings](maintainers/repository-settings.md) |
+| Cut a software release | [Release Process](maintainers/releasing.md) | [CHANGELOG](https://github.com/magic-alt/qlib-platform/blob/main/CHANGELOG.md) |
+| Work on branding/docs UX | [Brand Guide](maintainers/branding.md) | [`mkdocs.yml`](https://github.com/magic-alt/qlib-platform/blob/main/mkdocs.yml) |
 
----
+## Documentation authority
 
-## Documentation model
+Not every Markdown file has the same authority.
 
-Not every Markdown file has the same authority. Read its status and purpose before using it as an operating instruction.
+| Document type | Meaning |
+| --- | --- |
+| **Active** | Current behavior or operating guidance; update when behavior changes. |
+| **Normative contract** | Identity, boundary, schema, or invariant that implementation must preserve. |
+| **Frozen certification / acceptance** | Evidence bound to a historical baseline; do not rewrite to match current `main`. |
+| **History / moved** | Provenance or superseded material; not current operating guidance. |
 
-| Document type | Meaning | How to use it |
-| --- | --- | --- |
-| **Active** | Describes current repository behavior or operating guidance | Use for current development and operations; update when behavior changes |
-| **Normative contract** | Defines an identity, boundary, schema or invariant | Treat as part of the implementation contract; changes require compatibility review |
-| **Frozen certification / acceptance** | Bound to an explicit historical code/research baseline | Do not rewrite it to match current main; use it only for the baseline it certifies |
-| **History / moved** | Retained for provenance, migration or completed research phases | Never treat as current CLI or operating guidance |
-
-When a frozen document and current behavior differ, consult [Current State](current_state.md) and the active architecture/CLI/operations documents rather than silently editing the frozen record.
-
----
+When frozen evidence differs from current behavior, use [Current Governance State](current_state.md) plus active architecture/CLI/operations documents rather than editing historical evidence.
 
 ## Architecture and contracts
 
-These documents define the stable mental model of the system.
-
-- **[Architecture Overview](architecture.md)** — system layers, identity/data flow, standalone/integrated modes and failure model.
-- **[Architecture Boundary](architecture_boundary.md)** — normative ownership boundary between `qlib-platform` Research Plane and `magic-alt/platform` Execution Plane.
-- **[Identity and Lineage](identity_and_lineage.md)** — `DataRelease`, `DatasetVersion`, snapshots, model/research artifacts, feedback and parent binding.
-- **[Artifact Contract v2](artifact_contract_v2.md)** — cross-repository research publication contract and durable delivery lifecycle.
-- **[Configuration](configuration.md)** — profiles, environment variables, optional dependency extras and configuration-selection rules.
-- **[CLI Reference](cli_reference.md)** — current parser-aligned command syntax, side effects and key parameters.
+- **[Architecture Overview](architecture.md)** — system layers, deployment modes, identity flow, and failure model.
+- **[Architecture Boundary](architecture_boundary.md)** — Research Plane / Execution Plane ownership.
+- **[Identity and Lineage](identity_and_lineage.md)** — immutable release, dataset, snapshot, model, and artifact identities.
+- **[Artifact Contract v2](artifact_contract_v2.md)** — governed cross-repository handoff.
+- **[Configuration](configuration.md)** — profiles, environment variables, and dependency extras.
+- **[CLI Reference](cli_reference.md)** — parser-aligned command surface and side-effect classification.
 - **[Glossary](glossary.md)** — canonical terminology.
 
-### Recommended reading order for architecture work
+Recommended architecture reading order:
 
 ```text
 Architecture
@@ -86,19 +74,17 @@ Architecture
   -> CLI Reference
 ```
 
----
-
 ## Data and research
 
-- **[Qlib Data Platform](qlib_data_platform.md)** — research data entry, Qlib materialization and data lifecycle.
-- **[Data Schema](data_schema.md)** — research-side data representation and schema expectations.
-- **[Research Lifecycle](research_lifecycle.md)** — governed experiment stages and research evidence flow.
-- **[Active Phase 3-D](alpha_research_phase_3.md)** — active diagnostic protocol; always cross-check [Current State](current_state.md).
-- **[Portfolio Policy Layers](portfolio_v2_rank_buffer.md)** — typed portfolio construction and rank-buffer/top-k policy behavior.
-- **[Standalone Sovereignty](standalone_sovereignty.md)** — guarantees and expectations for standalone operation.
-- **[Local Qlib Backtest Example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest)** — maintained runnable qrun/Qlib example.
+- **[Qlib Data Platform](qlib_data_platform.md)** — data-release intake and Qlib materialization.
+- **[Data Schema](data_schema.md)** — research-side schema expectations.
+- **[Research Lifecycle](research_lifecycle.md)** — governed experiment stages and evidence flow.
+- **[Active Phase 3-D](alpha_research_phase_3.md)** — active diagnostics protocol; always cross-check [Current State](current_state.md).
+- **[Portfolio Policy](portfolio_v2_rank_buffer.md)** — typed portfolio-construction behavior.
+- **[Standalone Sovereignty](standalone_sovereignty.md)** — standalone guarantees.
+- **[Production ML Phase 4](production_ml_phase4.md)**, **[Model Lifecycle](model_lifecycle.md)**, and **[Production Feedback](production_feedback.md)** — local model/signal infrastructure and monitoring boundaries.
 
-### Research identity flow
+Core research identity flow:
 
 ```text
 DataRelease
@@ -112,81 +98,50 @@ DataRelease
   -> Artifact Contract v2
 ```
 
-The identifiers in this chain are not interchangeable. In particular, a `DataRelease` and a `DatasetVersion` represent different immutable identities.
-
----
-
-## Production ML and local signal operations
-
-These pages describe local model lifecycle and signal-generation infrastructure. They do not transfer broker-state ownership into this repository.
-
-- **[Production ML Phase 4](production_ml_phase4.md)** — production-ML infrastructure roadmap and constraints.
-- **[Production Feedback](production_feedback.md)** — `RealizedLabelSnapshot` / `PredictionEvaluationSnapshot` CLI and governance boundary.
-- **[Model Lifecycle](model_lifecycle.md)** — research result → local refit → local deployment → live signal.
-- **[Daily Research](operations/daily-research.md)** — daily signal/research operating flow.
-- **[TuShare Daily Sync](daily_sync.md)** — data refresh, publication and scheduler workflow.
-- **[Windows LightGBM GPU](windows_lightgbm_gpu.md)** — Windows OpenCL build and runtime probe guidance.
-
-Before model selection, holdout access, publication or promotion, check [Current State](current_state.md). Generic CLI availability is not authorization.
-
----
-
 ## Operations and validation
 
-- **[Operations Runbook](OPERATIONS_RUNBOOK.md)** — primary operational entry point and command examples.
-- **[Health and Observability](operations/health-and-observability.md)** — liveness/readiness, probes and operational state.
-- **[Outbox Delivery](operations/outbox.md)** — durable artifact delivery semantics.
-- **[Recovery](operations/recovery.md)** — safe retry and recovery procedures.
+- **[Operations Runbook](OPERATIONS_RUNBOOK.md)** — primary operating entry point.
+- **[Daily Research](operations/daily-research.md)** — routine research/signal workflow.
+- **[Health & Observability](operations/health-and-observability.md)** — liveness, readiness, probes, and operational state.
+- **[Outbox Delivery](operations/outbox.md)** — durable handoff semantics.
+- **[Recovery](operations/recovery.md)** — safe retry/recovery procedures.
 - **[Incident Response](operations/incident-response.md)** — incident classification and handling.
-- **[Testing and Certification](testing_and_certification.md)** — validation layers, certification scope and evidence expectations.
-- **[Troubleshooting](troubleshooting.md)** — common installation/runtime/research problems.
+- **[Testing & Certification](testing_and_certification.md)** — validation layers and certification scope.
+- **[Troubleshooting](troubleshooting.md)** — common failures and recovery guidance.
+- **[TuShare Daily Sync](daily_sync.md)** and **[Windows LightGBM GPU](windows_lightgbm_gpu.md)** — environment-specific operational guidance.
 
-For code contributions, pair these with **[CONTRIBUTING.md](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md)** and the pull-request template.
+## Project and community
 
----
+- **[Roadmap & Milestones](project/roadmap.md)** — engineering direction and milestone exit criteria.
+- **[Good First Issue Policy](project/good-first-issues.md)** — what qualifies as a safe newcomer task.
+- **[CONTRIBUTING.md](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md)** — contributor workflow, risk classification, review, and validation.
+- **[Code of Conduct](https://github.com/magic-alt/qlib-platform/blob/main/CODE_OF_CONDUCT.md)** — professional conduct and research-integrity expectations.
+- **[SECURITY.md](https://github.com/magic-alt/qlib-platform/blob/main/SECURITY.md)** — private handling of vulnerabilities and secret exposure.
 
-## Maintainer and project operations
+## Maintainers
 
-- **[Release Process](maintainers/releasing.md)** — software versioning, release checks, tag/release flow, and rollback policy.
-- **[Repository Settings](maintainers/repository-settings.md)** — GitHub About/Topics, Pages, merge policy, and recommended ruleset settings that live outside tracked files.
-- **[Brand Guide](maintainers/branding.md)** — logo assets, palette, typography, diagram policy, and external-use guidance.
-- **[CHANGELOG](https://github.com/magic-alt/qlib-platform/blob/main/CHANGELOG.md)** — user-visible software changes and version history.
-- **[Code of Conduct](https://github.com/magic-alt/qlib-platform/blob/main/CODE_OF_CONDUCT.md)** — collaboration and research-integrity expectations.
+- **[Repository Governance](maintainers/repository-governance.md)** — Rulesets, required checks, Dependabot, CodeQL, Dependency Review, release provenance, SBOM, and Pages policy.
+- **[Release Process](maintainers/releasing.md)** — version preparation, immutable tagging, automated release artifacts, verification, and fix-forward policy.
+- **[Repository Settings](maintainers/repository-settings.md)** — About/Topics/Pages and settings stored outside Git.
+- **[Brand Guide](maintainers/branding.md)** — logo, palette, typography, and diagram policy.
+- **[CHANGELOG](https://github.com/magic-alt/qlib-platform/blob/main/CHANGELOG.md)** — user-visible software changes.
 
----
+## Frozen evidence and history
 
-## Certification and frozen evidence
-
-- **[Research Infrastructure Certification](research_infrastructure_certification.md)** — certification statement bound to its frozen certified baseline.
+- **[Research Infrastructure Certification](research_infrastructure_certification.md)** — certification bound to its explicit baseline.
 - **[Full Walk-forward Acceptance](full_walk_forward_acceptance.md)** — frozen acceptance protocol.
+- **[History Index](history/README.md)** — completed phases and superseded protocols.
 
-Frozen documents answer questions about the baseline they certify. They do not automatically certify post-baseline code changes.
-
-For the latest relationship between documentation, reviewed code and certified baselines, use [Current State](current_state.md).
-
----
-
-## History and moved documentation
-
-Completed research phases, superseded qrun material and deprecated tutorials live under **[docs/history](history/README.md)**.
-
-Historical material is preserved for lineage and auditability, not for current operations.
-
-QMT canonical implementation and operational ownership have moved to [`magic-alt/platform`](https://github.com/magic-alt/platform). This repository keeps migration pointers such as [QMT Gateway](qmt_gateway.md); the legacy `QMT_极速策略交易系统_使用教程与API接口说明.md` is retained as moved source material rather than an active Research Plane runbook.
-
----
+QMT canonical execution ownership has moved to [`magic-alt/platform`](https://github.com/magic-alt/platform). The QMT pages retained here are migration/history pointers, not current Research Plane execution runbooks.
 
 ## Documentation contribution checklist
 
 When changing documentation:
 
-- verify repository-relative links;
-- keep CLI examples aligned with the current parser;
-- distinguish `DataRelease` from `DatasetVersion` and other research identities;
-- link moving governance facts to [Current State](current_state.md) instead of copying them;
-- do not rewrite frozen certification/history files to describe current main;
-- keep execution-owned concepts (orders, fills, positions, ledger, hard risk) on the `platform` side of the boundary;
-- run `scripts/check_docs.py --root .` before opening a pull request;
-- run `python -m mkdocs build --strict` when changing the documentation site or navigation.
-
-See [CONTRIBUTING.md](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md) for the complete contributor workflow.
+- keep CLI syntax in [CLI Reference](cli_reference.md) rather than duplicating command catalogs on high-level pages;
+- distinguish `DataRelease`, `DatasetVersion`, snapshots, and target portfolios precisely;
+- link moving research facts to [Current State](current_state.md);
+- do not rewrite frozen evidence to describe current `main`;
+- keep broker orders, fills, positions, ledger, and hard risk on the Execution Plane side;
+- run `scripts/check_docs.py --root .`;
+- run `python -m mkdocs build --strict` for site/navigation changes.

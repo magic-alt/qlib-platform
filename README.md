@@ -2,8 +2,6 @@
 
 <img src="docs/assets/brand/qlib-platform-logo.svg" alt="qlib-platform" width="760">
 
-# qlib-platform
-
 ### Auditable A-share Quant Research & Alpha Factory on Microsoft Qlib
 
 **Immutable data lineage · PIT-aware research · Walk-forward evaluation · Reproducible Qlib workflows · Governed portfolio handoff**
@@ -11,6 +9,7 @@
 <p>
   <a href="https://github.com/magic-alt/qlib-platform/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/magic-alt/qlib-platform/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/magic-alt/qlib-platform/actions/workflows/docs.yml"><img alt="Docs" src="https://github.com/magic-alt/qlib-platform/actions/workflows/docs.yml/badge.svg"></a>
+  <a href="https://github.com/magic-alt/qlib-platform/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/magic-alt/qlib-platform/actions/workflows/codeql.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-Apache--2.0-D22128.svg"></a>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10--3.12-3776AB?logo=python&logoColor=white">
   <img alt="Qlib" src="https://img.shields.io/badge/Microsoft%20Qlib-0.9.7-5C2D91">
@@ -18,7 +17,7 @@
   <img alt="Artifact Contract" src="https://img.shields.io/badge/Artifact%20Contract-v2-2EA44F">
 </p>
 
-[Quick Start](#quick-start) · [Architecture](#architecture) · [Documentation](docs/index.md) · [CLI Reference](docs/cli_reference.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Current Governance State](docs/current_state.md)
+[Quick Start](#quick-start) · [Architecture](#architecture) · [Documentation](docs/index.md) · [CLI Reference](docs/cli_reference.md) · [Roadmap](docs/project/roadmap.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -132,7 +131,7 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 The CLI defaults to `configs/pipeline.standalone.yaml`. The standalone profile intentionally avoids external startup dependencies.
 
 > [!TIP]
-> New to the repository? Continue with the maintained [local Qlib backtest example](examples/local_qlib_backtest/README.md), then read the [Documentation Index](docs/index.md).
+> New to the repository? Continue with the maintained [local Qlib backtest example](examples/local_qlib_backtest/README.md). For command syntax and side-effect classification, use the dedicated [CLI Reference](docs/cli_reference.md).
 
 ### Optional environment configuration
 
@@ -244,59 +243,6 @@ Do not treat `pipeline.yaml` as a universal default. Select integrated mode expl
 
 ---
 
-## CLI overview
-
-Invoke the CLI with the repository interpreter:
-
-```text
-<repo-python> -m tushare_qlib [--config PROFILE] COMMAND
-```
-
-A `tq` console entry point is also installed, but the explicit interpreter is preferred for governed operations because it avoids accidentally invoking a global executable.
-
-### Validation-first commands
-
-```text
-status
-health live
-health ready
-health dependencies
-runtime-probe
-release list
-release verify
-dataset-list
-dataset-show
-dataset-resolve
-dataset-verify
-model-status
-ops-query
-ops-summary
-validate-qrun-contract
-project-audit
-research-audit
-```
-
-### Research artifact commands
-
-```text
-feature-store
-train-select
-research-run
-backtest-predictions
-research-report
-alpha-diagnose
-regime-diagnose
-attribution-diagnose
-explanation-diagnose
-build-target-portfolio
-research-gate
-artifact-v2-export
-```
-
-Some research and validation commands create immutable evidence. Treat an explicitly named output path as part of the authorized operation. The complete side-effect classification lives in the [CLI Reference](docs/cli_reference.md) and [Operations Runbook](docs/OPERATIONS_RUNBOOK.md).
-
----
-
 ## Research governance
 
 Formal research separates diagnostics, candidate creation, model selection, final holdout access and publishing into distinct lifecycle stages. The active authorization state is intentionally **not duplicated in this README** because it changes over time.
@@ -323,7 +269,7 @@ qlib-platform/
 ├─ scripts/                 # validation and utility scripts
 ├─ src/tushare_qlib/        # application and research implementation
 ├─ tests/                   # unit / integration / contract tests
-├─ .github/                 # CI, CODEOWNERS and community workflow metadata
+├─ .github/                 # CI, security, release and community automation
 ├─ .env.example             # environment-variable template
 ├─ AGENTS.md                # guidance for coding agents
 ├─ CHANGELOG.md             # user-visible software changes and release baseline
@@ -353,7 +299,9 @@ The canonical entry point is the **[Documentation Index](docs/index.md)**.
 | [Research Lifecycle](docs/research_lifecycle.md) | governed research stages |
 | [Operations Runbook](docs/OPERATIONS_RUNBOOK.md) | operational procedures and recovery entry points |
 | [Testing and Certification](docs/testing_and_certification.md) | validation and certification model |
+| [Roadmap](docs/project/roadmap.md) | public engineering direction and milestone criteria |
 | [Release Process](docs/maintainers/releasing.md) | software versioning, release notes and rollback |
+| [Repository Governance](docs/maintainers/repository-governance.md) | Ruleset, dependency, security and supply-chain policy |
 | [Brand Guide](docs/maintainers/branding.md) | logo, palette, typography and diagram policy |
 | [Troubleshooting](docs/troubleshooting.md) | common failures and recovery guidance |
 
@@ -380,7 +328,7 @@ Coverage:
 $RepoPython -m pytest --cov=src/tushare_qlib --cov-report=term-missing
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for change classification, documentation rules, validation expectations and pull-request guidance.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contributor onboarding, change classification, validation expectations and pull-request guidance.
 
 ---
 
@@ -396,9 +344,9 @@ Upstream: [microsoft/qlib](https://github.com/microsoft/qlib)
 
 ## Contributing & community
 
-Contributions that improve reproducibility, data integrity, research tooling, documentation, testing or operational safety are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and use the repository issue / pull-request templates.
+Contributions that improve reproducibility, data integrity, research tooling, documentation, testing or operational safety are welcome. New contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [Good First Issue guide](docs/project/good-first-issues.md).
 
-For suspected vulnerabilities, credential exposure, artifact-integrity bypasses or security-boundary issues, follow [SECURITY.md](SECURITY.md). Do not publish secrets, broker credentials or exploit details in a public issue.
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md). For suspected vulnerabilities, credential exposure, artifact-integrity bypasses or security-boundary issues, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 Software release history is tracked in [CHANGELOG.md](CHANGELOG.md); maintainer release procedure lives in [docs/maintainers/releasing.md](docs/maintainers/releasing.md).
 
