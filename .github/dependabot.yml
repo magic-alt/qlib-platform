@@ -1,5 +1,12 @@
 version: 2
 
+# Keep Dependabot configuration explicit, but do not let scheduled version
+# checks open pull requests automatically. Dependency upgrades are reviewed
+# and batched manually so CI is not flooded by parallel bot PRs.
+#
+# Note: open-pull-requests-limit controls version-update PRs. Dependabot
+# security-update PRs, if enabled in repository settings, are controlled
+# separately by GitHub.
 updates:
   - package-ecosystem: pip
     directory: "/"
@@ -8,7 +15,7 @@ updates:
       day: monday
       time: "09:00"
       timezone: "Asia/Singapore"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       python-minor-patch:
         patterns:
@@ -29,7 +36,7 @@ updates:
       day: monday
       time: "09:15"
       timezone: "Asia/Singapore"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     groups:
       github-actions:
         patterns:
