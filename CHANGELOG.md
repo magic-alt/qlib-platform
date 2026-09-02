@@ -4,7 +4,7 @@ All notable user-visible changes to `qlib-platform` are documented here.
 
 The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/) where practical. Because this project includes research contracts and governed artifacts, a version bump may also be required when schemas, identity semantics, portfolio policy behavior, or operational contracts change even if the Python API remains source-compatible.
 
-## [Unreleased]
+## Unreleased
 
 ### Added
 
@@ -18,9 +18,9 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 - Public repository metadata and package metadata are being aligned with the open-source project surface.
 
-## [0.3.0] - 2026-09-02
+## 0.3.0 baseline — 2026-09-02
 
-`0.3.0` is the package version that existed when the public changelog discipline was introduced. Earlier commit-level history remains available in Git history; this changelog does not attempt to retroactively reconstruct release notes that were not recorded at release time.
+`0.3.0` is the package version that existed when the public changelog discipline was introduced. It is recorded here as a **baseline**, not as a claim that a `v0.3.0` Git tag or GitHub Release already exists. Earlier commit-level history remains available in Git history; this changelog does not attempt to retroactively reconstruct release notes that were not recorded at release time.
 
 ### Project state at adoption
 
@@ -29,6 +29,3 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 - PIT-aware feature/research workflows and governed walk-forward evaluation.
 - Research backtest, portfolio-policy, artifact-contract, feedback, and operations tooling.
 - Artifact Contract v2 boundary to the optional `magic-alt/platform` Execution Plane.
-
-[Unreleased]: https://github.com/magic-alt/qlib-platform/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/magic-alt/qlib-platform/releases/tag/v0.3.0
