@@ -1,0 +1,86 @@
+name: Feature request
+description: Propose a focused improvement to the qlib-platform Research Plane
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature proposals should preserve immutable research identity and the Research Plane / Execution Plane boundary. Execution-owned functionality such as broker orders, fills, positions, OMS or hard risk normally belongs in magic-alt/platform.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Data release / ingestion
+        - Dataset materialization / registry
+        - Feature / PIT processing
+        - Model / research workflow
+        - Diagnostics / evaluation
+        - Backtest / portfolio policy
+        - Artifact contract / lineage
+        - CLI / configuration
+        - Operations / observability
+        - Documentation / examples
+        - Developer experience
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the user/research-engineering problem before proposing an implementation.
+      placeholder: What is difficult, unsafe, repetitive or currently impossible?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the intended behavior, API/CLI surface and artifact or data-flow changes if known.
+    validations:
+      required: true
+
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants / contracts affected
+      description: Consider DataRelease/DatasetVersion identity, PIT timing, fold isolation, holdout governance, artifact contracts and the research/execution boundary.
+      placeholder: List affected contracts or write "None known".
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or existing commands/workflows did you consider?
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What observable behavior would make the feature complete?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and pull requests for similar proposals.
+          required: true
+        - label: The proposal belongs in the qlib-platform Research Plane rather than the execution platform.
+          required: true
+        - label: The proposal does not rely on weakening immutable identity, PIT correctness, holdout governance or auditability.
+          required: true
