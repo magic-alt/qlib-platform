@@ -1,0 +1,38 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+    authors:
+      - dependabot[bot]
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking-change
+    - title: Research and models
+      labels:
+        - research
+        - model
+    - title: Data and lineage
+      labels:
+        - data
+        - lineage
+    - title: Backtest and portfolio
+      labels:
+        - backtest
+        - portfolio
+    - title: Contracts and governance
+      labels:
+        - contract
+        - governance
+        - security
+    - title: Developer experience and operations
+      labels:
+        - developer-experience
+        - operations
+        - ci
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Other changes
+      labels:
+        - "*"
