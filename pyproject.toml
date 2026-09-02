@@ -79,7 +79,7 @@ dev = [
   "lightgbm==4.6.0",
   "xgboost>=2.0,<4.0",
   "pytest>=8,<9",
-  "pytest-cov>=5,<7",
+  "pytest-cov>=5,<8",
   "ruff>=0.8,<1",
   "mypy>=1.11,<2",
   "types-PyYAML>=6.0",
