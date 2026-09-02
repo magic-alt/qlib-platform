@@ -16,8 +16,110 @@ jobs:
   dependency-review:
     name: dependency-review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
+      - name: Check dependency graph availability
+        id: dependency-graph
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/dependency-review-api.json"
+          url="https://api.github.com/repos/${REPOSITORY}/dependency-graph/compare/${BASE_SHA}...${HEAD_SHA}"
+          status="$(curl --silent --show-error --location \
+            --output "$response" \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2026-03-10' \
+            "$url")"
+
+          case "$status" in
+            200)
+              echo "available=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404)
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::GitHub Dependency Graph is disabled; using the fail-closed Python dependency fallback. Enable Dependency Graph in Settings > Security > Advanced Security to restore the native dependency review path."
+              ;;
+            *)
+              echo "::error::Dependency Review API probe failed with HTTP ${status}."
+              cat "$response"
+              exit 1
+              ;;
+          esac
+
       - name: Review dependency changes
+        if: steps.dependency-graph.outputs.available == 'true'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294
         with:
           fail-on-severity: high
+
+      - name: Check out pull request head for fallback audit
+        if: steps.dependency-graph.outputs.available == 'false'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python for fallback audit
+        if: steps.dependency-graph.outputs.available == 'false'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Audit changed Python dependencies
+        if: steps.dependency-graph.outputs.available == 'false'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          audit_file="$RUNNER_TEMP/dependency-review-requirements.txt"
+          changed_files="$RUNNER_TEMP/dependency-review-changed-files.txt"
+
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$changed_files"
+
+          manifest_changed=false
+          while IFS= read -r file; do
+            case "$file" in
+              pyproject.toml|requirements*.txt|constraints/*.txt)
+                manifest_changed=true
+                ;;
+            esac
+          done < "$changed_files"
+
+          git diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- \
+            'constraints/*.txt' 'requirements*.txt' \
+            | awk '
+              /^\+[^+]/ {
+                line = substr($0, 2)
+                if (line ~ /^[[:alnum:]_.-]+==[^[:space:]]+$/) {
+                  print line
+                }
+              }
+            ' \
+            | sort -u > "$audit_file"
+
+          if [[ ! -s "$audit_file" ]]; then
+            if [[ "$manifest_changed" == "true" ]]; then
+              echo "::error::Dependency manifests changed, but the fallback could not derive exact pinned additions to audit. Enable GitHub Dependency Graph or add/update the corresponding exact pin under constraints/."
+              exit 1
+            fi
+            echo "No dependency manifest changes detected; nothing to audit."
+            exit 0
+          fi
+
+          echo "Fallback dependency audit targets:"
+          cat "$audit_file"
+          python -m pip install 'pip-audit==2.10.1'
+          python -m pip_audit \
+            --requirement "$audit_file" \
+            --strict \
+            --progress-spinner off
