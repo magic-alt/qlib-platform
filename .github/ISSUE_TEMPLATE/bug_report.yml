@@ -1,0 +1,97 @@
+name: Bug report
+description: Report reproducible incorrect behavior in qlib-platform
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve qlib-platform. Please remove secrets, broker credentials, account identifiers and proprietary data before submitting. Security-sensitive issues should follow SECURITY.md instead of this public form.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which subsystem is primarily affected?
+      options:
+        - Data release / ingestion
+        - Dataset materialization / registry
+        - Feature / PIT processing
+        - Model / research workflow
+        - Backtest / portfolio policy
+        - Artifact contract / lineage
+        - CLI / configuration
+        - Operations / outbox / recovery
+        - Documentation / examples
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem summary
+      description: What happened, and what did you expect instead?
+      placeholder: Describe the observable incorrect behavior and the expected behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest safe sequence of commands/configuration that reproduces the issue.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit / version
+      description: Commit SHA, tag or installed package version.
+      placeholder: e.g. 2d3a7bc or 0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: e.g. 3.12.5
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Windows 11, Ubuntu 24.04, macOS 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / traceback
+      description: Paste sanitized logs only. Do not include tokens, credentials, account identifiers or proprietary data.
+      render: text
+
+  - type: textarea
+    id: identity
+    attributes:
+      label: Data / research identity context
+      description: If relevant, provide non-sensitive DataRelease, DatasetVersion, run, artifact or configuration identifiers needed to reproduce the issue.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I removed secrets, credentials, account identifiers and non-redistributable data.
+          required: true
+        - label: This is not a security-sensitive report that should be handled privately under SECURITY.md.
+          required: true
