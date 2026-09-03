@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tushare_qlib.bootstrap import bootstrap
 from tushare_qlib.data_source_resolver import ReleaseSelectionRequired, resolve_source
 from tushare_qlib.dataset_manifest import write_dataset_manifest
 from tushare_qlib.dataset_registry import DatasetRegistry
@@ -135,6 +136,46 @@ def test_manifested_current_provider_beats_multiple_unaliased_releases(tmp_path:
     assert resolved.version_id == payload["version_id"]
     assert resolved.dataset_name == "cn_tushare"
     assert resolved.data_path == current.resolve()
+
+
+def test_legacy_current_provider_is_imported_before_release_history_selection(tmp_path: Path) -> None:
+    shared_root = tmp_path / "shared-data"
+    standalone = _settings(
+        tmp_path / "configs" / "standalone.yaml",
+        project_root=shared_root,
+        dataset_name="cn_standalone",
+        dataset_ref="standalone-current",
+    )
+    current = _provider(shared_root / "qlib" / "current", "2026-08-22", b"legacy-current")
+
+    publisher = LocalReleasePublisher(release_store_root(standalone))
+    publisher.import_qlib(_provider(tmp_path / "release-a", "2026-08-20", b"release-a"))
+    publisher.import_qlib(_provider(tmp_path / "release-b", "2026-08-21", b"release-b"))
+    assert len(list(FileReleaseStore(release_store_root(standalone)).list())) == 2
+
+    source = resolve_source(standalone)
+    assert source.status == "IMPORT_REQUIRED"
+    assert source.source == "qlib"
+    assert source.reference == "legacy"
+    assert source.path == current.resolve()
+    assert source.action == "release import-qlib"
+
+    with pytest.raises(KeyError, match="unknown dataset reference: standalone-current"):
+        resolve_dataset(standalone, "standalone-current", allow_legacy=False)
+
+    prepared = bootstrap(standalone, source="auto")
+    assert prepared["status"] == "READY"
+    assert prepared["source"] == "qlib"
+
+    resolved_source = resolve_source(standalone)
+    resolved = resolve_dataset(standalone, "standalone-current", allow_legacy=False)
+    assert resolved_source.status == "READY"
+    assert resolved_source.source == "data_release"
+    assert resolved.reference == "standalone-current"
+    assert resolved.version_id == prepared["datasetVersionId"]
+    assert resolved.dataset_name == "cn_standalone"
+    assert resolved.data_path.parent == standalone.qlib_versions_root
+    assert resolved.manifest_path.is_file()
 
 
 def test_multiple_releases_without_alias_or_current_manifest_still_fail_closed(tmp_path: Path) -> None:
