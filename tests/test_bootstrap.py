@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tushare_qlib.bootstrap import bootstrap
+from tushare_qlib.data_source_resolver import ReleaseSelectionRequired
 from tushare_qlib.settings import Paths, Settings
 
 
@@ -22,6 +23,24 @@ def _settings(tmp_path: Path, *, token: str | None = None) -> Settings:
         qlib_repo=None,
         qlib_data_uri=paths.root / "qlib" / "current",
     )
+
+
+def test_auto_bootstrap_returns_release_selection_guidance(tmp_path: Path, monkeypatch) -> None:
+    def ambiguous_release(_settings: Settings):
+        raise ReleaseSelectionRequired(
+            "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
+        )
+
+    monkeypatch.setattr("tushare_qlib.bootstrap.resolve_source", ambiguous_release)
+
+    result = bootstrap(_settings(tmp_path), source="auto")
+
+    assert result["status"] == "RELEASE_SELECTION_REQUIRED"
+    assert result["recommendedCommand"] == "tq release list"
+    assert result["selectionCommand"] == (
+        "tq release promote <DATA_RELEASE_ID> --alias research-release-current"
+    )
+    assert result["retryCommand"] == "tq-research prepare --source auto"
 
 
 def test_tushare_bootstrap_uses_configured_window(tmp_path: Path, monkeypatch):

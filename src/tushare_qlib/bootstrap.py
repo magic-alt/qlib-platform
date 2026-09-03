@@ -5,7 +5,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .data_source_resolver import resolve_local_raw_source, resolve_source
+from .data_source_resolver import (
+    ReleaseSelectionRequired,
+    resolve_local_raw_source,
+    resolve_source,
+)
 from .releases import import_qlib_dataset, publish_local_market_release
 from .settings import Settings
 
@@ -26,7 +30,16 @@ def bootstrap(
     end: str | None = None,
 ) -> dict[str, Any]:
     if source == "auto":
-        resolved = resolve_source(settings)
+        try:
+            resolved = resolve_source(settings)
+        except ReleaseSelectionRequired as exc:
+            return {
+                "status": exc.code,
+                "error": str(exc),
+                "recommendedCommand": "tq release list",
+                "selectionCommand": ("tq release promote <DATA_RELEASE_ID> --alias research-release-current"),
+                "retryCommand": "tq-research prepare --source auto",
+            }
         if resolved.status == "IMPORT_REQUIRED":
             release, dataset = import_qlib_dataset(settings, resolved.path or settings.qlib_data_uri)
             return {
