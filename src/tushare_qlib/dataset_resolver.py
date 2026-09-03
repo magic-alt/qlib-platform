@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .dataset_registry import DatasetRegistry
@@ -24,22 +23,50 @@ class ResolvedDataset:
     manifest_sha256: str
 
 
+_SHARED_RESEARCH_ALIAS = "research-current"
+
+
+def dataset_reference_candidates(settings: Settings, reference: str | None = None) -> tuple[str, ...]:
+    """Return safe registry references for a DatasetVersion read.
+
+    ``standalone-current`` remains the standalone publication alias.  When that alias has
+    not been created yet, a standalone checkout may still read the canonical
+    ``research-current`` alias from a shared/symlinked data root.  The fallback is
+    deliberately read-only and only applies to the configured standalone default; it
+    never rewrites either alias.
+    """
+
+    selected = reference or settings.qlib_dataset_ref
+    candidates = [selected]
+    if (
+        selected == settings.qlib_dataset_ref
+        and settings.mode == "standalone"
+        and settings.qlib_dataset_ref == "standalone-current"
+        and selected != _SHARED_RESEARCH_ALIAS
+    ):
+        candidates.append(_SHARED_RESEARCH_ALIAS)
+    return tuple(candidates)
+
+
 def resolve_dataset(
     settings: Settings, reference: str | None = None, *, allow_legacy: bool = True
 ) -> ResolvedDataset:
     selected = reference or settings.qlib_dataset_ref
     registry = DatasetRegistry(settings.registry_path)
     if settings.registry_path.is_file():
-        try:
-            version = registry.resolve(selected, settings.qlib_dataset_name)
-        except KeyError:
-            if not allow_legacy:
-                raise
-        else:
+        for candidate in dataset_reference_candidates(settings, reference):
+            # The configured alias is namespaced to the configured dataset name.  An
+            # explicit reference or the canonical shared-data fallback is an immutable
+            # identity override and may legitimately come from another profile name.
+            expected_name = settings.qlib_dataset_name if candidate == settings.qlib_dataset_ref else None
+            try:
+                version = registry.resolve(candidate, expected_name)
+            except KeyError:
+                continue
             if not version.data_path.is_dir() or not version.manifest_path.is_file():
                 raise FileNotFoundError(f"registered Qlib dataset is incomplete: {version.data_path}")
             return ResolvedDataset(
-                selected,
+                candidate,
                 version.version_id,
                 version.dataset_name,
                 version.data_path,
