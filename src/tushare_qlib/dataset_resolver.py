@@ -50,9 +50,7 @@ def dataset_reference_candidates(settings: Settings, reference: str | None = Non
     return tuple(candidates)
 
 
-def current_manifest_dataset(
-    settings: Settings, reference: str | None = None
-) -> ResolvedDataset | None:
+def current_manifest_dataset(settings: Settings, reference: str | None = None) -> ResolvedDataset | None:
     """Resolve the configured current provider from its immutable v3 manifest.
 
     A shared data root may contain a fully materialized ``qlib/current`` dataset even
