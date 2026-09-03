@@ -16,6 +16,23 @@ repeatable acceptance/build tool that is not duplicated by the main CLI.
 - **ENVIRONMENT-CHANGING** `build_lightgbm_opencl_windows.ps1`: build and verify the pinned native Windows
   LightGBM OpenCL backend using the repository-local Python interpreter.
 
+## Local research quickstart
+
+- **CONVENIENCE WRAPPER** `run_local_research.ps1`: Windows wrapper for the local-data research quickstart.
+- **CONVENIENCE WRAPPER** `run_local_research.sh`: macOS/Linux wrapper for the same CLI; invoke with `bash` when the
+  checkout does not preserve the executable bit.
+- **REPORTING CLI** `<repo-python> -m tushare_qlib.research_summary <research_matrix.json>`: combine signal and
+  prediction-only portfolio evidence into one IC/RankIC/ICIR/RankICIR/ExcessIR/MDD/turnover/cost comparison.
+
+The wrappers do not implement a second research engine. They call
+`python -m tushare_qlib.research_quickstart`, which reuses the existing `bootstrap`, DatasetVersion verification,
+`train-select`, `research-run`, `runtime-probe`, and `backtest-predictions` implementations. See
+`docs/local_research_quickstart.md`.
+
+The Qlib-native example also has a cross-platform runner at
+`examples/local_qlib_backtest/run_backtest.py` plus `run_backtest.sh`; the existing PowerShell runner remains
+supported.
+
 ## Research and reporting
 
 - **ARTIFACT-WRITING** `export_qrun_backtest_report.py`: convert completed Qlib qrun artifacts into an
