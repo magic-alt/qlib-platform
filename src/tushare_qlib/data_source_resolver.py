@@ -155,6 +155,19 @@ def resolve_source(
     if current is not None:
         verify_dataset_manifest(current.manifest_path, mode="deep", workers=4)
         return SourceResolution("READY", "dataset_current", current.reference, current.data_path)
+    if _provider_ready(settings.qlib_data_uri):
+        # The configured current provider is an explicit local selector even when it
+        # predates DatasetVersion manifests. Normalize it into an immutable
+        # DataRelease/DatasetVersion before considering unordered historical releases.
+        # This is fail-closed with respect to history: we import the configured bytes;
+        # we never guess which historical release should become active.
+        return SourceResolution(
+            "IMPORT_REQUIRED",
+            "qlib",
+            "legacy",
+            settings.qlib_data_uri,
+            "release import-qlib",
+        )
     records = list(store.list())
     if len(records) == 1:
         record = records[0]
@@ -168,14 +181,6 @@ def resolve_source(
     if len(records) > 1:
         raise ReleaseSelectionRequired(
             "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
-        )
-    if _provider_ready(settings.qlib_data_uri):
-        return SourceResolution(
-            "IMPORT_REQUIRED",
-            "qlib",
-            "legacy",
-            settings.qlib_data_uri,
-            "release import-qlib",
         )
     if (settings.paths.raw / "daily").is_dir():
         return resolve_local_raw_source(settings)
