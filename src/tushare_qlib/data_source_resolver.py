@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .dataset_manifest import verify_dataset_manifest
-from .dataset_registry import DatasetRegistry
+from .dataset_registry import DatasetRegistry, DatasetVersion
+from .dataset_resolver import dataset_reference_candidates
 from .releases import FileReleaseStore, release_store_root
 from .releases import missing_market_components
 from .settings import Settings
@@ -56,6 +57,26 @@ def _missing_certified_raw(settings: Settings) -> tuple[str, ...]:
         if not ready:
             missing.append(role)
     return tuple(missing)
+
+
+def _registered_dataset(
+    settings: Settings, registry: DatasetRegistry
+) -> tuple[str | None, DatasetVersion | None]:
+    """Find the configured dataset or the safe shared-data read fallback."""
+
+    for reference in dataset_reference_candidates(settings):
+        dataset = registry.inspect(reference)
+        if dataset is None:
+            continue
+        if reference == settings.qlib_dataset_ref and dataset.dataset_name != settings.qlib_dataset_name:
+            raise ValueError(
+                f"dataset reference {reference!r} resolves to {dataset.dataset_name!r}, "
+                f"expected {settings.qlib_dataset_name!r}"
+            )
+        if dataset.status != "PUBLISHED":
+            raise ValueError(f"dataset reference is not published: {dataset.version_id}")
+        return reference, dataset
+    return None, None
 
 
 def resolve_local_raw_source(settings: Settings) -> SourceResolution:
@@ -113,10 +134,10 @@ def resolve_source(
             "dataset-build",
         )
     registry = DatasetRegistry(settings.registry_path)
+    dataset_reference, dataset = _registered_dataset(settings, registry)
     release_alias = registry.resolve_release_alias("research-release-current")
     if release_alias:
         release = store.resolve(release_alias)
-        dataset = registry.inspect(settings.qlib_dataset_ref)
         if dataset is not None and dataset.data_release_id == release.data_release_id:
             verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
             return SourceResolution("READY", "data_release", release.data_release_id, dataset.data_path)
@@ -127,10 +148,9 @@ def resolve_source(
             release.manifest_path,
             "dataset-build",
         )
-    dataset = registry.inspect(settings.qlib_dataset_ref)
     if dataset is not None:
         verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
-        return SourceResolution("READY", "dataset_version", dataset.version_id, dataset.data_path)
+        return SourceResolution("READY", "dataset_version", dataset_reference, dataset.data_path)
     records = list(store.list())
     if len(records) == 1:
         record = records[0]
