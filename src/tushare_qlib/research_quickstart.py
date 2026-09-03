@@ -163,7 +163,7 @@ def _alphas(settings: Settings, dataset: Path | None = None) -> list[dict[str, A
         row: dict[str, Any] = {
             "id": pack_id,
             "handler": pack.handler_class,
-            "lookbackDays": pack.lookback_days,
+            "warmupTradingDays": pack.warmup_trading_days,
             "requiredReleaseComponents": list(pack.required_release_components),
             "compatible": None,
         }
