@@ -99,17 +99,51 @@ jobs:
           set -euo pipefail
           audit_file="$RUNNER_TEMP/dependency-review-requirements.txt"
           changed_files="$RUNNER_TEMP/dependency-review-changed-files.txt"
+          base_pyproject="$RUNNER_TEMP/dependency-review-base-pyproject.toml"
+          head_pyproject="$RUNNER_TEMP/dependency-review-head-pyproject.toml"
 
           git diff --name-only "$BASE_SHA" "$HEAD_SHA" > "$changed_files"
 
           manifest_changed=false
+          pyproject_changed=false
           while IFS= read -r file; do
             case "$file" in
-              pyproject.toml|requirements*.txt|constraints/*.txt)
+              pyproject.toml)
+                pyproject_changed=true
+                ;;
+              requirements*.txt|constraints/*.txt)
                 manifest_changed=true
                 ;;
             esac
           done < "$changed_files"
+
+          if [[ "$pyproject_changed" == "true" ]]; then
+            git show "$BASE_SHA:pyproject.toml" > "$base_pyproject"
+            git show "$HEAD_SHA:pyproject.toml" > "$head_pyproject"
+            if ! python - "$base_pyproject" "$head_pyproject" <<'PY'
+          import sys
+          import tomllib
+
+          def dependency_contract(path: str) -> dict[str, object]:
+              with open(path, "rb") as handle:
+                  data = tomllib.load(handle)
+              project = data.get("project", {})
+              build = data.get("build-system", {})
+              return {
+                  "build-system.requires": build.get("requires", []),
+                  "project.dependencies": project.get("dependencies", []),
+                  "project.optional-dependencies": project.get("optional-dependencies", {}),
+              }
+
+          if dependency_contract(sys.argv[1]) != dependency_contract(sys.argv[2]):
+              raise SystemExit(1)
+          PY
+            then
+              manifest_changed=true
+            else
+              echo "pyproject.toml changed outside dependency declarations; dependency fallback remains applicable."
+            fi
+          fi
 
           git diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- \
             'constraints/*.txt' 'requirements*.txt' \
@@ -125,10 +159,10 @@ jobs:
 
           if [[ ! -s "$audit_file" ]]; then
             if [[ "$manifest_changed" == "true" ]]; then
-              echo "::error::Dependency manifests changed, but the fallback could not derive exact pinned additions to audit. Enable GitHub Dependency Graph or add/update the corresponding exact pin under constraints/."
+              echo "::error::Dependency declarations changed, but the fallback could not derive exact pinned additions to audit. Enable GitHub Dependency Graph or add/update the corresponding exact pin under constraints/."
               exit 1
             fi
-            echo "No dependency manifest changes detected; nothing to audit."
+            echo "No dependency declaration changes detected; nothing to audit."
             exit 0
           fi
 
