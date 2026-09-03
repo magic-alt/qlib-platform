@@ -142,11 +142,29 @@ def resolve_dataset(
 def pin_dataset(
     settings: Settings, reference: str | None = None, *, allow_legacy: bool = True
 ) -> tuple[Settings, ResolvedDataset]:
-    current = current_manifest_dataset(settings, reference)
-    if current is not None:
-        if settings.qlib_data_uri == current.data_path:
-            return settings, current
-        return replace(settings, qlib_data_uri=current.data_path), current
+    manifest_path = settings.qlib_data_uri / "dataset_manifest.json"
+    if reference is None and manifest_path.is_file():
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        version_id = str(payload.get("version_id") or "")
+        configured_raw = str(settings.data.get("qlib", {}).get("dataset_dir", "")).strip()
+        configured_path: Path | None = None
+        if configured_raw:
+            configured_path = Path(configured_raw).expanduser()
+            if not configured_path.is_absolute():
+                configured_path = (settings.config_path.parent.parent / configured_path).resolve()
+            else:
+                configured_path = configured_path.resolve()
+        explicitly_replaced = configured_path is not None and configured_path != settings.qlib_data_uri
+        if (payload.get("schema_version") == "3.0" and version_id) or explicitly_replaced:
+            resolved = ResolvedDataset(
+                reference=version_id or "explicit-path",
+                version_id=version_id or str(payload.get("sha256") or "unversioned"),
+                dataset_name=str(payload.get("dataset_name") or settings.qlib_dataset_name),
+                data_path=settings.qlib_data_uri,
+                manifest_path=manifest_path,
+                manifest_sha256=sha256_file(manifest_path),
+            )
+            return settings, resolved
     resolved = resolve_dataset(settings, reference, allow_legacy=allow_legacy)
     if settings.qlib_data_uri == resolved.data_path:
         return settings, resolved
