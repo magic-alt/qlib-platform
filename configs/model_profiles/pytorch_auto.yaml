@@ -1,0 +1,14 @@
+name: pytorch_auto
+family: pytorch_dnn
+device: auto
+device_index: 0
+model_kwargs:
+  lr: 0.001
+  max_steps: 300
+  batch_size: 2048
+  early_stop_rounds: 30
+  eval_steps: 20
+  optimizer: adam
+  loss: mse
+  pt_model_kwargs:
+    layers: [512, 256, 128]

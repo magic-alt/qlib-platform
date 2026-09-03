@@ -89,6 +89,7 @@ nav:
       - Roadmap & Milestones: project/roadmap.md
       - Good First Issue Policy: project/good-first-issues.md
   - Use the Platform:
+      - Local Research Quickstart: local_research_quickstart.md
       - Configuration: configuration.md
       - CLI Reference: cli_reference.md
       - Qlib Data Platform: qlib_data_platform.md
