@@ -24,6 +24,8 @@ class ResolvedDataset:
 
 
 _SHARED_RESEARCH_ALIAS = "research-current"
+_DATASET_MANIFEST_SCHEMA = "3.0"
+_USABLE_MANIFEST_STATES = {"VALIDATED", "PUBLISHED"}
 
 
 def dataset_reference_candidates(settings: Settings, reference: str | None = None) -> tuple[str, ...]:
@@ -46,6 +48,50 @@ def dataset_reference_candidates(settings: Settings, reference: str | None = Non
     ):
         candidates.append(_SHARED_RESEARCH_ALIAS)
     return tuple(candidates)
+
+
+def current_manifest_dataset(
+    settings: Settings, reference: str | None = None
+) -> ResolvedDataset | None:
+    """Resolve the configured current provider from its immutable v3 manifest.
+
+    A shared data root may contain a fully materialized ``qlib/current`` dataset even
+    when registry aliases were never created (or were removed during migration).  The
+    current manifest is a stronger selector than an unordered collection of historical
+    DataReleases, so it is safe to use for the configured default reference only.
+    Explicit unknown references must continue to fail closed.
+    """
+
+    selected = reference or settings.qlib_dataset_ref
+    if selected != settings.qlib_dataset_ref:
+        return None
+    manifest = settings.qlib_data_uri / "dataset_manifest.json"
+    if not manifest.is_file():
+        return None
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    version_id = str(payload.get("version_id") or "").strip()
+    status = str(payload.get("status") or "VALIDATED").upper()
+    if (
+        payload.get("schema_version") != _DATASET_MANIFEST_SCHEMA
+        or not version_id
+        or status not in _USABLE_MANIFEST_STATES
+    ):
+        return None
+    data_path = Path(str(payload.get("data_path") or settings.qlib_data_uri)).expanduser().resolve()
+    required = (data_path / "calendars" / "day.txt", data_path / "instruments", data_path / "features")
+    if not data_path.is_dir() or any(not item.exists() for item in required):
+        return None
+    return ResolvedDataset(
+        selected,
+        version_id,
+        str(payload.get("dataset_name") or payload.get("dataset_id") or settings.qlib_dataset_name),
+        data_path,
+        manifest,
+        sha256_file(manifest),
+    )
 
 
 def resolve_dataset(
@@ -73,6 +119,9 @@ def resolve_dataset(
                 version.manifest_path,
                 sha256_file(version.manifest_path),
             )
+    current = current_manifest_dataset(settings, reference)
+    if current is not None:
+        return current
     if not allow_legacy:
         raise KeyError(f"unknown dataset reference: {selected}")
     path = settings.qlib_data_uri
@@ -95,29 +144,11 @@ def resolve_dataset(
 def pin_dataset(
     settings: Settings, reference: str | None = None, *, allow_legacy: bool = True
 ) -> tuple[Settings, ResolvedDataset]:
-    manifest_path = settings.qlib_data_uri / "dataset_manifest.json"
-    if reference is None and manifest_path.is_file():
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        version_id = str(payload.get("version_id") or "")
-        configured_raw = str(settings.data.get("qlib", {}).get("dataset_dir", "")).strip()
-        configured_path: Path | None = None
-        if configured_raw:
-            configured_path = Path(configured_raw).expanduser()
-            if not configured_path.is_absolute():
-                configured_path = (settings.config_path.parent.parent / configured_path).resolve()
-            else:
-                configured_path = configured_path.resolve()
-        explicitly_replaced = configured_path is not None and configured_path != settings.qlib_data_uri
-        if (payload.get("schema_version") == "3.0" and version_id) or explicitly_replaced:
-            resolved = ResolvedDataset(
-                reference=version_id or "explicit-path",
-                version_id=version_id or str(payload.get("sha256") or "unversioned"),
-                dataset_name=str(payload.get("dataset_name") or settings.qlib_dataset_name),
-                data_path=settings.qlib_data_uri,
-                manifest_path=manifest_path,
-                manifest_sha256=sha256_file(manifest_path),
-            )
-            return settings, resolved
+    current = current_manifest_dataset(settings, reference)
+    if current is not None:
+        if settings.qlib_data_uri == current.data_path:
+            return settings, current
+        return replace(settings, qlib_data_uri=current.data_path), current
     resolved = resolve_dataset(settings, reference, allow_legacy=allow_legacy)
     if settings.qlib_data_uri == resolved.data_path:
         return settings, resolved
