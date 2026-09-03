@@ -138,7 +138,9 @@ def test_manifested_current_provider_beats_multiple_unaliased_releases(tmp_path:
     assert resolved.data_path == current.resolve()
 
 
-def test_legacy_current_provider_is_imported_before_release_history_selection(tmp_path: Path) -> None:
+def test_legacy_current_provider_is_imported_before_release_history_selection(
+    tmp_path: Path,
+) -> None:
     shared_root = tmp_path / "shared-data"
     standalone = _settings(
         tmp_path / "configs" / "standalone.yaml",
