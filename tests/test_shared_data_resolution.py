@@ -46,9 +46,7 @@ def _provider(root: Path, date: str, payload: bytes) -> Path:
     feature_root = root / "features" / "sh600000"
     feature_root.mkdir(parents=True)
     (root / "calendars" / "day.txt").write_text(f"{date}\n", encoding="utf-8")
-    (root / "instruments" / "all.txt").write_text(
-        f"sh600000\t{date}\t{date}\n", encoding="utf-8"
-    )
+    (root / "instruments" / "all.txt").write_text(f"sh600000\t{date}\t{date}\n", encoding="utf-8")
     (feature_root / "close.day.bin").write_bytes(payload)
     return root
 
