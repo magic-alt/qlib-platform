@@ -1,97 +1,142 @@
 # 本地 Qlib 数据回测：从数据到自定义机器学习算法
 
-这是一个可直接在 Windows 实机运行的研究案例。它沿用 Qlib 官方的自动研究工作流：
+这是仓库保留的 **qrun / workflow YAML 教学案例**。它适合学习 Qlib 原生 `DatasetH -> Model -> SignalRecord -> SigAnaRecord -> TopkDropoutStrategy` 主链路，以及验证自定义 Qlib `Model` 插件。
+
+如果目标是从现有 `data/` 一路完成 DatasetVersion 检查、Alpha158 Market/Daily/PIT、多模型比较、prediction-only portfolio backtest 和 walk-forward，请优先使用 [`docs/local_research_quickstart.md`](../../docs/local_research_quickstart.md) 中的 `tq-research` 入口。本目录不会复制那套研究编排逻辑。
 
 ```text
-不可变本地数据 -> Alpha158 特征 -> 模型训练 -> test 段预测
-              -> SignalRecord / SigAnaRecord -> TopkDropout 模拟回测
+不可变本地 DatasetVersion
+    -> Alpha158 特征
+    -> 模型训练
+    -> test 段预测
+    -> SignalRecord / SigAnaRecord
+    -> TopkDropout 模拟回测
 ```
 
-与 Qlib 官方 CSI300 示例相比，本案例保留 `DatasetH`、`SignalRecord`、`SigAnaRecord` 和
-`TopkDropoutStrategy` 主链路，但使用本仓库的 `TushareAlpha158Fundamental`、动态 A 股股票池、
-涨跌停字段、成交量约束、100 股整手和次日开盘成交。它只写本地研究记录，不下单、不访问最终
-holdout、不生成正式候选，也不发布 `TARGET_PORTFOLIO`。
+与 Qlib 官方 CSI300 示例相比，本案例保留 Qlib workflow 的核心结构，但使用本仓库的 `TushareAlpha158Fundamental`、动态 A 股股票池、涨跌停字段、成交量约束、100 股整手和次日开盘成交。它只生成本地研究证据，不提交真实订单、不访问 final holdout、不创建正式候选，也不发布 `TARGET_PORTFOLIO`。
 
 ## 1. 文件说明
 
 | 文件 | 用途 |
 | --- | --- |
-| `run_backtest.ps1` | 校验本地不可变数据、绑定 `QLIB_DATA_URI` 并执行指定 workflow |
-| `workflow_lightgbm.yaml` | 默认树模型案例；适合调学习率、叶子数、正则和采样参数 |
-| `workflow_ridge.yaml` | Qlib 内置 Ridge 低复杂度基线 |
-| `workflow_custom_ridge.yaml` | 加载当前目录中的自定义模型插件 |
-| `custom_model.py` | 一个完整的 `Model.fit/predict` 插件示例 |
+| `run_backtest.py` | 跨平台主入口；校验 DatasetVersion、绑定 `QLIB_DATA_URI`、校验 qrun contract 并执行 workflow |
+| `run_backtest.ps1` | Windows PowerShell 兼容入口 |
+| `run_backtest.sh` | macOS/Linux shell 入口，内部调用 `run_backtest.py` |
+| `workflow_lightgbm.yaml` | 默认 LightGBM 案例 |
+| `workflow_ridge.yaml` | Qlib Ridge 低复杂度基线 |
+| `workflow_custom_ridge.yaml` | 当前目录自定义模型插件案例 |
+| `custom_model.py` | 最小完整 `Model.fit/predict` 插件示例 |
 
-三个 workflow 除模型段和实验名外，数据、标签、切分、策略、成本与成交假设保持一致，便于做
-单变量模型比较。
+三个 workflow 除模型段和实验名外，数据、标签、切分、策略、成本与成交假设保持一致，便于做单变量模型比较。
 
 ## 2. 前置条件
 
-从仓库根目录执行。所有 Python/Qlib 命令只使用仓库本地环境：
+从仓库根目录执行，并始终使用仓库本地虚拟环境。
+
+### Windows PowerShell
 
 ```powershell
 $RepoPython = '.\.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $RepoPython)) {
-    throw '缺少 .\.venv\Scripts\python.exe，请先重建仓库本地环境。'
+    throw '缺少 .\.venv\Scripts\python.exe，请先创建仓库本地环境。'
 }
 & $RepoPython -m pip install -c constraints\ci.txt -e '.[dev]'
 ```
 
-本案例默认解析本地数据注册表中的 `research-current`，而不是直接读取 `data/qlib/current` 或把
-某个易变目录写死到 YAML。脚本会先执行完整 `dataset-verify`；manifest、文件校验和或数据身份不一致
-时会停止，不会带病回测。
+### macOS / Linux
 
-仅检查当前数据引用而不训练：
+```bash
+RepoPython=.venv/bin/python
+[ -x "$RepoPython" ] || { echo 'missing .venv/bin/python' >&2; exit 1; }
+$RepoPython -m pip install -c constraints/ci.txt -e '.[dev]'
+```
+
+本案例默认使用 TuShare 开发 profile 下的 `research-current` DatasetVersion 引用。runner 会：
+
+1. `dataset-resolve research-current`；
+2. `dataset-verify research-current --mode deep`；
+3. 将返回的不可变 DatasetVersion path 绑定给 `QLIB_DATA_URI`；
+4. 执行 `validate-qrun-contract`；
+5. 最后调用仓库本地 `qrun`。
+
+因此不要把易变的 `data/qlib/current` 一类目录硬编码到 workflow。
+
+仅检查数据而不训练：
+
+### Windows
 
 ```powershell
 $env:QLIB_REPO = '.'
 $env:QLIB_DATA_URI = 'data/qlib'
 & $RepoPython -m tushare_qlib --config configs\pipeline_tushare_dev.yaml dataset-resolve research-current
-& $RepoPython -m tushare_qlib --config configs\pipeline_tushare_dev.yaml dataset-verify research-current
+& $RepoPython -m tushare_qlib --config configs\pipeline_tushare_dev.yaml dataset-verify research-current --mode deep
 ```
 
-上面两个环境变量在这两条命令中只是开发配置所需的非敏感本地路径占位；真正传给 qrun 的
-`QLIB_DATA_URI` 由 `run_backtest.ps1` 改绑为注册表解析出的不可变版本路径。
+### macOS / Linux
+
+```bash
+export QLIB_REPO=.
+export QLIB_DATA_URI=data/qlib
+$RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
+$RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-verify research-current --mode deep
+```
+
+这些环境变量只是让开发 profile 能加载；真正传给 qrun 的 provider path 由 runner 根据 DatasetVersion registry 解析结果重新绑定。
 
 ## 3. 运行 LightGBM 基线
+
+### Windows PowerShell
 
 ```powershell
 .\examples\local_qlib_backtest\run_backtest.ps1 -Model lightgbm
 ```
 
-脚本依次完成：
-
-1. 确认 `.venv/Scripts/python.exe` 与 `.venv/Scripts/qrun.exe` 存在；
-2. 把 `research-current` 解析成确切版本并执行完整 checksum 校验；
-3. 运行 `validate-qrun-contract`，检查策略、成交和基准静态语义；
-4. 在 `mlruns/examples_local_backtest` 中创建隔离的 Qlib/MLflow 研究记录；
-5. 由 `SignalRecord` 保存预测、`SigAnaRecord` 保存 IC、组合记录器保存模拟回测结果。
-
-也可明确指定数据引用和实验名：
+或者直接使用跨平台 Python runner：
 
 ```powershell
-.\examples\local_qlib_backtest\run_backtest.ps1 `
-    -Model lightgbm `
-    -DatasetRef research-current `
-    -ExperimentName local_alpha158_lgb_trial_01
+& $RepoPython examples\local_qlib_backtest\run_backtest.py --model lightgbm
 ```
 
-案例固定采用以下不重叠区间，并给 5 日标签留出 purge gap：
+### macOS / Linux
+
+```bash
+bash examples/local_qlib_backtest/run_backtest.sh --model lightgbm
+```
+
+或者：
+
+```bash
+$RepoPython examples/local_qlib_backtest/run_backtest.py --model lightgbm
+```
+
+明确指定数据引用和实验名：
+
+```bash
+$RepoPython examples/local_qlib_backtest/run_backtest.py \
+  --model lightgbm \
+  --dataset-ref research-current \
+  --experiment-name local_alpha158_lgb_trial_01
+```
+
+runner 会输出最终绑定的 DatasetVersion ID、不可变数据路径、workflow 和实验名。
+
+## 4. 固定研究区间
+
+案例当前固定采用以下不重叠区间，并给 5 日标签留出隔离窗口：
 
 | 段 | 日期 | 作用 |
 | --- | --- | --- |
-| train | 2018-10-01 至 2024-12-27 | 只用于拟合模型与学习型处理器 |
-| gap | 2024-12-28 至 2025-01-07 | 隔离 5 日未来收益标签的前视窗口 |
-| valid | 2025-01-08 至 2025-07-02 | early stopping / 超参数判断 |
+| train | 2018-10-01 至 2024-12-27 | 拟合模型和学习型处理器 |
+| gap | 2024-12-28 至 2025-01-07 | 隔离未来收益标签前视窗口 |
+| valid | 2025-01-08 至 2025-07-02 | early stopping / 参数判断 |
 | gap | 2025-07-03 至 2025-07-10 | 隔离 valid 与 test |
-| test / backtest | 2025-07-11 至 2026-08-10 | 只做样本外预测和模拟回测 |
+| test / backtest | 2025-07-11 至 2026-08-10 | 样本外预测和模拟回测 |
 
-不要因为本地数据更新就把 test 结束日顺延后继续调参；那会把已经观察过的 OOS 结果变成隐性验证集。
-需要新窗口时，应先冻结新的研究计划和切分，再运行实验。
+不要因为本地数据更新就自动把 test 结束日向后顺延，再继续依据该区间调参。观察过的 OOS 结果已经不能重新当作未见数据。
 
-## 4. 读取结果
+## 5. 读取结果
 
-qrun 结束时会在控制台输出 IC 与组合风险指标。完整产物位于：
+qrun 的主要 artifact 位于配置的 recorder root 下，默认结构类似：
 
 ```text
 mlruns/examples_local_backtest/<experiment-id>/<run-id>/artifacts/
@@ -106,122 +151,103 @@ mlruns/examples_local_backtest/<experiment-id>/<run-id>/artifacts/
     └── port_analysis_1day.pkl
 ```
 
-如果需要可审计的 Markdown、Parquet、图表和 PDF，可在找到最新 run 的 artifact 目录后执行：
+需要可审计的 Markdown、Parquet、图表和 PDF 时，可在找到 artifact 目录后执行：
 
 ```powershell
 & $RepoPython scripts\export_qrun_backtest_report.py `
-    --artifact-dir mlruns\examples_local_backtest\<experiment-id>\<run-id>\artifacts `
-    --workflow-config examples\local_qlib_backtest\workflow_lightgbm.yaml `
-    --output-dir data\output\local_backtest_report `
-    --data-root data
+  --artifact-dir mlruns\examples_local_backtest\<experiment-id>\<run-id>\artifacts `
+  --workflow-config examples\local_qlib_backtest\workflow_lightgbm.yaml `
+  --output-dir data\output\local_backtest_report `
+  --data-root data
 ```
 
-先看预测质量的 `IC`、`Rank IC` 及稳定性，再看成本后超额收益、信息比率和最大回撤，最后检查成交
-填充率、持仓数、现金、换手与逐笔模拟成交。正 IC 不保证扣费后盈利；策略收益也不能证明模型在未见
-数据上仍然有效。
+研究解读顺序建议为：先看 `IC / Rank IC` 及稳定性，再看扣成本后的超额收益、信息比率、最大回撤，最后看成交填充率、持仓、现金、换手和模拟成交。正 IC 不等于扣费后盈利，组合盈利也不证明未见数据上的模型泛化。
 
-## 5. 调整 LightGBM 参数
+## 6. 调整 LightGBM 参数
 
-复制配置后只调整 `task.model.kwargs`，并使用新实验名：
+复制 workflow，只修改模型参数并使用新实验名：
 
 ```powershell
 Copy-Item examples\local_qlib_backtest\workflow_lightgbm.yaml `
-    examples\local_qlib_backtest\workflow_lightgbm_trial.yaml
+  examples\local_qlib_backtest\workflow_lightgbm_trial.yaml
 ```
 
-常用参数及影响：
+常用参数：
 
-| 参数 | 作用 | 调整建议 |
+| 参数 | 作用 | 建议 |
 | --- | --- | --- |
-| `learning_rate` / `num_boost_round` | 步长与最大迭代数 | 降低步长通常要增加迭代数，保留 early stopping |
+| `learning_rate` / `num_boost_round` | 学习率与最大迭代数 | 降低学习率通常需要更多迭代，保留 early stopping |
 | `num_leaves` / `max_depth` | 模型容量 | 同时增大容易过拟合 |
-| `lambda_l1` / `lambda_l2` | 正则化 | 用 valid 段选择，不看 test 调参 |
-| `colsample_bytree` / `subsample` | 特征与样本采样 | 可降相关、提速；固定随机种子后比较 |
-| `num_threads` | CPU 并行度 | 只影响资源与可复现性能，不应改变研究定义 |
+| `lambda_l1` / `lambda_l2` | 正则化 | 只根据 valid 选择 |
+| `colsample_bytree` / `subsample` | 特征/样本采样 | 固定 seed 后再比较 |
+| `num_threads` | CPU 并行度 | 不应改变研究定义 |
 
-运行复制后的任意 workflow：
+运行任意 workflow：
 
-```powershell
-.\examples\local_qlib_backtest\run_backtest.ps1 `
-    -Workflow examples\local_qlib_backtest\workflow_lightgbm_trial.yaml `
-    -ExperimentName local_alpha158_lgb_trial_02
+```bash
+$RepoPython examples/local_qlib_backtest/run_backtest.py \
+  --workflow examples/local_qlib_backtest/workflow_lightgbm_trial.yaml \
+  --experiment-name local_alpha158_lgb_trial_02
 ```
 
-同一轮模型比较不得同时修改标签、股票池、train/valid/test、成本、策略参数或数据版本。超参数只由
-train/valid 决定，test 只做预先约定的一次 OOS 评价。
+同一轮模型比较不要同时改变 DatasetVersion、AlphaPack/handler、label、train/valid/test、成本或策略参数。
 
-## 6. 替换机器学习算法
+## 7. Ridge 与自定义 Qlib Model
 
-### Qlib 内置 Ridge
+Ridge 基线：
 
-Ridge 是检查“复杂模型是否真的带来增量”的稳健基线：
-
-```powershell
-.\examples\local_qlib_backtest\run_backtest.ps1 -Model ridge
+```bash
+$RepoPython examples/local_qlib_backtest/run_backtest.py --model ridge
 ```
 
-调整正则强度只需修改 `workflow_ridge.yaml` 的 `alpha`。`include_valid: false` 明确禁止把 valid 合并进
-训练数据。
+自定义 Ridge 插件：
 
-### XGBoost
-
-仓库已声明可选依赖。安装后，复制 LightGBM workflow，并只把 `task.model` 替换为：
-
-```yaml
-model:
-  class: XGBModel
-  module_path: qlib.contrib.model.xgboost
-  kwargs:
-    objective: reg:squarederror
-    eval_metric: rmse
-    eta: 0.03
-    max_depth: 8
-    subsample: 0.8
-    colsample_bytree: 0.8
-    nthread: 8
+```bash
+$RepoPython examples/local_qlib_backtest/run_backtest.py --model custom_ridge
 ```
 
-```powershell
-& $RepoPython -m pip install -c constraints\ci.txt -e '.[dev,xgboost]'
-.\examples\local_qlib_backtest\run_backtest.ps1 `
-    -Workflow examples\local_qlib_backtest\workflow_xgboost_trial.yaml `
-    -ExperimentName local_alpha158_xgb_trial_01
-```
-
-不要照搬 LightGBM 的 `num_leaves`、`lambda_l1` 等参数名。还要注意：Qlib 0.9.7 内置 `XGBModel`
-的 qrun 初始化参数会传给 XGBoost booster，而 `fit()` 的 `num_boost_round=1000` 与
-`early_stopping_rounds=50` 使用适配器默认值；把这两个键放进 YAML `kwargs` 并不能调整 fit 参数。
-需要改变它们时，应仿照 `custom_model.py` 写一个显式保存并转发 fit 参数的适配器，或使用仓库的一体化
-`configs/model_profiles/xgboost_cpu_v1.yaml`，不要依赖被 XGBoost 忽略的参数。
-
-### 添加自定义算法
-
-`custom_model.py` 展示最小完整插件：
+`custom_model.py` 展示了 Qlib 自定义算法最小契约：
 
 - 继承 `qlib.model.base.Model`；
-- `fit()` 只读取 `train` 的 `DataHandlerLP.DK_L`；
-- 保存公开的拟合状态，支持 Qlib recorder 序列化；
-- `predict()` 读取 `test` 的 `DataHandlerLP.DK_I` 并返回保留 MultiIndex 的 `Series`；
-- 对非有限输入、空训练集、列变化和非法参数 fail closed。
+- `fit()` 只读取训练数据；
+- 保存可序列化的拟合状态；
+- `predict()` 返回保留 `datetime/instrument` MultiIndex 的预测；
+- 对空训练集、非有限输入、列变化和非法参数 fail closed。
 
-运行它：
+如果目的是开发仓库统一 ModelAdapter，而不是单个 qrun workflow 插件，请转到 [`docs/local_research_quickstart.md`](../../docs/local_research_quickstart.md) 的“Custom ModelAdapter”章节；正式研究 CLI 的模型族由 `src/tushare_qlib/models/` registry 管理。
 
-```powershell
-.\examples\local_qlib_backtest\run_backtest.ps1 -Model custom_ridge
+## 8. XGBoost / PyTorch 与完整模型矩阵
+
+本 qrun 教学目录不再复制所有模型 profile。仓库正式模型比较使用 `tq-research`：
+
+```bash
+$RepoPython -m tushare_qlib.research_quickstart matrix
 ```
 
-要接入自己的算法，复制该类并替换内部 estimator；然后在 workflow 的 `sys.path` 中保留插件目录，修改
-`task.model.class` 和 `module_path`。不要让 `fit()` 读取 `test`，也不要在插件内部重新切分或偷偷合并
-valid。需要 early stopping 的模型应显式读取 `train` 与 `valid`，仍不得以 test 指标选择参数。
+默认比较：
 
-## 7. 研究边界与常见失败
+```text
+Alpha158 Market × Ridge / LightGBM / XGBoost
+Alpha158 Daily  × Ridge / LightGBM / XGBoost
+Alpha158 PIT    × Ridge / LightGBM / XGBoost
+```
 
-- `dataset-verify` 失败：先修复或重新生成数据发布，不要指向未注册目录绕过校验。
-- 日期无数据：检查不可变版本的 `calendars/day.txt`、股票池和 feature 覆盖；不要自动把切分改成重叠。
-- benchmark 缺失：`SH000300` 必须存在于本地数据；否则回测应失败，不能静默换基准。
-- 模型结果弱：先视为研究证据；不要为改善结果改变已认证的数据、时序、成本或执行语义。
-- 本例不是 walk-forward，也不是正式研究候选流程。需要受治理的 rolling OOS、身份与 lineage 时，使用
-  仓库正式研究入口和 `configs/model_profiles/`，不要把本例产物直接升级或发布。
+显式加入 PyTorch：
 
-参考：Qlib 官方 [LightGBM + Alpha158 workflow](https://github.com/microsoft/qlib/blob/main/examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml)、
-[workflow 配置与自定义模型集成](https://github.com/microsoft/qlib/blob/main/docs/start/integration.rst)。
+```bash
+$RepoPython -m tushare_qlib.research_quickstart matrix \
+  --model ridge --model lightgbm --model xgboost --model pytorch
+```
+
+这样 XGBoost/PyTorch 参数、runtime probe、DatasetVersion、PredictionSnapshot 和 prediction-only portfolio backtest 仍走仓库统一 ModelAdapter/研究链路，而不是在 qrun 示例中维护第二套配置。
+
+## 9. 研究边界与常见失败
+
+- `dataset-verify` 失败：先修复/重新构建数据，不要指向未注册目录绕过校验。
+- 日期无数据：检查 DatasetVersion 的 calendar、instrument universe 和 feature 覆盖，不要自动把 split 改成重叠。
+- benchmark 缺失：`SH000300` 缺失时应 fail closed，不要静默替换基准。
+- 模型结果弱：先把它当研究证据，不要为改善结果修改数据时序、成本或执行语义。
+- 本例不是正式 walk-forward/candidate lifecycle。正式 rolling OOS 使用 `tq-research` 或底层 `research-run --mode walk-forward`。
+- 当前治理状态始终以 [`docs/current_state.md`](../../docs/current_state.md) 为准；CLI/脚本存在不等于授权 final holdout、candidate selection 或 publishing。
+
+参考上游：Qlib 官方 LightGBM + Alpha158 workflow 与 workflow/custom-model integration 文档。本文只描述本仓库维护的本地示例行为。
