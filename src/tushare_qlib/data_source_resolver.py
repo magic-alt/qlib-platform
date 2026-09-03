@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .dataset_manifest import verify_dataset_manifest
 from .dataset_registry import DatasetRegistry, DatasetVersion
-from .dataset_resolver import dataset_reference_candidates
+from .dataset_resolver import current_manifest_dataset, dataset_reference_candidates
 from .releases import FileReleaseStore, release_store_root
 from .releases import missing_market_components
 from .settings import Settings
@@ -151,6 +151,10 @@ def resolve_source(
     if dataset is not None:
         verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
         return SourceResolution("READY", "dataset_version", dataset_reference, dataset.data_path)
+    current = current_manifest_dataset(settings)
+    if current is not None:
+        verify_dataset_manifest(current.manifest_path, mode="deep", workers=4)
+        return SourceResolution("READY", "dataset_current", current.reference, current.data_path)
     records = list(store.list())
     if len(records) == 1:
         record = records[0]

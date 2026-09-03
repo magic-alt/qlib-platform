@@ -24,6 +24,8 @@ class ResolvedDataset:
 
 
 _SHARED_RESEARCH_ALIAS = "research-current"
+_DATASET_MANIFEST_SCHEMA = "3.0"
+_USABLE_MANIFEST_STATES = {"VALIDATED", "PUBLISHED"}
 
 
 def dataset_reference_candidates(settings: Settings, reference: str | None = None) -> tuple[str, ...]:
@@ -46,6 +48,48 @@ def dataset_reference_candidates(settings: Settings, reference: str | None = Non
     ):
         candidates.append(_SHARED_RESEARCH_ALIAS)
     return tuple(candidates)
+
+
+def current_manifest_dataset(settings: Settings, reference: str | None = None) -> ResolvedDataset | None:
+    """Resolve the configured current provider from its immutable v3 manifest.
+
+    A shared data root may contain a fully materialized ``qlib/current`` dataset even
+    when registry aliases were never created (or were removed during migration).  The
+    current manifest is a stronger selector than an unordered collection of historical
+    DataReleases, so it is safe to use for the configured default reference only.
+    Explicit unknown references must continue to fail closed.
+    """
+
+    selected = reference or settings.qlib_dataset_ref
+    if selected != settings.qlib_dataset_ref:
+        return None
+    manifest = settings.qlib_data_uri / "dataset_manifest.json"
+    if not manifest.is_file():
+        return None
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    version_id = str(payload.get("version_id") or "").strip()
+    status = str(payload.get("status") or "VALIDATED").upper()
+    if (
+        payload.get("schema_version") != _DATASET_MANIFEST_SCHEMA
+        or not version_id
+        or status not in _USABLE_MANIFEST_STATES
+    ):
+        return None
+    data_path = Path(str(payload.get("data_path") or settings.qlib_data_uri)).expanduser().resolve()
+    required = (data_path / "calendars" / "day.txt", data_path / "instruments", data_path / "features")
+    if not data_path.is_dir() or any(not item.exists() for item in required):
+        return None
+    return ResolvedDataset(
+        selected,
+        version_id,
+        str(payload.get("dataset_name") or payload.get("dataset_id") or settings.qlib_dataset_name),
+        data_path,
+        manifest,
+        sha256_file(manifest),
+    )
 
 
 def resolve_dataset(
@@ -73,6 +117,9 @@ def resolve_dataset(
                 version.manifest_path,
                 sha256_file(version.manifest_path),
             )
+    current = current_manifest_dataset(settings, reference)
+    if current is not None:
+        return current
     if not allow_legacy:
         raise KeyError(f"unknown dataset reference: {selected}")
     path = settings.qlib_data_uri
