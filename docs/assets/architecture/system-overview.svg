@@ -27,7 +27,7 @@
   <text x="84" y="132" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="19" font-weight="500" fill="#CBD5E1">Immutable identity → causal research → auditable backtest → governed target portfolio → execution boundary</text>
 
   <text x="80" y="218" class="lane">DATA IDENTITY</text>
-  <text x="454" y="218" class="lane">RESEARCH & EVIDENCE</text>
+  <text x="454" y="218" class="lane">RESEARCH &amp; EVIDENCE</text>
   <text x="1030" y="218" class="lane">PORTFOLIO HANDOFF</text>
   <text x="1327" y="218" class="lane">EXECUTION</text>
 
