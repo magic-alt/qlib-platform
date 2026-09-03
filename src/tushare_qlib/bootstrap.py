@@ -37,9 +37,7 @@ def bootstrap(
                 "status": exc.code,
                 "error": str(exc),
                 "recommendedCommand": "tq release list",
-                "selectionCommand": (
-                    "tq release promote <DATA_RELEASE_ID> --alias research-release-current"
-                ),
+                "selectionCommand": ("tq release promote <DATA_RELEASE_ID> --alias research-release-current"),
                 "retryCommand": "tq-research prepare --source auto",
             }
         if resolved.status == "IMPORT_REQUIRED":
