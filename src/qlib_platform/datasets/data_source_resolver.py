@@ -146,7 +146,8 @@ def resolve_source(
             "data_release",
             release.data_release_id,
             release.manifest_path,
-            "dataset-build",
+            "dataset-materialize",
+            release.profile,
         )
     registry = DatasetRegistry(settings.registry_path)
     dataset_reference, dataset = _registered_dataset(settings, registry)
@@ -166,7 +167,8 @@ def resolve_source(
             "data_release",
             release.data_release_id,
             release.manifest_path,
-            "dataset-build",
+            "dataset-materialize",
+            release.profile,
         )
     if dataset is not None:
         _verify_dataset_source_probe(dataset.manifest_path)
@@ -179,8 +181,6 @@ def resolve_source(
         # The configured current provider is an explicit local selector even when it
         # predates DatasetVersion manifests. Normalize it into an immutable
         # DataRelease/DatasetVersion before considering unordered historical releases.
-        # This is fail-closed with respect to history: we import the configured bytes;
-        # we never guess which historical release should become active.
         return SourceResolution(
             "IMPORT_REQUIRED",
             "qlib",
@@ -189,18 +189,23 @@ def resolve_source(
             "release import-qlib",
         )
     records = list(store.list())
-    if len(records) == 1:
-        record = records[0]
+    if records:
+        if len(records) > 1 and settings.mode != "standalone":
+            raise ReleaseSelectionRequired(
+                "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
+            )
+        # Standalone is deliberately zero-config: the newest published local release
+        # becomes the candidate snapshot. bootstrap() performs the mutating activation
+        # only after it verifies/materializes the matching DatasetVersion.
+        record = store.latest() if len(records) > 1 else records[0]
+        assert record is not None
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
             "data_release",
             record.data_release_id,
             record.manifest_path,
-            "release promote",
-        )
-    if len(records) > 1:
-        raise ReleaseSelectionRequired(
-            "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
+            "dataset-materialize",
+            record.profile,
         )
     if (settings.paths.raw / "daily").is_dir():
         return resolve_local_raw_source(settings)
