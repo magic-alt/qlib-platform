@@ -33,7 +33,13 @@ def feature_store_enabled(settings: Settings) -> bool:
 def _dataset_snapshot(settings: Settings) -> dict[str, object]:
     path = settings.qlib_data_uri / "dataset_manifest.json"
     if not path.is_file():
-        return {"sha256": None, "mode": None, "syncContext": None, "lastDate": None}
+        return {
+            "sha256": None,
+            "mode": None,
+            "syncContext": None,
+            "lastDate": None,
+            "parents": None,
+        }
     payload = json.loads(path.read_text(encoding="utf-8"))
     smoke = payload.get("smoke_test", {})
     return {
@@ -45,6 +51,7 @@ def _dataset_snapshot(settings: Settings) -> dict[str, object]:
         "versionId": payload.get("version_id") or payload.get("sha256"),
         "manifestSha256": sha256_file(path),
         "fields": payload.get("fields"),
+        "parents": payload.get("parents"),
     }
 
 
@@ -71,7 +78,9 @@ def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, o
         "datasetFields": snapshot.get("fields"),
         "universe": settings.data.get("universe", {}),
         "alphaPack": pack.to_manifest(),
-        "implementationSha256": {path.name: sha256_file(path) for path in implementation if path.is_file()},
+        "implementationSha256": {
+            path.name: sha256_file(path) for path in implementation if path.is_file()
+        },
         "qlibCommit": git_revision(resolve_qlib_repo(settings.qlib_repo)).get("commit"),
     }
 
@@ -103,6 +112,19 @@ def _dataset_identity(snapshot: Mapping[str, object]) -> str:
         or snapshot.get("manifestSha256")
         or ""
     )
+
+
+def _updated_from_parent_id(snapshot: Mapping[str, object]) -> str | None:
+    parents = snapshot.get("parents")
+    if not isinstance(parents, list):
+        return None
+    updated_from = [
+        str(item.get("version_id") or item.get("versionId") or "").strip()
+        for item in parents
+        if isinstance(item, Mapping) and str(item.get("relation") or "") == "updated_from"
+    ]
+    updated_from = [value for value in updated_from if value]
+    return updated_from[0] if len(updated_from) == 1 else None
 
 
 def _store_root(settings: Settings) -> Path:
@@ -178,7 +200,11 @@ def _read_manifest(path: Path) -> dict[str, object]:
 
 def _coverage(manifest: Mapping[str, object]) -> tuple[pd.Timestamp, pd.Timestamp] | None:
     coverage = manifest.get("coverage", {})
-    if not isinstance(coverage, Mapping) or not coverage.get("startTime") or not coverage.get("endTime"):
+    if (
+        not isinstance(coverage, Mapping)
+        or not coverage.get("startTime")
+        or not coverage.get("endTime")
+    ):
         return None
     return pd.Timestamp(coverage["startTime"]), pd.Timestamp(coverage["endTime"])
 
@@ -312,15 +338,19 @@ def _extendable_snapshot(
 def _semantic_snapshot(
     snapshots_root: Path,
     semantic_id: str,
+    dataset_version_id: str,
     start_time: str,
     required_end: str | pd.Timestamp,
 ) -> Path | None:
     matches: list[tuple[pd.Timestamp, Path]] = []
     for path, manifest in _iter_snapshots(snapshots_root):
         coverage = _coverage(manifest)
+        recorded_dataset = manifest.get("datasetSnapshot", {})
         if (
             manifest.get("featureSemanticId") == semantic_id
             and coverage is not None
+            and isinstance(recorded_dataset, Mapping)
+            and _dataset_identity(recorded_dataset) == dataset_version_id
             and coverage[0] <= pd.Timestamp(start_time)
             and coverage[1] >= pd.Timestamp(required_end)
         ):
@@ -365,7 +395,9 @@ def _extend_same_dataset(
     recompute_start = _lookback_start(source_coverage[1], _lookback_days(settings))
     base = load_feature_store(source, start_time, str(source_coverage[1].date()), verify_checksums=True)
     replacement = _raw_features(settings, recompute_start, end_time)
-    frame = _merge_recomputed(base, replacement).loc[pd.Timestamp(start_time) : pd.Timestamp(end_time)]
+    frame = _merge_recomputed(base, replacement).loc[
+        pd.Timestamp(start_time) : pd.Timestamp(end_time)
+    ]
     target = _write_feature_snapshot(
         snapshots_root,
         recipe_id,
@@ -402,12 +434,19 @@ def _incremental_across_dataset_versions(
     start_time: str,
     end_time: str,
 ) -> tuple[Path, dict[str, object]] | None:
+    # Cross-version reuse is permitted only from the one direct DatasetVersion
+    # predecessor recorded by qlib_export as ``updated_from``. The sync delta is
+    # relative to that parent; using any older semantic match could omit intervening
+    # historical revisions and would violate fail-closed lineage.
+    parent_version_id = _updated_from_parent_id(snapshot)
+    if parent_version_id is None:
+        return None
     sync_context = snapshot.get("syncContext")
     if not isinstance(sync_context, Mapping):
         return None
     changed_dates = _sync_values(sync_context, "changed_trade_dates", "changedTradeDates")
     revised_symbols = _sync_values(sync_context, "revised_symbols", "revisedSymbols")
-    if revised_symbols or not changed_dates:
+    if revised_symbols or not changed_dates or bool(sync_context.get("pit_changed", False)):
         return None
     try:
         first_changed = min(pd.Timestamp(value) for value in changed_dates)
@@ -416,7 +455,9 @@ def _incremental_across_dataset_versions(
 
     semantic_id = _semantic_recipe_id(contract)
     if first_changed > pd.Timestamp(end_time):
-        source = _semantic_snapshot(snapshots_root, semantic_id, start_time, end_time)
+        source = _semantic_snapshot(
+            snapshots_root, semantic_id, parent_version_id, start_time, end_time
+        )
         if source is None:
             return None
         source_manifest = _read_manifest(source)
@@ -430,6 +471,7 @@ def _incremental_across_dataset_versions(
             cache_build={
                 "mode": "REBOUND",
                 "sourceFeatureSnapshotId": _snapshot_id(source_manifest, source),
+                "sourceDatasetVersionId": parent_version_id,
                 "firstChangedTradeDate": str(first_changed.date()),
             },
         )
@@ -437,6 +479,7 @@ def _incremental_across_dataset_versions(
             "cacheStatus": "REBOUND",
             "rawMaterializationCalls": 0,
             "sourceFeatureSnapshotId": _snapshot_id(source_manifest, source),
+            "sourceDatasetVersionId": parent_version_id,
             "firstChangedTradeDate": str(first_changed.date()),
         }
 
@@ -444,7 +487,9 @@ def _incremental_across_dataset_versions(
     recompute_start = _lookback_start(first_changed, _lookback_days(settings))
     if pd.Timestamp(recompute_start) <= pd.Timestamp(start_time):
         return None
-    source = _semantic_snapshot(snapshots_root, semantic_id, start_time, recompute_start)
+    source = _semantic_snapshot(
+        snapshots_root, semantic_id, parent_version_id, start_time, recompute_start
+    )
     if source is None:
         return None
     source_manifest = _read_manifest(source)
@@ -454,7 +499,9 @@ def _incremental_across_dataset_versions(
     base_end = min(source_coverage[1], pd.Timestamp(end_time))
     base = load_feature_store(source, start_time, str(base_end.date()), verify_checksums=True)
     replacement = _raw_features(settings, recompute_start, end_time)
-    frame = _merge_recomputed(base, replacement).loc[pd.Timestamp(start_time) : pd.Timestamp(end_time)]
+    frame = _merge_recomputed(base, replacement).loc[
+        pd.Timestamp(start_time) : pd.Timestamp(end_time)
+    ]
     target = _write_feature_snapshot(
         snapshots_root,
         recipe_id,
@@ -464,6 +511,7 @@ def _incremental_across_dataset_versions(
         cache_build={
             "mode": "INCREMENTAL",
             "sourceFeatureSnapshotId": _snapshot_id(source_manifest, source),
+            "sourceDatasetVersionId": parent_version_id,
             "recomputeStartTime": recompute_start,
             "firstChangedTradeDate": str(first_changed.date()),
         },
@@ -472,6 +520,7 @@ def _incremental_across_dataset_versions(
         "cacheStatus": "INCREMENTAL",
         "rawMaterializationCalls": 1,
         "sourceFeatureSnapshotId": _snapshot_id(source_manifest, source),
+        "sourceDatasetVersionId": parent_version_id,
         "recomputeStartTime": recompute_start,
         "firstChangedTradeDate": str(first_changed.date()),
     }
@@ -561,7 +610,9 @@ def load_feature_store(
         match = str(entry["name"]).removeprefix("year=").removesuffix(".parquet")
         if match.isdigit() and int(match) not in requested_years:
             continue
-        if not file_path.is_file() or (verify_checksums and sha256_file(file_path) != entry.get("sha256")):
+        if not file_path.is_file() or (
+            verify_checksums and sha256_file(file_path) != entry.get("sha256")
+        ):
             raise ValueError(f"feature-store partition checksum mismatch: {file_path}")
         frames.append(pd.read_parquet(file_path))
     if not frames:
