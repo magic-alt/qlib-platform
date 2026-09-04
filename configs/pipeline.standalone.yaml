@@ -7,6 +7,11 @@ project_root: ./data
 project_root_env: QLIB_DATA_ROOT
 
 experiment:
+  # The base TuShare profile is bound to cn_tushare_v1. Standalone research may
+  # instead use an immutable local DatasetVersion with no DataRelease lineage, so
+  # explicitly clear the inherited release binding. If the materialized manifest
+  # carries data_release_id, the canonical dataset identity still comes from it.
+  data_release: null
   alpha:
     pack: alpha158_market_v1
 

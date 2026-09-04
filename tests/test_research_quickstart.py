@@ -30,6 +30,17 @@ def test_run_defaults_to_market_alpha158_lightgbm() -> None:
     assert tuple(name for name, _ in profiles) == ("lightgbm",)
 
 
+def test_standalone_profile_clears_inherited_data_release() -> None:
+    config = Path(__file__).parents[1] / "configs" / "pipeline.standalone.yaml"
+
+    settings = Settings.load(config, create_dirs=False)
+
+    assert settings.mode == "standalone"
+    assert settings.data["experiment"]["data_release"] is None
+    assert settings.qlib_dataset_ref == "standalone-current"
+    assert settings.data["qlib"]["dataset_version"] == "local"
+
+
 def test_diagnostics_default_to_sampled_but_research_stays_deep() -> None:
     command_parser = parser()
 

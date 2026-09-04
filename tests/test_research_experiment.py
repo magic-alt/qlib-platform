@@ -70,6 +70,17 @@ def test_experiment_identity_changes_with_model_but_not_alpha_identity(tmp_path)
     assert first.experiment_id == ResearchExperimentSpec.resolve(runtime=runtime, **kwargs).experiment_id
 
 
+def test_experiment_accepts_local_dataset_without_configured_data_release(tmp_path):
+    spec = _resolve(tmp_path, {"data_release": None})
+
+    assert spec.data_release_id == "ds_test"
+
+
+def test_experiment_rejects_explicit_data_release_mismatch(tmp_path):
+    with pytest.raises(ValueError, match="data_release does not match"):
+        _resolve(tmp_path, {"data_release": "different_release"})
+
+
 def test_experiment_accepts_rank_buffer_v1_policy(tmp_path):
     spec = _resolve(tmp_path, {"portfolio": {"policy": "rank_buffer_v1"}})
 

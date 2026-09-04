@@ -93,6 +93,44 @@ def test_dataset_spec_records_lean_pit_universe(tmp_path: Path):
     assert spec.secondary_filters == {"min_listed_days": 120}
 
 
+def test_dataset_spec_uses_manifest_version_when_local_release_is_absent(tmp_path: Path):
+    settings = _settings(
+        tmp_path,
+        {
+            "qlib": {"dataset_version": "local"},
+            "data_source": {"kind": "auto"},
+        },
+    )
+    settings.qlib_data_uri.mkdir(parents=True)
+    (settings.qlib_data_uri / "dataset_manifest.json").write_text(
+        '{"schema_version":"3.0","version_id":"version_immutable","data_release_id":null}',
+        encoding="utf-8",
+    )
+
+    spec = DatasetSpec.from_settings(settings)
+
+    assert spec.dataset_id == "version_immutable"
+
+
+def test_dataset_spec_prefers_materialized_release_over_version_id(tmp_path: Path):
+    settings = _settings(
+        tmp_path,
+        {
+            "qlib": {"dataset_version": "local"},
+            "data_source": {"kind": "auto"},
+        },
+    )
+    settings.qlib_data_uri.mkdir(parents=True)
+    (settings.qlib_data_uri / "dataset_manifest.json").write_text(
+        '{"schema_version":"3.0","version_id":"version_immutable","data_release_id":"ds_release"}',
+        encoding="utf-8",
+    )
+
+    spec = DatasetSpec.from_settings(settings)
+
+    assert spec.dataset_id == "ds_release"
+
+
 def test_portfolio_spec_comes_only_from_pipeline_portfolio_section(tmp_path: Path):
     settings = _settings(
         tmp_path,
