@@ -204,16 +204,25 @@ def doctor(settings: Settings, args: argparse.Namespace) -> dict[str, Any]:
         source = resolve_source(settings)
     except ReleaseSelectionRequired as exc:
         return _release_selection_payload(settings, exc)
+    visible_reference = (
+        source.reference
+        if source.status == "READY" or settings.mode != "standalone"
+        else settings.qlib_dataset_ref
+    )
     payload: dict[str, Any] = {
         "status": source.status,
         "source": source.source,
-        "reference": source.reference,
+        "reference": visible_reference,
         "action": source.action,
         "profile": source.profile,
         "missingComponents": list(source.missing_components),
     }
     if source.status != "READY":
-        payload["recommendedCommand"] = "tq-research prepare --source auto"
+        payload["recommendedCommand"] = (
+            "tq-research run --alpha-pack alpha158_market_v1 --model lightgbm"
+            if settings.mode == "standalone"
+            else "tq-research prepare --source auto"
+        )
         return payload
     dataset = _verify(settings, reference, args)
     payload.update(
@@ -511,29 +520,79 @@ def build_plan(settings: Settings, args: argparse.Namespace, root: Path) -> dict
     }
 
 
+def _preparation_failure(
+    settings: Settings,
+    plan: dict[str, Any],
+    root: Path,
+    result: Mapping[str, Any],
+    error: Exception,
+) -> int:
+    status = str(result.get("status") or "DATASET_PREPARATION_REQUIRED")
+    plan.update(status=status, error=str(result.get("error") or error), failureCount=1)
+    if status == "DATA_UNAVAILABLE":
+        plan["recommendedCommand"] = (
+            "Set TUSHARE_TOKEN in .env to download data, or place existing local data under QLIB_DATA_ROOT"
+        )
+    else:
+        plan["recommendedCommand"] = str(
+            result.get("recommendedCommand") or "tq-research prepare --source auto"
+        )
+    # Explicit release/version selection remains available in integrated mode, but
+    # standalone quickstart never makes users handle content-addressed IDs.
+    if settings.mode != "standalone":
+        for key in (
+            "selectionCommand",
+            "datasetRecoveryCommand",
+            "retryCommand",
+            "reference",
+            "action",
+        ):
+            if key in result:
+                plan[key] = result[key]
+    _write_matrix(root, plan)
+    return 2
+
+
 def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any], root: Path) -> int:
     try:
         dataset = _verify(settings, str(plan["datasetRef"]), args)
     except KeyError as exc:
         if str(plan["datasetRef"]) != settings.qlib_dataset_ref:
             raise
-        try:
-            source = resolve_source(settings)
-        except ReleaseSelectionRequired as selection_error:
-            plan.update(_release_selection_payload(settings, selection_error))
-        else:
+        if args.dry_run:
             plan.update(
                 status="DATASET_PREPARATION_REQUIRED",
                 error=str(exc),
                 recommendedCommand="tq-research prepare --source auto",
+                failureCount=1,
             )
-            if source.reference:
-                plan["sourceReference"] = source.reference
-            if source.action:
-                plan["sourceAction"] = source.action
-        plan["failureCount"] = 1
-        _write_matrix(root, plan)
-        return 2
+            _write_matrix(root, plan)
+            return 2
+        try:
+            prepared = bootstrap(settings, source="auto")
+        except Exception as prep_error:
+            plan.update(
+                status="DATASET_PREPARATION_FAILED",
+                error=f"{type(prep_error).__name__}: {prep_error}",
+                recommendedCommand="tq-research doctor",
+                failureCount=1,
+            )
+            _write_matrix(root, plan)
+            return 2
+        if str(prepared.get("status")) != "READY":
+            return _preparation_failure(settings, plan, root, prepared, exc)
+        try:
+            dataset = _verify(settings, str(plan["datasetRef"]), args)
+        except Exception as verify_error:
+            plan.update(
+                status="DATASET_PREPARATION_FAILED",
+                error=f"automatic prepare completed but dataset verification failed: {verify_error}",
+                recommendedCommand="tq-research doctor",
+                failureCount=1,
+            )
+            _write_matrix(root, plan)
+            return 2
+        plan["preparedAutomatically"] = True
     bound = replace(settings, qlib_data_uri=Path(str(dataset["path"])))
     for alpha in {str(job["alphaPack"]) for job in plan["jobs"]}:
         assert_alpha_pack_compatible(bound, ALPHA_PACKS[alpha])
@@ -681,6 +740,7 @@ def main() -> int:
         "retryCommand",
         "sourceReference",
         "sourceAction",
+        "preparedAutomatically",
     ):
         if key in plan:
             result_payload[key] = plan[key]

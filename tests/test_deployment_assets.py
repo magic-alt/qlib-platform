@@ -6,15 +6,18 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 
 
-def test_standalone_environment_template_has_no_active_token_placeholder():
+def test_standalone_environment_template_is_copy_ready_without_secrets():
     active = [
         line.strip()
         for line in (ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
 
-    assert "QLIB_DATA_ROOT=/absolute/path/to/qlib-platform-data" in active
-    assert not any(line.startswith("TUSHARE_TOKEN=") for line in active)
+    assert "QLIB_DATA_ROOT=./data" in active
+    assert "TUSHARE_CALLS_PER_MINUTE=180" in active
+    assert "TUSHARE_TOKEN=" in active
+    assert "QLIB_REPO=" in active
+    assert "QLIB_DATA_URI=" in active
     assert not any(line.startswith("QUANT_DATA_ROOT=") for line in active)
     assert not any(line.startswith("DATASET_RELEASE_ID=") for line in active)
 

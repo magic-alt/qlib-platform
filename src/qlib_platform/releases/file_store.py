@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -13,7 +16,13 @@ _RELEASE_ID = re.compile(r"ds_[a-f0-9]{64}")
 
 
 class FileReleaseStore:
-    """Content-addressed local DataRelease v2 store."""
+    """Content-addressed local DataRelease v2 store.
+
+    The active store intentionally stays small for standalone research. Historical
+    releases may be moved under ``archive/``; exact immutable IDs still resolve from
+    there so audit/replay remains possible without exposing a wall of ``ds_*`` IDs to
+    the normal quickstart workflow.
+    """
 
     def __init__(self, root: str | Path):
         self.root = Path(root).expanduser().resolve()
@@ -34,6 +43,15 @@ class FileReleaseStore:
             raise ValueError(f"invalid DataRelease alias target: {reference}")
         return release_id
 
+    def _manifest_path(self, release_id: str) -> Path:
+        active = self.root / release_id / "manifest.json"
+        if active.is_file():
+            return active
+        archived = self.root / "archive" / release_id / "manifest.json"
+        if archived.is_file():
+            return archived
+        return active
+
     def resolve(
         self,
         reference: str,
@@ -46,7 +64,7 @@ class FileReleaseStore:
         workers: int = 1,
     ) -> DataRelease:
         release_id = self._resolve_reference(reference)
-        manifest = self.root / release_id / "manifest.json"
+        manifest = self._manifest_path(release_id)
         return verify_data_release(
             self.root,
             manifest,
@@ -59,7 +77,24 @@ class FileReleaseStore:
             workers=workers,
         )
 
+    @staticmethod
+    def _published_sort_key(record: ReleaseRecord) -> tuple[float, int, str]:
+        payload = json.loads(record.manifest_path.read_text(encoding="utf-8"))
+        raw = str(payload.get("publishedAt") or payload.get("asOfTime") or "").strip()
+        published = float("-inf")
+        if raw:
+            try:
+                parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                published = parsed.timestamp()
+            except ValueError:
+                published = float("-inf")
+        return (published, record.manifest_path.stat().st_mtime_ns, record.data_release_id)
+
     def list(self) -> Sequence[ReleaseRecord]:
+        """List active releases only; archived immutable releases remain ID-addressable."""
+
         if not self.root.is_dir():
             return ()
         records: list[ReleaseRecord] = []
@@ -74,6 +109,36 @@ class FileReleaseStore:
                 )
             )
         return tuple(records)
+
+    def latest(self, records: Sequence[ReleaseRecord] | None = None) -> ReleaseRecord | None:
+        candidates = tuple(records) if records is not None else tuple(self.list())
+        return max(candidates, key=self._published_sort_key) if candidates else None
+
+    def archive_except(self, keep_release_id: str) -> tuple[str, ...]:
+        """Keep one release active while preserving older immutable releases for replay."""
+
+        if not _RELEASE_ID.fullmatch(keep_release_id):
+            raise ValueError(f"invalid DataRelease ID: {keep_release_id!r}")
+        if not self.root.is_dir():
+            return ()
+        archived_root = self.root / "archive"
+        archived: list[str] = []
+        for path in sorted(self.root.glob("ds_*")):
+            if not path.is_dir() or path.name == keep_release_id:
+                continue
+            release = verify_data_release(self.root, path / "manifest.json", mode="manifest")
+            target = archived_root / release.data_release_id
+            archived_root.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                # A content-addressed ID already proves the immutable identity. The
+                # manifest hash may differ only by non-identity metadata such as
+                # publishedAt after a replay, so an existing verified archive wins.
+                verify_data_release(self.root, target / "manifest.json", mode="manifest")
+                shutil.rmtree(path)
+            else:
+                os.replace(path, target)
+            archived.append(release.data_release_id)
+        return tuple(archived)
 
     def verify(self, release: DataRelease) -> VerificationResult:
         verified = verify_data_release(

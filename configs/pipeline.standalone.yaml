@@ -1,16 +1,14 @@
 extends: pipeline_tushare_dev.yaml
 
-# Default autonomous Research Plane profile.  All paths are local and no
-# Platform or TuShare credential is required merely to load the application.
+# Default autonomous Research Plane profile. Copy .env.example to .env and this
+# profile works without editing YAML. Advanced overrides remain optional.
 mode: standalone
 project_root: ./data
 project_root_env: QLIB_DATA_ROOT
 
 experiment:
-  # The base TuShare profile is bound to cn_tushare_v1. Standalone research may
-  # instead use an immutable local DatasetVersion with no DataRelease lineage, so
-  # explicitly clear the inherited release binding. If the materialized manifest
-  # carries data_release_id, the canonical dataset identity still comes from it.
+  # Standalone research binds the active immutable release through the registry.
+  # Users never need to paste a ds_* identifier into this file.
   data_release: null
   alpha:
     pack: alpha158_market_v1
@@ -23,15 +21,21 @@ data_source:
 
 release_store:
   kind: file
-  # Empty means <resolved project_root>/releases, including QLIB_DATA_ROOT overrides.
+  # Empty means <resolved project_root>/releases.
   root: ""
   publish_on_sync: true
+  # Normal standalone UX exposes one active release. Older immutable releases are
+  # archived and remain addressable by exact ID for audit/replay.
+  active_keep: 1
 
 qlib:
+  # Optional .env overrides are explicitly scoped to this standalone profile, so
+  # process-global CI/user variables cannot silently alter unrelated custom configs.
   repo_path: ""
+  repo_path_env: QLIB_REPO
   dataset_dir: ""
+  dataset_dir_env: QLIB_DATA_URI
   versions_root: ""
   dataset_name: cn_standalone
   dataset_version: local
-  # Keep the standalone alias distinct from the inherited cn_tushare registry alias.
   dataset_ref: standalone-current

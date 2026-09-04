@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from qlib_platform.bootstrap import bootstrap
-from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired, resolve_source
+from qlib_platform.datasets.data_source_resolver import resolve_source
 from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
 from qlib_platform.datasets.dataset_registry import DatasetRegistry
 from qlib_platform.datasets.dataset_resolver import resolve_dataset
@@ -77,9 +77,6 @@ def test_standalone_read_reuses_shared_research_alias_before_release_selection(t
     assert first.version_id != active.version_id
     assert len(list(FileReleaseStore(release_store_root(research)).list())) == 2
 
-    # Simulate a shared data root whose immutable releases remain present but whose
-    # release alias has not been selected.  The published DatasetVersion alias is
-    # already sufficient to identify the research input unambiguously.
     registry = DatasetRegistry(research.registry_path)
     with registry.connect() as connection:
         connection.execute("DELETE FROM release_aliases WHERE alias='research-release-current'")
@@ -138,9 +135,7 @@ def test_manifested_current_provider_beats_multiple_unaliased_releases(tmp_path:
     assert resolved.data_path == current.resolve()
 
 
-def test_legacy_current_provider_is_imported_before_release_history_selection(
-    tmp_path: Path,
-) -> None:
+def test_legacy_current_provider_is_imported_before_release_history_selection(tmp_path: Path) -> None:
     shared_root = tmp_path / "shared-data"
     standalone = _settings(
         tmp_path / "configs" / "standalone.yaml",
@@ -180,7 +175,7 @@ def test_legacy_current_provider_is_imported_before_release_history_selection(
     assert resolved.manifest_path.is_file()
 
 
-def test_multiple_releases_without_alias_or_current_manifest_still_fail_closed(tmp_path: Path) -> None:
+def test_multiple_releases_without_alias_auto_select_latest_in_standalone(tmp_path: Path) -> None:
     standalone = _settings(
         tmp_path / "configs" / "standalone.yaml",
         project_root=tmp_path / "shared-data",
@@ -188,11 +183,16 @@ def test_multiple_releases_without_alias_or_current_manifest_still_fail_closed(t
         dataset_ref="standalone-current",
     )
     publisher = LocalReleasePublisher(release_store_root(standalone))
-    publisher.import_qlib(_provider(tmp_path / "release-a", "2026-08-20", b"release-a"))
-    publisher.import_qlib(_provider(tmp_path / "release-b", "2026-08-21", b"release-b"))
+    older = publisher.import_qlib(_provider(tmp_path / "release-a", "2026-08-20", b"release-a"))
+    latest = publisher.import_qlib(_provider(tmp_path / "release-b", "2026-08-21", b"release-b"))
 
-    with pytest.raises(ReleaseSelectionRequired, match="multiple DataReleases"):
-        resolve_source(standalone)
+    source = resolve_source(standalone)
+
+    assert older.data_release_id != latest.data_release_id
+    assert source.status == "MATERIALIZE_REQUIRED"
+    assert source.source == "data_release"
+    assert source.reference == latest.data_release_id
+    assert source.profile == latest.profile
 
 
 def test_explicit_unknown_reference_does_not_use_shared_alias_fallback(tmp_path: Path) -> None:

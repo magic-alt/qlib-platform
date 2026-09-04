@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import importlib.util
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Mapping
 
@@ -13,6 +15,10 @@ from qlib_platform.data.store import sha256_file
 from qlib_platform.data.universe import membership_fingerprint
 
 
+_QLIB_COMPAT_VERSION = "0.9.7"
+_QLIB_PACKAGE_MARKER = ".qlib-platform-package-identity.json"
+
+
 def sha256_json(value: object) -> str:
     encoded = json.dumps(
         value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
@@ -20,9 +26,62 @@ def sha256_json(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _package_qlib_identity() -> dict[str, str] | None:
+    try:
+        distribution = importlib.metadata.distribution("pyqlib")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    version = str(distribution.version)
+    record = distribution.read_text("RECORD") or ""
+    record_sha = hashlib.sha256(record.encode("utf-8")).hexdigest()
+    return {
+        "distribution": "pyqlib",
+        "version": version,
+        "recordSha256": record_sha,
+        "identity": f"pyqlib=={version}:record:{record_sha}",
+    }
+
+
+def _package_qlib_compat_root() -> Path | None:
+    identity = _package_qlib_identity()
+    if identity is None or identity["version"] != _QLIB_COMPAT_VERSION:
+        return None
+    root = (
+        Path(tempfile.gettempdir())
+        / "qlib-platform"
+        / f"pyqlib-{identity['version']}-{identity['recordSha256'][:16]}"
+    )
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    marker = root / _QLIB_PACKAGE_MARKER
+    marker.write_text(json.dumps(identity, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+    wrapper = scripts / "dump_bin.py"
+    wrapper.write_text(
+        "from qlib_platform.datasets.qlib_dump_cli import main\n\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(main())\n",
+        encoding="utf-8",
+    )
+    return root
+
+
 def git_revision(path: Path | None) -> dict[str, object]:
     if path is None or not path.exists():
         return {"commit": None, "dirty": None}
+    marker = path / _QLIB_PACKAGE_MARKER
+    if marker.is_file():
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {"commit": None, "dirty": None}
+        identity = str(payload.get("identity") or "").strip()
+        return {
+            "commit": identity or None,
+            "dirty": False if identity else None,
+            "source": "package",
+            "version": payload.get("version"),
+            "recordSha256": payload.get("recordSha256"),
+        }
     try:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=path, check=True, capture_output=True, text=True
@@ -34,7 +93,7 @@ def git_revision(path: Path | None) -> dict[str, object]:
         )
     except (OSError, subprocess.CalledProcessError):
         return {"commit": None, "dirty": None}
-    return {"commit": commit, "dirty": dirty}
+    return {"commit": commit, "dirty": dirty, "source": "git"}
 
 
 def _supplies_imported_qlib(checkout: Path, origin: Path) -> bool:
@@ -57,13 +116,13 @@ def _supplies_imported_qlib(checkout: Path, origin: Path) -> bool:
 
 
 def resolve_qlib_repo(configured: Path | None) -> Path | None:
-    """Resolve the Git checkout that actually supplies the imported Qlib package.
+    """Resolve the active Qlib implementation root.
 
-    Local development commonly installs Qlib in editable mode, while the supported
-    packaged environment installs the pinned ``pyqlib`` wheel inside this project's
-    ``.venv``. The latter must not inherit the enclosing qlib-platform ``.git`` as a
-    fake Qlib checkout: doing so makes lineage and FeatureSnapshot recipes drift on
-    unrelated application commits.
+    A real Git checkout is preferred when it actually supplies the imported ``qlib``
+    package.  For the supported packaged installation, ``pyqlib==0.9.7`` is sufficient:
+    a temporary compatibility root exposes the maintained dump entry point and carries
+    a stable wheel RECORD identity.  This keeps ``QLIB_REPO`` optional without ever
+    treating the enclosing qlib-platform repository as the Qlib revision.
     """
 
     try:
@@ -83,7 +142,7 @@ def resolve_qlib_repo(configured: Path | None) -> Path | None:
     for candidate in (package_path, *package_path.parents):
         if (candidate / ".git").exists() and _supplies_imported_qlib(candidate, origin):
             return candidate
-    return None
+    return _package_qlib_compat_root()
 
 
 def build_lineage(
@@ -150,6 +209,9 @@ def build_lineage(
         **required,
         "qlibPlatformDirty": platform_git.get("dirty"),
         "qlibDirty": qlib_git.get("dirty"),
+        "qlibIdentitySource": qlib_git.get("source"),
+        "qlibPackageVersion": qlib_git.get("version"),
+        "qlibPackageRecordSha256": qlib_git.get("recordSha256"),
         "requiredFieldsComplete": required_fields_complete,
         "featureColumns": feature_columns,
         "modelParameters": config.model.parameters,

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
 import qlib_platform.datasets.data_source_resolver as resolver_module
-from qlib_platform.datasets.data_source_resolver import resolve_source
+from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired, resolve_source
 from qlib_platform.releases import import_qlib_dataset
 from qlib_platform.settings import Settings
 
@@ -95,6 +96,70 @@ def test_resolver_selects_exploratory_market_profile_for_minimal_raw(tmp_path: P
     assert result.status == "BUILD_REQUIRED"
     assert result.profile == "ashare_market_import_v1"
     assert "pit_fundamentals_source" in result.missing_components
+
+
+def test_resolver_auto_selects_latest_materializable_release_in_standalone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = _settings(tmp_path)
+    older = SimpleNamespace(
+        data_release_id="ds_" + "1" * 64,
+        manifest_path=tmp_path / "older.json",
+        profile="ashare_qlib_research_v2",
+    )
+    latest_compatible = SimpleNamespace(
+        data_release_id="ds_" + "2" * 64,
+        manifest_path=tmp_path / "latest-compatible.json",
+        profile="ashare_qlib_research_v2",
+    )
+    newer_but_incompatible = SimpleNamespace(
+        data_release_id="ds_" + "3" * 64,
+        manifest_path=tmp_path / "newer-incompatible.json",
+        profile="cn-equity-daily-research-v2",
+    )
+
+    class FakeStore:
+        def __init__(self, _root):
+            pass
+
+        def list(self):
+            return (older, latest_compatible, newer_but_incompatible)
+
+        def latest(self, records=None):
+            assert records == [older, latest_compatible]
+            return latest_compatible
+
+    monkeypatch.setattr(resolver_module, "FileReleaseStore", FakeStore)
+
+    result = resolver_module.resolve_source(settings)
+
+    assert result.status == "MATERIALIZE_REQUIRED"
+    assert result.reference == latest_compatible.data_release_id
+    assert result.action == "dataset-materialize"
+    assert result.profile == "ashare_qlib_research_v2"
+
+
+def test_resolver_keeps_multiple_release_selection_fail_closed_in_integrated_mode(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = _settings(tmp_path)
+    settings.data["mode"] = "integrated"
+    records = (
+        SimpleNamespace(data_release_id="ds_" + "1" * 64),
+        SimpleNamespace(data_release_id="ds_" + "2" * 64),
+    )
+
+    class FakeStore:
+        def __init__(self, _root):
+            pass
+
+        def list(self):
+            return records
+
+    monkeypatch.setattr(resolver_module, "FileReleaseStore", FakeStore)
+
+    with pytest.raises(ReleaseSelectionRequired, match="multiple DataReleases"):
+        resolver_module.resolve_source(settings)
 
 
 def test_resolver_ready_probe_uses_bounded_sampled_verification(tmp_path: Path, monkeypatch):

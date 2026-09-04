@@ -60,6 +60,18 @@ def _load_config(path: Path, seen: frozenset[Path] = frozenset()) -> dict[str, A
     return _deep_merge(_load_config(parent_path, seen | {source}), loaded)
 
 
+def _configured_env_override(config: dict[str, Any], key: str) -> str:
+    """Read an environment override only when the selected profile opts in.
+
+    This mirrors ``project_root_env``. It prevents process-global variables (for
+    example CI's QLIB_DATA_URI) from silently changing unrelated custom configs,
+    while the standalone profile can still expose a .env-only user contract.
+    """
+
+    env_name = str(config.get(f"{key}_env") or "").strip()
+    return os.getenv(env_name, "").strip() if env_name else ""
+
+
 @dataclass(frozen=True)
 class Paths:
     root: Path
@@ -175,12 +187,16 @@ class Settings:
             raise RuntimeError("TUSHARE_TOKEN is not set. Copy .env.example to .env and fill the token.")
 
         qlib_cfg = data["qlib"]
-        repo_raw = str(qlib_cfg.get("repo_path", "")).strip()
+        repo_raw = str(
+            _configured_env_override(qlib_cfg, "repo_path") or qlib_cfg.get("repo_path") or ""
+        ).strip()
         qlib_repo = Path(repo_raw).expanduser().resolve() if repo_raw else None
         if require_qlib_repo and (qlib_repo is None or not qlib_repo.exists()):
             raise RuntimeError("QLIB_REPO is not configured or does not exist")
 
-        dataset_raw = str(qlib_cfg.get("dataset_dir", "")).strip()
+        dataset_raw = str(
+            _configured_env_override(qlib_cfg, "dataset_dir") or qlib_cfg.get("dataset_dir") or ""
+        ).strip()
         if dataset_raw:
             qlib_data_uri = Path(dataset_raw).expanduser()
             if not qlib_data_uri.is_absolute():

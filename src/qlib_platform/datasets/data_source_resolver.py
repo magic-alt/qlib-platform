@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from qlib_platform.datasets.data_release import DATA_RELEASE_PROFILES
 from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest
 from qlib_platform.datasets.dataset_registry import DatasetRegistry, DatasetVersion
 from qlib_platform.datasets.dataset_resolver import current_manifest_dataset, dataset_reference_candidates
@@ -37,6 +38,11 @@ def _provider_ready(path: Path) -> bool:
         and (path / "instruments").is_dir()
         and (path / "features").is_dir()
     )
+
+
+def _release_materializable(profile: str | None) -> bool:
+    roles = DATA_RELEASE_PROFILES.get(str(profile or ""), frozenset())
+    return "qlib_staging" in roles or "qlib_dataset" in roles
 
 
 def _verify_dataset_source_probe(manifest_path: Path) -> None:
@@ -146,7 +152,8 @@ def resolve_source(
             "data_release",
             release.data_release_id,
             release.manifest_path,
-            "dataset-build",
+            "dataset-materialize",
+            release.profile,
         )
     registry = DatasetRegistry(settings.registry_path)
     dataset_reference, dataset = _registered_dataset(settings, registry)
@@ -161,12 +168,22 @@ def resolve_source(
         if dataset is not None and dataset.data_release_id == release.data_release_id:
             _verify_dataset_source_probe(dataset.manifest_path)
             return SourceResolution("READY", "data_release", release.data_release_id, dataset.data_path)
+        if settings.mode == "standalone" and not _release_materializable(release.profile):
+            if (settings.paths.raw / "daily").is_dir():
+                return resolve_local_raw_source(settings)
+            return SourceResolution(
+                "DATA_INCOMPATIBLE",
+                "data_release",
+                profile=release.profile,
+                action="provide a release with qlib_staging or an existing Qlib provider",
+            )
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
             "data_release",
             release.data_release_id,
             release.manifest_path,
-            "dataset-build",
+            "dataset-materialize",
+            release.profile,
         )
     if dataset is not None:
         _verify_dataset_source_probe(dataset.manifest_path)
@@ -179,8 +196,6 @@ def resolve_source(
         # The configured current provider is an explicit local selector even when it
         # predates DatasetVersion manifests. Normalize it into an immutable
         # DataRelease/DatasetVersion before considering unordered historical releases.
-        # This is fail-closed with respect to history: we import the configured bytes;
-        # we never guess which historical release should become active.
         return SourceResolution(
             "IMPORT_REQUIRED",
             "qlib",
@@ -189,18 +204,39 @@ def resolve_source(
             "release import-qlib",
         )
     records = list(store.list())
-    if len(records) == 1:
+    if records:
+        if len(records) > 1 and settings.mode != "standalone":
+            raise ReleaseSelectionRequired(
+                "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
+            )
+        if settings.mode == "standalone":
+            compatible = [item for item in records if _release_materializable(item.profile)]
+            if compatible:
+                record = store.latest(compatible)
+                assert record is not None
+                return SourceResolution(
+                    "MATERIALIZE_REQUIRED",
+                    "data_release",
+                    record.data_release_id,
+                    record.manifest_path,
+                    "dataset-materialize",
+                    record.profile,
+                )
+            if (settings.paths.raw / "daily").is_dir():
+                return resolve_local_raw_source(settings)
+            return SourceResolution(
+                "DATA_INCOMPATIBLE",
+                "data_release",
+                action="no local DataRelease contains qlib_staging or qlib_dataset",
+            )
         record = records[0]
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
             "data_release",
             record.data_release_id,
             record.manifest_path,
-            "release promote",
-        )
-    if len(records) > 1:
-        raise ReleaseSelectionRequired(
-            "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
+            "dataset-materialize",
+            record.profile,
         )
     if (settings.paths.raw / "daily").is_dir():
         return resolve_local_raw_source(settings)
