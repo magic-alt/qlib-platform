@@ -109,7 +109,12 @@ Windows:       .\scripts\run_local_research.ps1 <command> ...
 macOS/Linux:   bash scripts/run_local_research.sh <command> ...
 ```
 
-The equivalent installed console command is `tq-research`.
+The equivalent installed console command is `tq-research`, but it is only on `PATH` when the environment containing the editable/wheel install is active. If your shell is still in another environment (for example Conda `base`), use the wrapper above or activate `.venv` first:
+
+```powershell
+& .\.venv\Scripts\Activate.ps1
+tq-research catalog
+```
 
 ### 2. Check the local data first
 
@@ -125,7 +130,7 @@ If the repository already contains `data/`, or you already have a Qlib provider,
 bash scripts/run_local_research.sh doctor
 ```
 
-`doctor` resolves the current data source, deep-verifies the active DatasetVersion when one is available, checks AlphaPack compatibility and probes Ridge/LightGBM/XGBoost/PyTorch runtimes.
+`doctor` resolves the current data source, uses bounded deterministic sampled verification by default, checks AlphaPack compatibility and probes Ridge/LightGBM/XGBoost/PyTorch runtimes. Use `--verify-mode deep` only when you explicitly want a fresh/full diagnostic pass.
 
 If data needs to be imported or materialized, let the source resolver choose the supported path:
 
@@ -149,23 +154,23 @@ bash scripts/run_local_research.sh prepare --source qlib --path /data/qlib/cn_da
 
 The equivalent low-level command is:
 
-```text
-tq release import-qlib --path <QLIB_PROVIDER>
+```powershell
+& $RepoPython -m tushare_qlib release import-qlib --path <QLIB_PROVIDER>
 ```
 
 The import freezes the provider into an immutable exploratory DataRelease/DatasetVersion. It does **not** invent missing daily-basic or PIT-fundamental fields.
 
 Other supported preparation paths are:
 
-```text
-tq-research prepare --source raw     --start 20160104 --end 20260810
-tq-research prepare --source tushare --start 20160104 --end 20260810  # requires TUSHARE_TOKEN
+```powershell
+.\scripts\run_local_research.ps1 prepare --source raw --start 20160104 --end 20260810
+.\scripts\run_local_research.ps1 prepare --source tushare --start 20160104 --end 20260810  # requires TUSHARE_TOKEN
 ```
 
 ### 3. Choose the AlphaPack for the data you actually have
 
-```text
-tq-research catalog
+```powershell
+.\scripts\run_local_research.ps1 catalog
 ```
 
 | AlphaPack | Intended data | Typical use |
@@ -200,6 +205,8 @@ Start with `alpha158_market_v1` for an arbitrary imported Qlib dataset. Move to 
 bash scripts/run_local_research.sh run --alpha-pack alpha158_market_v1 --model lightgbm
 ```
 
+`run` and `matrix` retain deep DatasetVersion verification. For an immutable DatasetVersion, a valid manifest-bound deep receipt or the collocated build-time full-hash proof is reused only while every partition remains unchanged since that proof; all paths/sizes are checked and a deterministic content sample is rehashed. Any stale or mutated payload invalidates reuse and falls back to a fresh full deep pass.
+
 The default fixed-mode research path is:
 
 ```text
@@ -227,14 +234,14 @@ Each underlying run also writes its authoritative research artifacts under `data
 
 ### 5. Freeze explicit train / valid / test windows
 
-For controlled model comparison, provide all three windows together:
+For controlled model comparison, provide all three windows together. From a Windows checkout:
 
-```text
-tq-research run \
-  --alpha-pack alpha158_pit_v1 \
-  --model lightgbm \
-  --train 2018-10-01 2024-12-27 \
-  --valid 2025-01-08 2025-07-02 \
+```powershell
+.\scripts\run_local_research.ps1 run `
+  --alpha-pack alpha158_pit_v1 `
+  --model lightgbm `
+  --train 2018-10-01 2024-12-27 `
+  --valid 2025-01-08 2025-07-02 `
   --test 2025-07-11 2026-08-10
 ```
 
@@ -244,9 +251,9 @@ The wrapper rejects partial split definitions, and the underlying research runne
 
 A safe first matrix for a standard imported Qlib provider is:
 
-```text
-tq-research matrix \
-  --alpha-pack alpha158_market_v1 \
+```powershell
+.\scripts\run_local_research.ps1 matrix `
+  --alpha-pack alpha158_market_v1 `
   --model ridge --model lightgbm --model xgboost
 ```
 
@@ -260,42 +267,43 @@ Alpha158 PIT    × Ridge / LightGBM / XGBoost
 
 Run it with:
 
-```text
-tq-research matrix
+```powershell
+.\scripts\run_local_research.ps1 matrix
 ```
 
 Add PyTorch explicitly after installing the `pytorch` extra:
 
-```text
-tq-research matrix \
+```powershell
+.\scripts\run_local_research.ps1 matrix `
   --model ridge --model lightgbm --model xgboost --model pytorch
 ```
 
 Run another feature family with the same model interface:
 
-```text
-tq-research run --alpha-pack multifactor_core_v1 --model lightgbm
+```powershell
+.\scripts\run_local_research.ps1 run --alpha-pack multifactor_core_v1 --model lightgbm
 ```
 
 Or pass a registered custom `ModelAdapter` profile:
 
-```text
-tq-research run \
-  --alpha-pack alpha158_pit_v1 \
+```powershell
+.\scripts\run_local_research.ps1 run `
+  --alpha-pack alpha158_pit_v1 `
   --model-profile configs/model_profiles/my_adapter.yaml
 ```
 
-Use `tq-research plan ...` or add `--dry-run` before an expensive matrix to inspect the exact generated AlphaPack overlays and commands without training.
+Use `.\scripts\run_local_research.ps1 plan ...` or add `--dry-run` before an expensive matrix to inspect the exact generated AlphaPack overlays and commands without training.
 
 ### 7. Compare IC, RankIC and portfolio economics
 
-After a completed run or matrix:
+After a completed run or matrix, use the repository-local interpreter so the summary command does not depend on shell `PATH`:
 
-```text
-tq-research-summary data/output/quickstart/<RUN>/research_matrix.json
+```powershell
+& $RepoPython -m tushare_qlib.research_summary `
+  data\output\quickstart\<RUN>\research_matrix.json
 ```
 
-Equivalent repository-local invocation:
+Equivalent macOS/Linux invocation:
 
 ```bash
 $RepoPython -m tushare_qlib.research_summary \
@@ -318,12 +326,12 @@ It writes `research_comparison.json` and `research_comparison.md` next to the ma
 
 After narrowing the exploratory recipe, move from a fixed split to rolling OOS:
 
-```text
-tq-research run \
-  --mode walk-forward \
-  --alpha-pack alpha158_market_v1 \
-  --model lightgbm \
-  --start 2019-01-01 \
+```powershell
+.\scripts\run_local_research.ps1 run `
+  --mode walk-forward `
+  --alpha-pack alpha158_market_v1 `
+  --model lightgbm `
+  --start 2019-01-01 `
   --end 2026-08-10
 ```
 

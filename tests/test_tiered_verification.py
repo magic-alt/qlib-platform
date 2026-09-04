@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
+import tushare_qlib.dataset_manifest as dataset_manifest_module
 from tushare_qlib.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
 from tushare_qlib.releases import FileReleaseStore, LocalReleasePublisher
 from tushare_qlib.verification import deterministic_sample
@@ -44,6 +46,7 @@ def test_dataset_modes_and_deep_receipt_are_explicit(tmp_path: Path):
 
     assert evidence["mode"] == "deep"
     assert evidence["verifiedFileCount"] == 2
+    assert evidence["hashedFileCount"] == 2
     assert Path(str(evidence["receipt"])).is_file()
 
     reused: dict[str, object] = {}
@@ -54,8 +57,74 @@ def test_dataset_modes_and_deep_receipt_are_explicit(tmp_path: Path):
         reuse_receipt=True,
         evidence=reused,
     )
-    assert reused["verificationSource"] == "receipt+files"
+    assert reused["verificationSource"] == "receipt+inventory+sampled"
     assert reused["verifiedFileCount"] == 2
+    assert reused["hashedFileCount"] == 2
+
+
+def test_deep_receipt_reuse_hashes_only_the_guard_sample(tmp_path: Path, monkeypatch):
+    manifest = _dataset(tmp_path)
+    receipts = tmp_path / "receipts"
+    verify_dataset_manifest(manifest, mode="deep", receipt_dir=receipts)
+
+    original = dataset_manifest_module.sha256_file
+    hashed: list[Path] = []
+
+    def counting_sha256(path: str | Path) -> str:
+        hashed.append(Path(path))
+        return original(path)
+
+    monkeypatch.setattr(dataset_manifest_module, "sha256_file", counting_sha256)
+    evidence: dict[str, object] = {}
+    verify_dataset_manifest(
+        manifest,
+        mode="deep",
+        receipt_dir=receipts,
+        reuse_receipt=True,
+        sample_size=1,
+        evidence=evidence,
+    )
+
+    assert evidence["verificationSource"] == "receipt+inventory+sampled"
+    assert evidence["verifiedFileCount"] == 2
+    assert evidence["hashedFileCount"] == 1
+    assert len(hashed) == 1
+
+
+def test_collocated_manifest_build_proof_avoids_rehashing_every_partition(tmp_path: Path, monkeypatch):
+    manifest = _dataset(tmp_path)
+    original = dataset_manifest_module.sha256_file
+    hashed: list[Path] = []
+
+    def counting_sha256(path: str | Path) -> str:
+        hashed.append(Path(path))
+        return original(path)
+
+    monkeypatch.setattr(dataset_manifest_module, "sha256_file", counting_sha256)
+    evidence: dict[str, object] = {}
+    verify_dataset_manifest(
+        manifest,
+        mode="deep",
+        reuse_receipt=True,
+        sample_size=1,
+        evidence=evidence,
+    )
+
+    assert evidence["verificationSource"] == "manifest-build+inventory+sampled"
+    assert evidence["verifiedFileCount"] == 2
+    assert evidence["hashedFileCount"] == 1
+    assert len(hashed) == 1
+
+
+def test_manifest_build_proof_falls_back_to_full_deep_after_mutation(tmp_path: Path):
+    manifest = _dataset(tmp_path)
+    target = manifest.parent / "features" / "sh600000" / "close.day.bin"
+    target.write_bytes(b"wrong")
+    future = manifest.stat().st_mtime_ns + 2_000_000_000
+    os.utime(target, ns=(future, future))
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        verify_dataset_manifest(manifest, mode="deep", reuse_receipt=True, sample_size=1)
 
 
 def test_manifest_mode_is_metadata_only_and_sampled_fails_closed(tmp_path: Path):
@@ -90,6 +159,26 @@ def test_reused_receipt_does_not_hide_missing_payload(tmp_path: Path):
 
     with pytest.raises(ValueError, match="checksum mismatch"):
         verify_dataset_manifest(manifest, receipt_dir=receipts, reuse_receipt=True)
+
+
+def test_reused_receipt_falls_back_to_deep_after_same_size_mutation(tmp_path: Path):
+    manifest = _dataset(tmp_path)
+    receipts = tmp_path / "receipts"
+    evidence: dict[str, object] = {}
+    verify_dataset_manifest(manifest, receipt_dir=receipts, evidence=evidence)
+    receipt = Path(str(evidence["receipt"]))
+    target = manifest.parent / "features" / "sh600000" / "close.day.bin"
+    target.write_bytes(b"wrong")
+    future = receipt.stat().st_mtime_ns + 2_000_000_000
+    os.utime(target, ns=(future, future))
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        verify_dataset_manifest(
+            manifest,
+            receipt_dir=receipts,
+            reuse_receipt=True,
+            sample_size=1,
+        )
 
 
 def test_deterministic_sample_is_bounded_and_rejects_invalid_size():
