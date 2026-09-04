@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import json
 from pathlib import Path
 import re
 from typing import Mapping
@@ -8,7 +9,7 @@ from typing import Mapping
 import pandas as pd
 
 from qlib_platform.settings import Settings
-from qlib_platform.data.store import PartitionStore
+from qlib_platform.data.store import PartitionStore, sha256_file
 
 
 @dataclass(frozen=True)
@@ -114,20 +115,75 @@ def _read_dates(path: Path) -> pd.DatetimeIndex:
     return pd.DatetimeIndex(sorted(value for value in values if pd.notna(value))).normalize()
 
 
+def _versioned_dataset_calendar(
+    resolved: object, calendar_path: Path, qlib_dates: pd.DatetimeIndex
+) -> pd.DatetimeIndex | None:
+    """Return the calendar owned by an immutable v3 DatasetVersion.
+
+    Raw/metadata stores are build-time inputs. Once a DatasetVersion is validated or
+    published, research must remain bound to the immutable version instead of silently
+    reintroducing mutable source state as a second runtime dependency. The calendar
+    checksum is verified directly against the DatasetVersion manifest so this shortcut
+    remains fail-closed even when callers bypass the quickstart verifier.
+    """
+
+    manifest_raw = getattr(resolved, "manifest_path", None)
+    version_id = str(getattr(resolved, "version_id", "") or "").strip()
+    if manifest_raw is None or not version_id:
+        return None
+    manifest_path = Path(manifest_raw)
+    if not manifest_path.is_file():
+        return None
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"pinned DatasetVersion manifest is unreadable: {manifest_path}") from exc
+    if payload.get("schema_version") != "3.0":
+        return None
+    manifest_version = str(payload.get("version_id") or "").strip()
+    if manifest_version != version_id:
+        raise ValueError(
+            "pinned DatasetVersion identity does not match its manifest: "
+            f"resolved={version_id}, manifest={manifest_version or '<missing>'}"
+        )
+    status = str(payload.get("status") or "").strip().upper()
+    if status not in {"VALIDATED", "PUBLISHED"}:
+        raise ValueError(f"pinned DatasetVersion is not research-usable: status={status or '<missing>'}")
+    partitions = payload.get("partitions")
+    if not isinstance(partitions, list):
+        raise ValueError("pinned DatasetVersion manifest partitions must be a list")
+    calendar_partition = next(
+        (
+            item
+            for item in partitions
+            if isinstance(item, Mapping) and str(item.get("path") or "") == "calendars/day.txt"
+        ),
+        None,
+    )
+    if calendar_partition is None:
+        raise ValueError("pinned DatasetVersion does not govern calendars/day.txt")
+    expected = str(calendar_partition.get("sha256") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", expected) is None:
+        raise ValueError("pinned DatasetVersion calendar checksum is invalid")
+    if sha256_file(calendar_path) != expected:
+        raise ValueError("pinned DatasetVersion calendar checksum mismatch")
+    return qlib_dates
+
+
 def shared_research_calendar(settings: Settings) -> pd.DatetimeIndex:
+    """Return governed open dates present in the pinned Qlib DatasetVersion."""
+
     from qlib_platform.datasets.dataset_resolver import pin_dataset
 
-    settings, _ = pin_dataset(settings)
-    """Return governed open dates that are also present in the pinned Qlib dataset."""
-
-    qlib_dates = _read_dates(settings.qlib_data_uri / "calendars" / "day.txt")
+    settings, resolved = pin_dataset(settings)
+    calendar_path = settings.qlib_data_uri / "calendars" / "day.txt"
+    qlib_dates = _read_dates(calendar_path)
     if qlib_dates.empty:
         raise ValueError("Qlib calendar contains no trading dates")
 
     if settings.uses_platform_release():
-        # Production research is owned by platform's immutable DataRelease.  The
-        # legacy raw store is intentionally absent in this mode and must not be
-        # consulted as an undeclared second data source.
+        # Production research is owned by platform's immutable DataRelease. The
+        # repository raw store must not be consulted as an undeclared second source.
         from qlib_platform.ops.platform_release import load_platform_release
 
         release = load_platform_release(settings)
@@ -159,9 +215,12 @@ def shared_research_calendar(settings: Settings) -> pd.DatetimeIndex:
             )
         return dates
 
-    # The repository-owned TuShare path remains available only for the explicit
-    # development profile, where raw, Qlib and curated official calendars agree.
+    versioned_dates = _versioned_dataset_calendar(resolved, calendar_path, qlib_dates)
+    if versioned_dates is not None:
+        return versioned_dates
 
+    # Legacy/unversioned development datasets predate the immutable DatasetVersion
+    # contract. Keep the historical three-way guard for those inputs only.
     raw = pd.to_datetime(
         PartitionStore(settings.paths.raw).list_dates("daily"), format="%Y%m%d", errors="coerce"
     )
