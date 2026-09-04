@@ -28,17 +28,13 @@ def test_numeric_chunk_name_is_valid_when_schema_matches(tmp_path: Path) -> None
 
 def test_schema_gate_rejects_chunk_without_date_and_symbol(tmp_path: Path) -> None:
     chunk = tmp_path / "00000.parquet"
-    pd.DataFrame({"trade_date": ["20260901"], "ts_code": ["600000.SH"]}).to_parquet(
-        chunk, index=False
-    )
+    pd.DataFrame({"trade_date": ["20260901"], "ts_code": ["600000.SH"]}).to_parquet(chunk, index=False)
 
     with pytest.raises(QlibStagingContractError, match="date and symbol columns: 00000.parquet"):
         validate_qlib_staging_files([chunk])
 
 
-def test_local_publisher_rejects_invalid_qlib_staging_before_freezing(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_local_publisher_rejects_invalid_qlib_staging_before_freezing(tmp_path: Path, monkeypatch) -> None:
     staging = tmp_path / "staging"
     staging.mkdir()
     pd.DataFrame({"trade_date": ["20260901"], "ts_code": ["600000.SH"]}).to_parquet(
