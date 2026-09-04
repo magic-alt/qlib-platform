@@ -14,7 +14,7 @@ from qlib_platform.artifacts.prediction_snapshot import (
 )
 from qlib_platform.settings import Paths, Settings
 from qlib_platform.data.store import sha256_file
-from qlib_platform import backtest_report
+import qlib_platform.backtesting.backtest_report as backtest_report
 from qlib_platform.research.walk_forward import (
     Fold,
     _aggregate_component_timings,
@@ -244,7 +244,7 @@ def test_checkpoint_fingerprint_covers_fold_artifact_producer(tmp_path, monkeypa
         ("2021-02-01", "2021-03-01"),
         ("2021-04-01", "2021-05-01"),
     )
-    from qlib_platform import walk_forward
+    import qlib_platform.research.walk_forward as walk_forward
 
     original_sha256_file = walk_forward.sha256_file
     producer_hash = {"value": "producer-v1"}

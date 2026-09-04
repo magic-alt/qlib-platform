@@ -9,7 +9,8 @@ import pytest
 
 from qlib_platform.data.sources import FetchResult
 from qlib_platform.data.corporate_actions import CorporateActionStore
-from qlib_platform import daily_sync, qlib_export
+import qlib_platform.data.daily_sync as daily_sync
+import qlib_platform.datasets.qlib_export as qlib_export
 from qlib_platform.data.daily_sync import DailySyncService, SingleInstanceLock
 from qlib_platform.data.ingestion import Extractor
 from qlib_platform.data.kline_export import build_kline
