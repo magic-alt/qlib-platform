@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import pandas as pd
+from loguru import logger
+
 from .._extract_legacy import (
     ADJ_FIELDS,
     BASIC_FIELDS,
@@ -14,8 +17,10 @@ from .._extract_legacy import (
     Endpoint,
     Extractor as _LegacyExtractor,
 )
+from ..quality import assert_quality, validate_raw_day, write_report
 from ..store import PartitionStore
 from .sources import RetryPolicy, create_data_source
+from .sources.mysql import build_lean_canonical_range_endpoints
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -27,7 +32,7 @@ def _source_runtime_config(settings: Any) -> Mapping[str, Any]:
     runtime = source_cfg.get("runtime")
     if isinstance(runtime, Mapping):
         return runtime
-    # Backward compatibility for existing pipeline YAMLs.  New configs should
+    # Backward compatibility for existing pipeline YAMLs. New configs should
     # move retry/endpoint knobs under ``data_source`` rather than a vendor block.
     return _mapping(settings.data.get("tushare"))
 
@@ -46,7 +51,7 @@ class Extractor(_LegacyExtractor):
     """Provider-neutral ingestion orchestrator.
 
     The extraction behavior remains compatible with the certified pipeline, but
-    source construction is delegated to the adapter registry.  New providers
+    source construction is delegated to the adapter registry. New providers
     implement the normalized client contract and register a factory; this class
     does not gain another provider-specific constructor branch.
     """
@@ -65,7 +70,7 @@ class Extractor(_LegacyExtractor):
         self.store = PartitionStore(settings.paths.raw)
         self.data_source = binding
         self.client = binding.client
-        # Only retained for inherited Lean/MySQL optimized range paths.  Generic
+        # Only retained for inherited Lean/MySQL optimized range paths. Generic
         # provider selection itself is handled by the registry above.
         self.source_is_mysql = "mysql" in binding.capabilities
 
@@ -93,3 +98,79 @@ class Extractor(_LegacyExtractor):
                     endpoint.enabled if override.enabled is None else override.enabled,
                 )
             )
+
+    def _backfill_lean_canonical(
+        self,
+        dates: list[str],
+        mysql_cfg: Mapping[str, Any],
+        *,
+        force: bool,
+    ) -> None:
+        """Range-fetch Lean/MySQL without depending on any Tushare configuration."""
+
+        if not dates:
+            return
+        definitions = build_lean_canonical_range_endpoints(mysql_cfg, _optional_endpoints(self.settings))
+        for endpoint in self.endpoints:
+            if not endpoint.enabled:
+                for trade_date in dates:
+                    self.store.write_status(
+                        endpoint.name,
+                        trade_date,
+                        status="disabled",
+                        metadata={"api": endpoint.name, "reason": "disabled_by_config"},
+                    )
+                continue
+
+            logger.info("Lean MySQL range fetch {}: {}..{}", endpoint.name, dates[0], dates[-1])
+            result = self.client.fetch(
+                endpoint.name,
+                fields=endpoint.fields,
+                required=endpoint.required,
+                query=str(definitions[endpoint.name]["query"]),
+                start_date=dates[0],
+                end_date=dates[-1],
+            )
+            for trade_date in dates:
+                if not force and self.store.is_terminal(endpoint.name, trade_date):
+                    continue
+                if not result.succeeded:
+                    self.store.write_status(
+                        endpoint.name,
+                        trade_date,
+                        status=result.status,
+                        metadata={"api": endpoint.name, "error": result.error, "range_fetch": True},
+                    )
+                    continue
+                frame = result.data
+                if "trade_date" in frame:
+                    frame = frame.loc[frame["trade_date"].astype(str) == trade_date].copy()
+                else:
+                    frame = pd.DataFrame(columns=endpoint.fields.split(","))
+                if endpoint.required and frame.empty:
+                    raise RuntimeError(f"Required endpoint {endpoint.name} returned empty for {trade_date}")
+                status = "empty" if frame.empty else "success"
+                self.store.write(
+                    endpoint.name,
+                    trade_date,
+                    frame,
+                    {
+                        "api": endpoint.name,
+                        "trade_date": trade_date,
+                        "attempts": result.attempts,
+                        "params": {"start_date": dates[0], "end_date": dates[-1]},
+                        "range_fetch": True,
+                    },
+                    status=status,
+                )
+            del result
+
+        for position, trade_date in enumerate(dates, 1):
+            logger.info("Lean MySQL validate partition {}/{}: {}", position, len(dates), trade_date)
+            fetched = {
+                required_name: self.store.read(required_name, trade_date)
+                for required_name in ("daily", "adj_factor", "daily_basic")
+            }
+            report = validate_raw_day(fetched, trade_date)
+            write_report(report, self.settings.paths.quality / "raw" / f"{trade_date}.json")
+            assert_quality(report)
