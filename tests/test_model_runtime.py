@@ -105,12 +105,18 @@ def test_lightgbm_windows_auto_uses_opencl_gpu(monkeypatch):
         "tushare_qlib.models.adapters.lightgbm.probe_opencl",
         lambda platform_id, device_index: (True, None, "4.7"),
     )
+    monkeypatch.setattr(
+        "tushare_qlib.models.adapters.lightgbm.opencl_device_name",
+        lambda platform_id, device_index: "NVIDIA GeForce RTX 5060",
+    )
     profile = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test", 2)
 
     runtime = resolve_runtime(profile)
     params = resolved_model_parameters(runtime, feature_count=8, seed=42, num_threads=4)
 
     assert runtime.resolved_device == "gpu:0"
+    assert runtime.device_name == "NVIDIA GeForce RTX 5060"
+    assert runtime.to_manifest()["deviceName"] == "NVIDIA GeForce RTX 5060"
     assert params["device_type"] == "gpu"
     assert params["gpu_platform_id"] == 2
     assert params["gpu_device_id"] == 0
