@@ -27,26 +27,28 @@ jobs:
 
           path = Path('src/qlib_platform/research/diagnostics/portability.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    implementation_root = Path(__file__).resolve().parent
-    for name, expected in _mapping(
-        lineage.get("implementationSha256"), "Phase 3 implementation hashes"
-    ).items():
-        target = implementation_root / str(name)
-        if not target.is_file() or sha256_file(target) != expected:
-            raise ValueError(f"portable verification implementation drift: {name}")
-'''
-          new = '''    implementation_root = Path(__file__).resolve().parents[1]
-    for name, expected in _mapping(
-        lineage.get("implementationSha256"), "Phase 3 implementation hashes"
-    ).items():
-        relative = Path(str(name))
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError(f"portable verification implementation path is unsafe: {name}")
-        target = (implementation_root / relative).resolve()
-        _inside(implementation_root, target, f"Phase 3 implementation {name}")
-        if target.is_symlink() or not target.is_file() or sha256_file(target) != expected:
-            raise ValueError(f"portable verification implementation drift: {name}")
-'''
+          old = (
+              "    implementation_root = Path(__file__).resolve().parent\n"
+              "    for name, expected in _mapping(\n"
+              "        lineage.get(\"implementationSha256\"), \"Phase 3 implementation hashes\"\n"
+              "    ).items():\n"
+              "        target = implementation_root / str(name)\n"
+              "        if not target.is_file() or sha256_file(target) != expected:\n"
+              "            raise ValueError(f\"portable verification implementation drift: {name}\")\n"
+          )
+          new = (
+              "    implementation_root = Path(__file__).resolve().parents[1]\n"
+              "    for name, expected in _mapping(\n"
+              "        lineage.get(\"implementationSha256\"), \"Phase 3 implementation hashes\"\n"
+              "    ).items():\n"
+              "        relative = Path(str(name))\n"
+              "        if relative.is_absolute() or \"..\" in relative.parts:\n"
+              "            raise ValueError(f\"portable verification implementation path is unsafe: {name}\")\n"
+              "        target = (implementation_root / relative).resolve()\n"
+              "        _inside(implementation_root, target, f\"Phase 3 implementation {name}\")\n"
+              "        if target.is_symlink() or not target.is_file() or sha256_file(target) != expected:\n"
+              "            raise ValueError(f\"portable verification implementation drift: {name}\")\n"
+          )
           if old not in text:
               raise SystemExit('expected portability verifier block not found')
           path.write_text(text.replace(old, new), encoding='utf-8')
