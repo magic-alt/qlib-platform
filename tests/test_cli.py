@@ -5,7 +5,8 @@ import sys
 
 import pytest
 
-from qlib_platform.cli import _report_payload, main, parser
+from qlib_platform.cli import main, parser
+from qlib_platform.cli.main import _report_payload
 from qlib_platform.releases.capabilities import ReleaseCapabilityError
 from qlib_platform.settings import Paths, Settings
 from qlib_platform.runtime.standalone_status import collect_status

@@ -137,7 +137,8 @@ def bootstrap(
         end = end or str(settings.data.get("end_date") or "")
         if not start or not end:
             raise ValueError("TuShare bootstrap requires --start/--end or configured start_date/end_date")
-        settings.require_token()
+        # Provider credential validation belongs to the source adapter/registry;
+        # init-metadata resolves the provider before any ingestion write occurs.
         _run_cli(settings, "init-metadata")
         _run_cli(settings, "backfill", "--start", start, "--end", end)
         _run_cli(settings, "backfill-extended", "--start", start, "--end", end)

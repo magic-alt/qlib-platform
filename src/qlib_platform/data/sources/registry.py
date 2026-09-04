@@ -25,6 +25,7 @@ class DataSourceBinding:
     client: DataSourceClient
     endpoint_overrides: Mapping[str, EndpointOverride] = field(default_factory=dict)
     capabilities: frozenset[str] = field(default_factory=frozenset)
+    operations: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
 
 
 DataSourceFactory = Callable[["Settings", RetryPolicy], DataSourceBinding]
@@ -80,8 +81,14 @@ def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSou
     legacy = _mapping(settings.data.get("tushare"))
     provider_cfg = _mapping(source_cfg.get("tushare")) or legacy
     calls = int(os.getenv("TUSHARE_CALLS_PER_MINUTE", provider_cfg.get("calls_per_minute", 180)))
+    token_env = str(provider_cfg.get("token_env") or "TUSHARE_TOKEN").strip()
+    token = os.getenv(token_env, "").strip() or str(settings.tushare_token or "").strip()
+    if not token:
+        raise RuntimeError(
+            f"{token_env} is not set. Configure data_source.tushare.token_env or the environment variable."
+        )
     client = TushareClient(
-        settings.require_token(),
+        token,
         calls_per_minute=calls,
         retry_policy=retry_policy,
     )
@@ -89,7 +96,15 @@ def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSou
 
 
 def _mysql_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
-    from qlib_platform.data.sources.mysql import MysqlClient, build_connection_kwargs, build_mysql_endpoints
+    from qlib_platform.data.sources.mysql import (
+        MysqlClient,
+        build_connection_kwargs,
+        build_lean_canonical_range_endpoints,
+        build_mysql_endpoints,
+        fetch_lean_benchmark,
+        fetch_lean_universe_intervals,
+        lean_mysql_preflight,
+    )
 
     source_cfg = _mapping(settings.data.get("data_source"))
     mysql_cfg = source_cfg.get("mysql")
@@ -117,6 +132,12 @@ def _mysql_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourc
         client=client,
         endpoint_overrides=overrides,
         capabilities=frozenset({"mysql"}),
+        operations={
+            "preflight": lean_mysql_preflight,
+            "build_range_endpoints": build_lean_canonical_range_endpoints,
+            "fetch_benchmark": fetch_lean_benchmark,
+            "fetch_universe_intervals": fetch_lean_universe_intervals,
+        },
     )
 
 

@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 8fb5c2708c562501e2c542cbfef2d4914eb86072
+applies_to_commit: e3d9eeea02b5f6b4b13ea196c00a14aab9aa21b3
 last_verified: 2026-09-04
 ---
 
@@ -13,7 +13,8 @@ last_verified: 2026-09-04
 
 ```text
 src/qlib_platform/
-├── cli.py, settings.py, lineage.py       # cross-domain composition/core
+├── cli/                                  # thin composition + domain command registrars
+├── settings.py, lineage.py               # cross-domain composition/core
 ├── bootstrap.py, canonical_config.py
 ├── workflow_contract.py, project_audit.py
 ├── data/                                  # ingestion + normalized market-data plane
@@ -49,6 +50,39 @@ src/qlib_platform/
 The package root is intentionally small. It is a composition boundary for CLI/configuration/lineage and other genuinely cross-domain surfaces; implementation modules belong in the domain that owns them.
 
 The historical `src/tushare_qlib` compatibility namespace has been removed. New code must import the canonical domain path directly. Do not reintroduce a vendor-named package or a dynamic import hook to emulate the deleted namespace.
+
+## Phase 3 architecture closure
+
+Phase 3 removes the transitional ingestion inheritance layer and the historical
+`data.sources.client` shim. `data.ingestion.Extractor` now owns the certified
+orchestration logic directly, while provider construction and provider-specific
+operations are resolved through `DataSourceBinding` from the source registry.
+The canonical ingestion module must not import a concrete provider module.
+
+The CLI is a package-level composition surface. `cli/main.py` owns dispatch,
+`cli/parser.py` assembles the parser, and `cli/commands/` contains bounded-domain
+command registration modules. New commands belong in the module for the domain
+that owns their behavior rather than in one monolithic root parser.
+
+`Settings.tushare_token` remains only as a deprecated constructor compatibility
+field for existing direct `Settings(...)` callers. Runtime provider credentials
+are resolved by the provider adapter/registry; `Settings.require_token()` has
+been removed. Legacy top-level `tushare:` YAML remains readable for a migration
+window and emits a deprecation warning when no `data_source.tushare` block is present.
+
+### Large-file audit
+
+- `data/sources/mysql.py` remains provider-local because its SQL schema translation,
+  preflight and optimized range operations form one adapter boundary. Splitting it
+  is deferred until a second SQL provider or independently reusable query families
+  make the boundary concrete.
+- `backtesting/backtest_report.py` remains intact because its report assembly is a
+  cohesive output concern. A later split should be driven by independently tested
+  renderers/export formats rather than file size alone.
+
+Architectural regression tests prevent new root implementation modules, `_legacy_*`
+Python modules, the removed vendor namespace/source-client shim, concrete-provider
+imports from canonical ingestion, and provider-coupled canonical storage identity.
 
 ## Data-source boundary
 
