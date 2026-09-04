@@ -19,8 +19,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.11'
-      - name: Apply final test and documentation fixups
+      - name: Install formatter
+        run: python -m pip install 'ruff==0.16.5'
+      - name: Apply phase-2 recovery and lineage fixups
         run: python scripts/apply_phase2_fixups.py
+      - name: Format migrated Python sources
+        run: python -m ruff format src tests
       - name: Commit deterministic fixups
         env:
           HEAD_REF: ${{ github.head_ref }}
@@ -32,5 +36,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          git commit -m 'refactor: finalize domain imports and storage docs'
+          git commit -m 'style: format recovered domain migration'
           git push origin "HEAD:${HEAD_REF}"
