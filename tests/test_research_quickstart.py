@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 import qlib_platform.research.workflow.quickstart as quickstart_module
-from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired
 from qlib_platform.research.workflow.quickstart import (
     MATRIX_ALPHA_PACKS,
     MATRIX_MODELS,
@@ -41,6 +40,45 @@ def test_standalone_profile_clears_inherited_data_release() -> None:
     assert settings.data["experiment"]["data_release"] is None
     assert settings.qlib_dataset_ref == "standalone-current"
     assert settings.data["qlib"]["dataset_version"] == "local"
+    assert settings.data["release_store"]["active_keep"] == 1
+
+
+def test_standalone_optional_qlib_paths_can_come_only_from_env(tmp_path: Path, monkeypatch) -> None:
+    config = tmp_path / "configs" / "pipeline.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        "\n".join(
+            [
+                "mode: standalone",
+                "project_root: ./data",
+                "qlib:",
+                "  repo_path: ''",
+                "  dataset_dir: ''",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    qlib_repo = tmp_path / "qlib-source"
+    provider = tmp_path / "provider"
+    qlib_repo.mkdir()
+    provider.mkdir()
+    monkeypatch.setenv("QLIB_REPO", str(qlib_repo))
+    monkeypatch.setenv("QLIB_DATA_URI", str(provider))
+
+    settings = Settings.load(config, create_dirs=False)
+
+    assert settings.qlib_repo == qlib_repo.resolve()
+    assert settings.qlib_data_uri == provider.resolve()
+
+
+def test_env_example_has_valid_copy_as_is_defaults() -> None:
+    env_example = (Path(__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
+    assert "QLIB_DATA_ROOT=./data" in env_example
+    assert "TUSHARE_TOKEN=" in env_example
+    assert "QLIB_REPO=" in env_example
+    assert "QLIB_DATA_URI=" in env_example
+    assert "/absolute/path/to/qlib-platform-data" not in env_example
 
 
 def test_diagnostics_default_to_sampled_but_research_stays_deep() -> None:
@@ -162,31 +200,106 @@ def test_last_json_ignores_logs() -> None:
     }
 
 
-def test_run_plan_surfaces_release_selection_instead_of_unknown_dataset_traceback(
+def test_run_plan_auto_prepares_default_dataset(tmp_path: Path, monkeypatch) -> None:
+    config = Path(__file__).parents[1] / "configs" / "pipeline.standalone.yaml"
+    settings = Settings.load(config, create_dirs=False)
+    args = parser().parse_args(["run"])
+    root = tmp_path / "run"
+    plan = {
+        "datasetRef": settings.qlib_dataset_ref,
+        "mode": args.mode,
+        "predictionBacktest": False,
+        "jobs": [],
+    }
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    calls = 0
+
+    def verify(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise KeyError("unknown dataset reference: standalone-current")
+        return {
+            "reference": settings.qlib_dataset_ref,
+            "versionId": "dv_ready",
+            "path": str(dataset),
+            "dataReleaseId": "ds_internal",
+            "verification": {},
+        }
+
+    monkeypatch.setattr(quickstart_module, "_verify", verify)
+    monkeypatch.setattr(
+        quickstart_module,
+        "bootstrap",
+        lambda *_args, **_kwargs: {
+            "status": "READY",
+            "reference": settings.qlib_dataset_ref,
+            "datasetVersionId": "dv_ready",
+        },
+    )
+
+    code = quickstart_module.run_plan(settings, args, plan, root)
+
+    assert code == 0
+    assert plan["status"] == "SUCCEEDED"
+    assert plan["preparedAutomatically"] is True
+    assert calls == 2
+
+
+def test_run_plan_does_not_expose_release_hash_when_standalone_data_is_unavailable(
     tmp_path: Path, monkeypatch
 ) -> None:
     config = Path(__file__).parents[1] / "configs" / "pipeline.standalone.yaml"
     settings = Settings.load(config, create_dirs=False)
     args = parser().parse_args(["run"])
     root = tmp_path / "run"
-    plan = {"datasetRef": settings.qlib_dataset_ref, "mode": args.mode, "jobs": []}
-
-    def missing_dataset(*_args, **_kwargs):
-        raise KeyError("unknown dataset reference: standalone-current")
-
-    def ambiguous_release(_settings):
-        raise ReleaseSelectionRequired(
-            "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
-        )
-
-    monkeypatch.setattr(quickstart_module, "_verify", missing_dataset)
-    monkeypatch.setattr(quickstart_module, "resolve_source", ambiguous_release)
+    plan = {
+        "datasetRef": settings.qlib_dataset_ref,
+        "mode": args.mode,
+        "predictionBacktest": False,
+        "jobs": [],
+    }
+    monkeypatch.setattr(
+        quickstart_module,
+        "_verify",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            KeyError("unknown dataset reference: standalone-current")
+        ),
+    )
+    monkeypatch.setattr(
+        quickstart_module,
+        "bootstrap",
+        lambda *_args, **_kwargs: {
+            "status": "DATA_UNAVAILABLE",
+            "reference": "ds_should_not_be_user_configuration",
+        },
+    )
 
     code = quickstart_module.run_plan(settings, args, plan, root)
 
     assert code == 2
-    assert plan["status"] == "RELEASE_SELECTION_REQUIRED"
-    assert plan["recommendedCommand"] == "tq release list"
-    assert plan["selectionCommand"].endswith("--alias research-release-current")
-    assert plan["retryCommand"] == "tq-research prepare --source auto"
-    assert (root / "research_matrix.json").is_file()
+    assert plan["status"] == "DATA_UNAVAILABLE"
+    assert "ds_should_not_be_user_configuration" not in str(plan)
+    assert "TUSHARE_TOKEN" in plan["recommendedCommand"]
+
+
+def test_run_plan_keeps_explicit_dataset_reference_fail_closed(tmp_path: Path, monkeypatch) -> None:
+    config = Path(__file__).parents[1] / "configs" / "pipeline.standalone.yaml"
+    settings = Settings.load(config, create_dirs=False)
+    args = parser().parse_args(["run", "--dataset-ref", "explicit-missing"])
+    root = tmp_path / "run"
+    plan = {
+        "datasetRef": "explicit-missing",
+        "mode": args.mode,
+        "predictionBacktest": False,
+        "jobs": [],
+    }
+    monkeypatch.setattr(
+        quickstart_module,
+        "_verify",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(KeyError("explicit-missing")),
+    )
+
+    with pytest.raises(KeyError, match="explicit-missing"):
+        quickstart_module.run_plan(settings, args, plan, root)
