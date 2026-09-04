@@ -134,7 +134,7 @@ class RankBufferPolicy:
         if self.hold_thresh < 0:
             raise ValueError("hold_thresh must be non-negative")
         if not 0 < self.risk_degree <= 1:
-            raise ValueError("risk_degree must be in (0, 1]")
+            raise ValueError("risk_degree must be in (0, 1]" )
 
 
 def _normalise_scores(scores: pd.Series | pd.DataFrame) -> pd.Series:
