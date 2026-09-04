@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
+applies_to_commit: f702bc80d27a92ab526dca630b168c99a15c95a5
 last_verified: 2026-09-04
 ---
 
@@ -72,7 +73,7 @@ These are runtime lifecycle state, not environment configuration. Content-addres
 | `QUANT_DATA_ROOT` | integrated only | integrated | external Platform data root |
 | `DATASET_RELEASE_ID` | integrated only | integrated | explicit immutable DataRelease |
 
-`QLIB_REPO` and `QLIB_DATA_URI` are read by `Settings` when their YAML values are blank. This keeps the standalone YAML valid even when those optional variables are absent.
+`QLIB_REPO` and `QLIB_DATA_URI` are read by `Settings` when their YAML values are blank. This keeps the standalone YAML valid even when those optional variables are absent. When no Qlib source checkout is configured, the pinned `pyqlib==0.9.7` package provides the runtime identity and qlib-platform uses its packaged day-frequency dump compatibility path.
 
 `LEAN_MYSQL_*` / `LEAN_MYSQL_DSN` remain migration compatibility inputs; they are not part of the normal standalone path.
 
@@ -87,7 +88,7 @@ release_store:
   active_keep: 1
 ```
 
-This does **not** delete immutable history. After successful standalone activation, older release directories are moved below `data/releases/archive/`, while the active release remains at the top-level release store. Exact archived IDs remain resolvable for audit/replay.
+This does **not** delete immutable history. After successful standalone activation, older release directories are moved below `data/releases/archive/`, while the active release remains at the top-level release store. Exact archived IDs remain resolvable for audit/replay, and registry manifest paths are refreshed after the move.
 
 When more than one active release exists, standalone resolution chooses the newest **materializable** release rather than blindly choosing the lexicographically latest hash. A materializable release must contain either the frozen `qlib_staging` component or an imported `qlib_dataset` provider.
 
