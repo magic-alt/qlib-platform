@@ -188,3 +188,46 @@ def test_market_data_view_fails_closed_for_trade_date_outside_dataset_calendar(t
             StageTimings(),
             trade_dates=pd.DatetimeIndex([trade_date]),
         )
+
+
+def test_market_data_view_includes_held_names_outside_prediction_universe(tmp_path, monkeypatch):
+    signal_date = pd.Timestamp("2026-08-21")
+    trade_date = pd.Timestamp("2026-08-24")
+    scored = "SH600900"
+    held_only = "SZ002415"
+    score_index = pd.MultiIndex.from_tuples(
+        [(signal_date, scored)],
+        names=["datetime", "instrument"],
+    )
+    score = pd.Series([0.9], index=score_index, name="score")
+    quote_index = pd.MultiIndex.from_product(
+        [[scored, held_only], [trade_date]],
+        names=["instrument", "datetime"],
+    )
+    raw = pd.DataFrame(
+        {
+            "$close": [10.0, 11.0],
+            "$is_limit_up": [0.0, 0.0],
+            "$is_limit_down": [0.0, 0.0],
+        },
+        index=quote_index,
+    )
+    observed: dict[str, list[str]] = {}
+
+    def features(instruments, *args, **kwargs):
+        observed["instruments"] = list(instruments)
+        return raw.copy()
+
+    monkeypatch.setattr("qlib.data.D.features", features)
+    _patch_dataset_calendar(monkeypatch, signal_date, trade_date)
+
+    view = _market_data_view(
+        _settings(tmp_path),
+        score,
+        StageTimings(),
+        trade_dates=pd.DatetimeIndex([trade_date]),
+        audit_instruments=[held_only],
+    )
+
+    assert observed["instruments"] == [scored, held_only]
+    assert set(view.quote["instrument"]) == {scored, held_only}
