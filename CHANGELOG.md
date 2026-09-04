@@ -8,6 +8,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Added
 
+- `tq-research run` and `matrix` now finish with a human-readable terminal summary covering DatasetVersion, AlphaPack/model, physical accelerator, IC/RankIC diagnostics, gate decision, FeatureSnapshot cache status, timings, memory, prediction-backtest status, and artifact paths while retaining the final machine-readable JSON line.
 - LightGBM runtime evidence now reports the best-effort physical accelerator name in addition to the backend/index, using OpenCL enumeration when available and `nvidia-smi` as an NVIDIA fallback without changing device selection.
 - Apache License 2.0 project licensing and package metadata.
 - Repository CODEOWNERS and a research-integrity-aware Code of Conduct.
@@ -23,6 +24,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Changed
 
+- Quickstart child-process output now suppresses only deterministic known-nonfatal Qlib/Gym/optional-model/OpenCL/artifact-progress chatter by default, preserves unexpected warnings and tracebacks, and exposes `--verbose-child-output` to restore the raw child streams. Quickstart also resolves a research manifest from `runId` when the child payload omits an explicit manifest path so the documented prediction-only backtest stage is actually reachable.
 - Standalone research now explicitly clears the inherited `cn_tushare_v1` experiment DataRelease binding; when a local DatasetVersion has no upstream DataRelease, canonical research identity falls back to its immutable manifest `version_id` instead of the profile-level `local` label, while explicit DataRelease mismatches remain fail-closed.
 - Generated `tq-research` AlphaPack overlays now pin the already-resolved project root, registry, Qlib provider path, and DatasetVersion root before spawning child CLI processes, preventing nested quickstart output directories from rebasing inherited relative paths and losing `standalone-current`.
 - Deep DatasetVersion proof reuse now performs the full inventory guard with bounded worker batches, resolves only unique partition parent directories, and uses one non-following stat per file instead of resolving every partition path; this keeps the same existence/size/mtime fail-closed checks while removing the Windows startup bottleneck on large providers.
