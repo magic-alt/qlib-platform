@@ -45,19 +45,37 @@ def _load_predictions(path: str | Path) -> pd.DataFrame:
     return frame
 
 
-def _market_data_view(settings: Settings, score: pd.Series, timings: StageTimings) -> MarketDataView:
+def _market_data_view(
+    settings: Settings,
+    score: pd.Series,
+    timings: StageTimings,
+    *,
+    trade_dates: pd.DatetimeIndex,
+) -> MarketDataView:
     from qlib.data import D
 
-    from qlib_platform.research.train_select import _official_calendar
+    from qlib_platform.research.research_timing import shared_research_calendar
 
-    dates = pd.DatetimeIndex(score.index.get_level_values("datetime").unique()).sort_values()
-    calendar = _official_calendar(settings)
-    trade_dates = pd.DatetimeIndex(
-        [calendar[calendar > date][0] for date in dates if len(calendar[calendar > date])]
-    )
+    # The Qlib Recorder is the source of truth for the audit timeline.  Do not
+    # reconstruct trade dates from a second metadata calendar: that can silently
+    # drop the final T+1 step when mutable metadata lags the pinned DatasetVersion.
+    trade_dates = pd.DatetimeIndex(pd.to_datetime(trade_dates, errors="coerce"))
+    if trade_dates.isna().any():
+        raise ValueError("strategy audit trade dates contain invalid timestamps")
+    trade_dates = trade_dates.normalize().unique().sort_values()
     if trade_dates.empty:
         empty = pd.DataFrame(columns=["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"])
         return MarketDataView(empty)
+
+    governed_calendar = shared_research_calendar(settings)
+    outside_calendar = trade_dates.difference(governed_calendar)
+    if not outside_calendar.empty:
+        preview = ", ".join(str(value.date()) for value in outside_calendar[:5])
+        raise RuntimeError(
+            "strategy audit Qlib trade dates fall outside the pinned DatasetVersion calendar: "
+            f"{preview}"
+        )
+
     instruments = sorted(score.index.get_level_values("instrument").astype(str).unique())
     with timings.measure("audit_quote_query_seconds"):
         raw = D.features(
@@ -83,6 +101,11 @@ def _market_data_view(settings: Settings, score: pd.Series, timings: StageTiming
             frame["trade_date"].isin(trade_dates),
             ["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"],
         ]
+        observed_dates = pd.DatetimeIndex(quote["trade_date"].unique()).normalize()
+        missing_quote_dates = trade_dates.difference(observed_dates)
+        if not missing_quote_dates.empty:
+            preview = ", ".join(str(value.date()) for value in missing_quote_dates[:5])
+            raise RuntimeError(f"strategy audit quote coverage is missing Qlib trade date(s): {preview}")
     return MarketDataView(quote=quote)
 
 
@@ -310,7 +333,13 @@ def backtest_predictions(
         with timings.measure("holdings_export_seconds"):
             holdings = export_holding_snapshots(positions)
             holdings.to_parquet(holdings_path, index=False)
-        market_data = _market_data_view(settings, pred["score"], timings)
+        position_dates = pd.DatetimeIndex(sorted(pd.Timestamp(date).normalize() for date in positions))
+        market_data = _market_data_view(
+            settings,
+            pred["score"],
+            timings,
+            trade_dates=position_dates[1:],
+        )
         with timings.measure("audit_build_seconds"):
             audit = build_strategy_audit(
                 pred["score"], positions, indicators, market_data.quote, policy=policy
