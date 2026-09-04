@@ -22,7 +22,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Changed
 
-- Automatic local-research source discovery now uses bounded sampled verification for active DataRelease and DatasetVersion probes instead of unconditional deep scans; command-level deep verification remains authoritative before research execution.
+- Automatic local-research source discovery and `doctor`/`prepare` now use bounded sampled verification by default instead of unconditional deep scans; `run`/`matrix` and explicit `--verify-mode deep` retain authoritative full verification before research execution.
 - README branding no longer repeats the project title beneath the wordmark.
 - README no longer duplicates the CLI command catalog; command syntax and side-effect classification remain in the dedicated CLI Reference.
 - `CONTRIBUTING.md` now provides first-contributor routing, risk-based change classification, review expectations, research-integrity rules, and dependency-bot policy.
