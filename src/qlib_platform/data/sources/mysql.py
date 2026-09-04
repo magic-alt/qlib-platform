@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse, unquote
 
 import pandas as pd
 
-from qlib_platform.data.sources.client import FetchResult, RetryPolicy
+from qlib_platform.data.sources.base import FetchResult, RetryPolicy
 
 MYSQL_DEFAULT_ENDPOINT_FIELDS: dict[str, str] = {
     "daily": "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount",

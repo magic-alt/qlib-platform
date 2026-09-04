@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -124,6 +125,7 @@ class Settings:
     config_path: Path
     data: dict[str, Any]
     paths: Paths
+    # Deprecated constructor compatibility only; adapters resolve provider credentials.
     tushare_token: str | None
     qlib_repo: Path | None
     qlib_data_uri: Path
@@ -140,6 +142,14 @@ class Settings:
         load_dotenv()
         config_path = resource_path(Path(config_path).expanduser()).resolve()
         data = _expand_env(_load_config(config_path))
+        source_cfg = data.get("data_source", {})
+        source_cfg = source_cfg if isinstance(source_cfg, dict) else {}
+        if isinstance(data.get("tushare"), dict) and not isinstance(source_cfg.get("tushare"), dict):
+            warnings.warn(
+                "top-level tushare configuration is deprecated; move provider settings under data_source.tushare and retry/endpoint settings under data_source.runtime/optional_endpoints",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if "project_root" not in data:
             raise ValueError("project_root is required")
@@ -182,10 +192,17 @@ class Settings:
 
         return cls(config_path, data, paths, token, qlib_repo, qlib_data_uri)
 
-    def require_token(self) -> str:
-        if not self.tushare_token:
-            raise RuntimeError("TUSHARE_TOKEN is required for this command")
-        return self.tushare_token
+    @property
+    def data_source_config(self) -> dict[str, Any]:
+        value = self.data.get("data_source", {})
+        return value if isinstance(value, dict) else {}
+
+    def provider_config(self, provider: str | None = None) -> dict[str, Any]:
+        name = (provider or self.source_kind).strip().lower().replace("-", "_")
+        value = self.data_source_config.get(name, {})
+        if isinstance(value, dict):
+            return value
+        return {}
 
     def uses_tushare_source(self) -> bool:
         kind = self.source_kind
