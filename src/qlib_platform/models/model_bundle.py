@@ -46,9 +46,9 @@ class LoadedModelBundle:
 def _canonical_sha256(payload: Mapping[str, Any]) -> str:
     import hashlib
 
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode(
-        "utf-8"
-    )
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -107,7 +107,10 @@ def create_model_bundle(
         adapter = get_model_adapter(family)
         model_name = adapter.serialize(model, building)
         parity_scores = pd.Series(
-            np.asarray(adapter.predict_serialized(adapter.load_serialized(building / model_name), parity_values), dtype=float).reshape(-1),
+            np.asarray(
+                adapter.predict_serialized(adapter.load_serialized(building / model_name), parity_values),
+                dtype=float,
+            ).reshape(-1),
             index=parity_features.index,
             name="score",
         )
