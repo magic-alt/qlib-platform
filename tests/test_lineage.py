@@ -133,7 +133,7 @@ def test_resolve_qlib_repo_falls_back_to_imported_editable_checkout(
     assert resolve_qlib_repo(tmp_path / "missing-configured-repo") == checkout
 
 
-def test_resolve_qlib_repo_rejects_enclosing_application_repo_for_wheel_install(
+def test_resolve_qlib_repo_uses_package_compat_root_for_wheel_install(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     application = tmp_path / "qlib-platform"
@@ -147,6 +147,50 @@ def test_resolve_qlib_repo_rejects_enclosing_application_repo_for_wheel_install(
         "find_spec",
         lambda name: SimpleNamespace(origin=str(origin)) if name == "qlib" else None,
     )
+
+    class Distribution:
+        version = "0.9.7"
+
+        @staticmethod
+        def read_text(name: str) -> str | None:
+            return "qlib/__init__.py,sha256=fake,1\n" if name == "RECORD" else None
+
+    monkeypatch.setattr(lineage_module.importlib.metadata, "distribution", lambda name: Distribution())
+    compat_tmp = tmp_path / "compat-tmp"
+    monkeypatch.setattr(lineage_module.tempfile, "gettempdir", lambda: str(compat_tmp))
+
+    resolved = resolve_qlib_repo(None)
+
+    assert resolved is not None
+    assert resolved != application
+    assert (resolved / "scripts" / "dump_bin.py").is_file()
+    revision = lineage_module.git_revision(resolved)
+    assert revision["source"] == "package"
+    assert revision["dirty"] is False
+    assert str(revision["commit"]).startswith("pyqlib==0.9.7:record:")
+
+
+def test_resolve_qlib_repo_rejects_unsupported_packaged_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    package = tmp_path / "site-packages" / "qlib"
+    package.mkdir(parents=True)
+    origin = package / "__init__.py"
+    origin.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        lineage_module.importlib.util,
+        "find_spec",
+        lambda name: SimpleNamespace(origin=str(origin)) if name == "qlib" else None,
+    )
+
+    class Distribution:
+        version = "1.0.0"
+
+        @staticmethod
+        def read_text(_name: str) -> str:
+            return "record"
+
+    monkeypatch.setattr(lineage_module.importlib.metadata, "distribution", lambda name: Distribution())
 
     assert resolve_qlib_repo(None) is None
 
