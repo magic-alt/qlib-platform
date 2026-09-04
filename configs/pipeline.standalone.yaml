@@ -29,9 +29,9 @@ release_store:
   active_keep: 1
 
 qlib:
-  # Optional .env overrides; blank values fall back to platform-managed paths.
-  repo_path: ${QLIB_REPO}
-  dataset_dir: ${QLIB_DATA_URI}
+  # Optional QLIB_REPO / QLIB_DATA_URI values are read from .env by Settings.
+  repo_path: ""
+  dataset_dir: ""
   versions_root: ""
   dataset_name: cn_standalone
   dataset_version: local
