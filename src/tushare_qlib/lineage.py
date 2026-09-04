@@ -37,25 +37,51 @@ def git_revision(path: Path | None) -> dict[str, object]:
     return {"commit": commit, "dirty": dirty}
 
 
-def resolve_qlib_repo(configured: Path | None) -> Path | None:
-    """Resolve the checkout that supplies the imported qlib package.
+def _supplies_imported_qlib(checkout: Path, origin: Path) -> bool:
+    """Return whether *checkout* owns the imported ``qlib`` package source.
 
-    Local development commonly installs Qlib in editable mode. A stale
-    QLIB_REPO must not make lineage unknown when Python is demonstrably
-    importing Qlib from a different Git checkout.
+    A wheel installed under ``<application>/.venv`` is physically nested below the
+    application's Git repository. Walking parent directories and accepting the first
+    ``.git`` would therefore misidentify the application revision as the Qlib
+    revision. A real Qlib checkout owns ``qlib/__init__.py`` at the exact imported
+    origin (including editable installs).
     """
 
-    if configured is not None and configured.exists():
-        return configured.resolve()
+    candidate_origin = checkout / "qlib" / "__init__.py"
+    if not candidate_origin.is_file():
+        return False
+    try:
+        return candidate_origin.resolve() == origin.resolve()
+    except OSError:
+        return False
+
+
+def resolve_qlib_repo(configured: Path | None) -> Path | None:
+    """Resolve the Git checkout that actually supplies the imported Qlib package.
+
+    Local development commonly installs Qlib in editable mode, while the supported
+    packaged environment installs the pinned ``pyqlib`` wheel inside this project's
+    ``.venv``. The latter must not inherit the enclosing qlib-platform ``.git`` as a
+    fake Qlib checkout: doing so makes lineage and FeatureSnapshot recipes drift on
+    unrelated application commits.
+    """
+
     try:
         spec = importlib.util.find_spec("qlib")
     except (ImportError, AttributeError, ValueError):
         return None
     if spec is None or spec.origin is None:
         return None
-    package_path = Path(spec.origin).resolve().parent
+    origin = Path(spec.origin).resolve()
+
+    if configured is not None and configured.exists():
+        configured = configured.resolve()
+        if (configured / ".git").exists() and _supplies_imported_qlib(configured, origin):
+            return configured
+
+    package_path = origin.parent
     for candidate in (package_path, *package_path.parents):
-        if (candidate / ".git").exists():
+        if (candidate / ".git").exists() and _supplies_imported_qlib(candidate, origin):
             return candidate
     return None
 
