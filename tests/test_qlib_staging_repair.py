@@ -67,14 +67,7 @@ def _release_with_staging(
                 "close": [10.0],
             }
         ).to_parquet(nested, index=False)
-        files.append(
-            {
-                "path": (
-                    "components/qlib_staging/"
-                    + nested.relative_to(staging).as_posix()
-                )
-            }
-        )
+        files.append({"path": ("components/qlib_staging/" + nested.relative_to(staging).as_posix())})
 
     manifest_path = release_dir / "manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
@@ -112,21 +105,15 @@ def test_inventory_recognizes_duckdb_partition_as_transient(tmp_path: Path) -> N
     assert ".curated_by_symbol" in inventory.transient[0].as_posix()
 
 
-def test_repair_derives_clean_child_release_without_local_raw(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_repair_derives_clean_child_release_without_local_raw(tmp_path: Path, monkeypatch) -> None:
     settings = _settings(tmp_path)
     release = _release_with_staging(settings)
     captured: dict[str, object] = {}
 
     def fake_publish(_publisher, **kwargs):
         captured.update(kwargs)
-        staging_source = next(
-            item.source for item in kwargs["components"] if item.role == "qlib_staging"
-        )
-        assert sorted(path.name for path in staging_source.glob("*.parquet")) == [
-            "SH600000.parquet"
-        ]
+        staging_source = next(item.source for item in kwargs["components"] if item.role == "qlib_staging")
+        assert sorted(path.name for path in staging_source.glob("*.parquet")) == ["SH600000.parquet"]
         assert not list(staging_source.rglob("00000.parquet"))
         return release
 
@@ -139,9 +126,7 @@ def test_repair_derives_clean_child_release_without_local_raw(
 
     assert result is not None
     assert result.release is release
-    assert result.ignored_transient_files == (
-        ".curated_by_symbol/symbol=SH600000/00000.parquet",
-    )
+    assert result.ignored_transient_files == (".curated_by_symbol/symbol=SH600000/00000.parquet",)
     lineage = captured["lineage"]
     assert lineage["parentReleaseId"] == release.data_release_id
     assert lineage["repairReason"] == "qlib_staging_transient_inventory"
@@ -162,9 +147,7 @@ def test_malformed_top_level_chunk_is_not_silently_dropped(tmp_path: Path) -> No
         inspect_qlib_staging_inventory(release)
 
 
-def test_materializer_uses_derived_release_before_raw_fallback(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_materializer_uses_derived_release_before_raw_fallback(tmp_path: Path, monkeypatch) -> None:
     settings = _settings(tmp_path)
     parent = _release_with_staging(settings)
     child_dir = settings.paths.root / "releases" / ("ds_" + "c" * 64)
@@ -218,6 +201,4 @@ def test_materializer_uses_derived_release_before_raw_fallback(
     assert result["recoveredFromIncompatibleRelease"] is True
     assert result["recoveryReason"] == "qlib_staging_transient_inventory"
     assert result["parentDataReleaseId"] == parent.data_release_id
-    assert result["ignoredTransientFiles"] == [
-        ".curated_by_symbol/symbol=SH600000/00000.parquet"
-    ]
+    assert result["ignoredTransientFiles"] == [".curated_by_symbol/symbol=SH600000/00000.parquet"]
