@@ -10,7 +10,10 @@ def resource_path(relative: str | Path) -> Path:
     requested = Path(relative).expanduser()
     if requested.is_absolute() or requested.exists():
         return requested
-    repository = Path(__file__).resolve().parents[2] / requested
+    # ``runtime_resources`` now lives under ``qlib_platform/runtime``. Resolve the
+    # checkout root explicitly from that domain depth before falling back to wheel
+    # data installed under sysconfig's data prefix.
+    repository = Path(__file__).resolve().parents[3] / requested
     if repository.exists():
         return repository
     installed = Path(sysconfig.get_path("data")) / requested
