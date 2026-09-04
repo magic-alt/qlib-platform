@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from qlib_platform.settings import Paths
+from qlib_platform.settings import Paths, Settings
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +49,10 @@ def test_canonical_storage_identity_is_provider_neutral(tmp_path: Path):
     paths = Paths.from_root(tmp_path / "data")
     assert paths.bronze == tmp_path / "data" / "bronze" / "market"
     assert paths.raw == paths.bronze / "current"
+
+
+def test_provider_credentials_are_not_a_settings_service():
+    assert not hasattr(Settings, "require_token")
 
 
 def test_cli_is_composed_from_domain_registrars():

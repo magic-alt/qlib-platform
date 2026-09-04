@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: PHASE3_BRANCH
+applies_to_commit: e3d9eeea02b5f6b4b13ea196c00a14aab9aa21b3
 last_verified: 2026-09-04
 ---
 

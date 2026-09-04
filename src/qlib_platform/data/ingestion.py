@@ -343,7 +343,10 @@ class Extractor:
         mysql_cfg = source_cfg.get("mysql") if isinstance(source_cfg, Mapping) else None
         if not isinstance(mysql_cfg, Mapping):
             raise ValueError("data_source.mysql configuration is required")
-        return self._operation("preflight")(mysql_cfg, start_date, end_date)
+        result = self._operation("preflight")(mysql_cfg, start_date, end_date)
+        if not isinstance(result, dict):
+            raise TypeError("data source preflight operation must return a dict")
+        return result
 
     def sync_benchmark(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         normalized_symbol = symbol.strip().upper()
