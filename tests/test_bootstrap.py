@@ -19,6 +19,7 @@ def _settings(tmp_path: Path, *, token: str | None = None) -> Settings:
             "start_date": "20260101",
             "end_date": "20260824",
             "data_source": {"kind": "auto"},
+            "release_store": {"active_keep": 1},
             "qlib": {},
         },
         paths=paths,
@@ -28,7 +29,9 @@ def _settings(tmp_path: Path, *, token: str | None = None) -> Settings:
     )
 
 
-def test_auto_bootstrap_returns_release_selection_guidance(tmp_path: Path, monkeypatch) -> None:
+def test_auto_bootstrap_returns_release_selection_guidance_for_explicit_guard(
+    tmp_path: Path, monkeypatch
+) -> None:
     def ambiguous_release(_settings: Settings):
         raise ReleaseSelectionRequired(
             "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
@@ -52,10 +55,16 @@ def test_tushare_bootstrap_uses_configured_window(tmp_path: Path, monkeypatch):
         "qlib_platform.bootstrap._run_cli",
         lambda _settings, *arguments: calls.append(tuple(arguments)),
     )
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap.resolve_source",
+        lambda _settings: SourceResolution("READY", "data_release", "ds_ready"),
+    )
+    monkeypatch.setattr("qlib_platform.bootstrap._archive_standalone_history", lambda *_args: 0)
 
     result = bootstrap(_settings(tmp_path, token="dummy_test_token"), source="tushare")
 
-    assert result == {"status": "READY", "source": "tushare"}
+    assert result["status"] == "READY"
+    assert result["source"] == "tushare"
     assert ("backfill", "--start", "20260101", "--end", "20260824") in calls
 
 
@@ -65,6 +74,11 @@ def test_tushare_bootstrap_builds_all_required_release_inputs(tmp_path: Path, mo
         "qlib_platform.bootstrap._run_cli",
         lambda _settings, *arguments: calls.append(tuple(arguments)),
     )
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap.resolve_source",
+        lambda _settings: SourceResolution("READY", "data_release", "ds_ready"),
+    )
+    monkeypatch.setattr("qlib_platform.bootstrap._archive_standalone_history", lambda *_args: 0)
 
     result = bootstrap(
         _settings(tmp_path, token="dummy_test_token"),
@@ -73,10 +87,51 @@ def test_tushare_bootstrap_builds_all_required_release_inputs(tmp_path: Path, mo
         end="20260824",
     )
 
-    assert result == {"status": "READY", "source": "tushare"}
+    assert result["status"] == "READY"
     assert ("sync-dividends", "--bootstrap") in calls
     assert ("sync-industry", "--end", "20260824") in calls
     assert calls[-1] == ("dataset-build", "--start", "20260101", "--end", "20260824")
+
+
+def test_auto_bootstrap_materializes_selected_release_when_no_dataset_exists(
+    tmp_path: Path, monkeypatch
+) -> None:
+    release_id = "ds_" + "a" * 64
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap.resolve_source",
+        lambda _settings: SourceResolution(
+            "MATERIALIZE_REQUIRED",
+            "data_release",
+            release_id,
+            action="dataset-materialize",
+            profile="ashare_qlib_research_v2",
+        ),
+    )
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap._recover_selected_dataset_alias",
+        lambda _settings, _release_id: None,
+    )
+
+    def materialize(_settings: Settings, selected: str):
+        calls.append(selected)
+        return {
+            "status": "READY",
+            "source": "data_release",
+            "reference": "standalone-current",
+            "dataReleaseId": selected,
+            "datasetVersionId": "dv_materialized",
+            "materialized": True,
+        }
+
+    monkeypatch.setattr("qlib_platform.bootstrap._materialize_selected_release", materialize)
+
+    result = bootstrap(_settings(tmp_path), source="auto")
+
+    assert result["status"] == "READY"
+    assert result["materialized"] is True
+    assert result["datasetVersionId"] == "dv_materialized"
+    assert calls == [release_id]
 
 
 def test_auto_bootstrap_recovers_dataset_alias_after_explicit_release_selection(
@@ -121,9 +176,10 @@ def test_auto_bootstrap_recovers_dataset_alias_after_explicit_release_selection(
             "MATERIALIZE_REQUIRED",
             "data_release",
             release_id,
-            action="dataset-build",
+            action="dataset-materialize",
         ),
     )
+    monkeypatch.setattr("qlib_platform.bootstrap._archive_standalone_history", lambda *_args: 0)
 
     result = bootstrap(settings, source="auto")
 
