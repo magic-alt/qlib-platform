@@ -224,7 +224,6 @@ def text_files() -> list[Path]:
 
 
 def main() -> None:
-    # Move active research modules into stable responsibility packages.
     for source, target in MODULE_MOVES.items():
         move(f"src/qlib_platform/research/{source}", f"src/qlib_platform/research/{target}")
 
@@ -233,7 +232,6 @@ def main() -> None:
         init.parent.mkdir(parents=True, exist_ok=True)
         init.touch(exist_ok=True)
 
-    # Rename active configuration, documentation and test files away from research-stage numbering.
     for source, target in PATH_MOVES.items():
         move(source, target)
     for source, target in TEST_MOVES.items():
@@ -242,8 +240,8 @@ def main() -> None:
     replacements: dict[str, str] = {}
     replacements.update(LEGACY_MODULE_REPLACEMENTS)
     replacements.update(ROOT_MODULE_REPLACEMENTS)
-    replacements.update({old: new for old, new in PATH_MOVES.items()})
-    replacements.update({old: new for old, new in TEST_MOVES.items()})
+    replacements.update(PATH_MOVES)
+    replacements.update(TEST_MOVES)
     replacements.update(CLI_REPLACEMENTS)
     replacements.update(API_REPLACEMENTS)
     replacements.update(PARSER_VARIABLE_REPLACEMENTS)
@@ -252,29 +250,106 @@ def main() -> None:
     for path in text_files():
         replace_text(path, replacements)
 
-    # Physically remove every former phase-oriented runtime module. There are no compatibility shims.
     for path in RESEARCH.glob("phase[123]_*.py"):
         path.unlink()
 
-    # Convert the capability guard in the CLI from stage-prefix matching to explicit research responsibilities.
     cli_main = ROOT / "src/qlib_platform/cli/main.py"
     text = cli_main.read_text(encoding="utf-8")
-    old = '''    if args.command.startswith("candidate-") or (\n        args.command.startswith("stability-") and args.command != "stability-portable-verify"\n    ):\n        from qlib_platform.releases.capabilities import require_release_capability\n\n        require_release_capability(\n            settings,\n            "phase2" if args.command.startswith("candidate-") else "phase3",\n        )\n'''
-    new = '''    candidate_commands = {\n        "candidate-validate",\n        "candidate-plan",\n        "candidate-data-accept",\n        "candidate-collect",\n        "candidate-accept",\n        "candidate-select",\n        "final-holdout-open",\n    }\n    stability_commands = {\n        "stability-validate",\n        "stability-plan",\n        "stability-diagnose",\n        "stability-portable-export",\n    }\n    if args.command in candidate_commands or args.command in stability_commands:\n        from qlib_platform.releases.capabilities import require_release_capability\n\n        # Capability identifiers are persisted governance identities and remain backward compatible.\n        require_release_capability(\n            settings,\n            "phase2" if args.command in candidate_commands else "phase3",\n        )\n'''
-    if old not in text:
-        raise RuntimeError("expected research capability guard was not found after CLI migration")
-    cli_main.write_text(text.replace(old, new), encoding="utf-8")
+    guard_start = text.index('    if args.command.startswith("candidate-")')
+    dispatch_start = text.index('\n    if args.command == "candidate-validate":', guard_start)
+    new_guard = '''    candidate_commands = {
+        "candidate-validate",
+        "candidate-plan",
+        "candidate-data-accept",
+        "candidate-collect",
+        "candidate-accept",
+        "candidate-select",
+        "final-holdout-open",
+    }
+    stability_commands = {
+        "stability-validate",
+        "stability-plan",
+        "stability-diagnose",
+        "stability-portable-export",
+    }
+    if args.command in candidate_commands or args.command in stability_commands:
+        from qlib_platform.releases.capabilities import require_release_capability
 
-    # Strengthen the architecture contract: no stage-named runtime modules or legacy imports may return.
+        # Capability identifiers are persisted governance identities and remain backward compatible.
+        require_release_capability(
+            settings,
+            "phase2" if args.command in candidate_commands else "phase3",
+        )
+'''
+    cli_main.write_text(text[:guard_start] + new_guard + text[dispatch_start:], encoding="utf-8")
+
     architecture_test = ROOT / "tests/research/test_module_architecture.py"
     architecture_test.parent.mkdir(parents=True, exist_ok=True)
     architecture_test.write_text(
-        '''from __future__ import annotations\n\nimport re\nfrom pathlib import Path\n\n\nROOT = Path(__file__).resolve().parents[2]\nRESEARCH = ROOT / "src" / "qlib_platform" / "research"\nLEGACY_IMPORT = re.compile(r"qlib_platform\\.research\\.phase[123]_")\nLEGACY_COMMAND = re.compile(r"[\\\"']phase[123]-")\n\n\ndef _text_files(root: Path):\n    for path in root.rglob("*"):\n        if path.is_file() and path.suffix.lower() in {".py", ".md", ".yml", ".yaml", ".toml", ".ps1", ".sh"}:\n            yield path\n\n\ndef test_research_runtime_has_no_phase_named_modules() -> None:\n    offenders = sorted(path.relative_to(ROOT).as_posix() for path in RESEARCH.glob("phase[123]_*.py"))\n    assert offenders == []\n\n\ndef test_repository_has_no_legacy_research_module_imports() -> None:\n    offenders = []\n    for path in _text_files(ROOT):\n        text = path.read_text(encoding="utf-8")\n        if LEGACY_IMPORT.search(text):\n            offenders.append(path.relative_to(ROOT).as_posix())\n    assert offenders == []\n\n\ndef test_cli_has_no_phase_numbered_commands() -> None:\n    parser_source = (ROOT / "src/qlib_platform/cli/commands/research.py").read_text(encoding="utf-8")\n    assert LEGACY_COMMAND.search(parser_source) is None\n\n\ndef test_research_root_contains_only_package_boundary_files() -> None:\n    runtime_files = sorted(path.name for path in RESEARCH.glob("*.py"))\n    assert runtime_files == ["__init__.py"]\n''',
+        '''from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+RESEARCH = ROOT / "src" / "qlib_platform" / "research"
+LEGACY_IMPORT = re.compile(r"qlib_platform\.research\.phase[123]_")
+LEGACY_COMMAND = re.compile(r"[\"']phase[123]-")
+
+
+def _text_files(root: Path):
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in {".py", ".md", ".yml", ".yaml", ".toml", ".ps1", ".sh"}:
+            yield path
+
+
+def test_research_runtime_has_no_phase_named_modules() -> None:
+    offenders = sorted(path.relative_to(ROOT).as_posix() for path in RESEARCH.glob("phase[123]_*.py"))
+    assert offenders == []
+
+
+def test_repository_has_no_legacy_research_module_imports() -> None:
+    offenders = []
+    for path in _text_files(ROOT):
+        text = path.read_text(encoding="utf-8")
+        if LEGACY_IMPORT.search(text):
+            offenders.append(path.relative_to(ROOT).as_posix())
+    assert offenders == []
+
+
+def test_cli_has_no_phase_numbered_commands() -> None:
+    parser_source = (ROOT / "src/qlib_platform/cli/commands/research.py").read_text(encoding="utf-8")
+    assert LEGACY_COMMAND.search(parser_source) is None
+
+
+def test_research_root_contains_only_package_boundary_files() -> None:
+    runtime_files = sorted(path.name for path in RESEARCH.glob("*.py"))
+    assert runtime_files == ["__init__.py"]
+''',
         encoding="utf-8",
     )
 
     (RESEARCH / "README.md").write_text(
-        '''# Research package architecture\n\n`qlib_platform.research` is organized by durable research responsibility rather than historical experiment stage.\n\n- `contracts/`: frozen candidate and stability design contracts.\n- `evidence/`: evidence collection and data-release acceptance.\n- `features/`: feature stores, taxonomies, clusters, and candidate feature sets.\n- `hypotheses/`: pre-registered hypothesis bindings.\n- `workflow/`: baseline, candidate, stability, training, timing, and walk-forward orchestration.\n- `evaluation/`: candidate statistics, selection, promotion gates, and walk-forward acceptance.\n- `diagnostics/`: stability, decay, regimes, attribution, explanation, and portability analysis.\n- `studies/`: alpha, regime, attribution, explanation, and synthesis study composition.\n- `portfolio/`: bounded portfolio overlays.\n- `reporting/`: synthesis payloads and research summaries.\n- `artifacts/`: immutable research artifact I/O.\n- `interfaces/`: research-facing interface helpers.\n\nHistorical stage identifiers may remain inside immutable artifact schema values or governance state where changing them would break lineage. They must not be used as Python module boundaries, import paths, filenames, or CLI command names.\n''',
+        '''# Research package architecture
+
+`qlib_platform.research` is organized by durable research responsibility rather than historical experiment stage.
+
+- `contracts/`: frozen candidate and stability design contracts.
+- `evidence/`: evidence collection and data-release acceptance.
+- `features/`: feature stores, taxonomies, clusters, and candidate feature sets.
+- `hypotheses/`: pre-registered hypothesis bindings.
+- `workflow/`: baseline, candidate, stability, training, timing, and walk-forward orchestration.
+- `evaluation/`: candidate statistics, selection, promotion gates, and walk-forward acceptance.
+- `diagnostics/`: stability, decay, regimes, attribution, explanation, and portability analysis.
+- `studies/`: alpha, regime, attribution, explanation, and synthesis study composition.
+- `portfolio/`: bounded portfolio overlays.
+- `reporting/`: synthesis payloads and research summaries.
+- `artifacts/`: immutable research artifact I/O.
+- `interfaces/`: research-facing interface helpers.
+
+Historical stage identifiers may remain inside immutable artifact schema values or governance state where changing them would break lineage. They must not be used as Python module boundaries, import paths, filenames, or CLI command names.
+''',
         encoding="utf-8",
     )
 
@@ -291,7 +366,6 @@ def main() -> None:
             )
             agents.write_text(text, encoding="utf-8")
 
-    # Fail the migration if any old Python module path survives. Artifact schema strings are intentionally excluded.
     legacy_paths: list[str] = []
     legacy_import_re = re.compile(r"qlib_platform\.research\.phase[123]_")
     for path in text_files():
@@ -305,9 +379,13 @@ def main() -> None:
     if phase_files:
         raise RuntimeError(f"legacy phase runtime files remain: {phase_files}")
 
-    # One-shot migration machinery removes itself before the resulting commit.
-    (ROOT / ".github/workflows/research-refactor-once.yml").unlink(missing_ok=True)
-    Path(__file__).unlink(missing_ok=True)
+    for temporary in (
+        ROOT / ".github/workflows/research-refactor-once.yml",
+        ROOT / "scripts/research_refactor_once.py",
+        ROOT / "scripts/patch_research_refactor_once.py",
+        ROOT / "scripts/sitecustomize.py",
+    ):
+        temporary.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
