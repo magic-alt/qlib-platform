@@ -15,7 +15,7 @@ import yaml
 
 from qlib_platform.artifacts.artifact_resolver import ArtifactResolver, sha256_path
 from qlib_platform.artifacts import ArtifactType
-from qlib_platform.research.feature_store import prepare_feature_data
+from qlib_platform.research.features.store import prepare_feature_data
 from qlib_platform.datasets.dataset_resolver import pin_dataset
 from qlib_platform.artifacts.live_artifacts import payload_sha256, stamp_live_artifact
 from qlib_platform.models.model_bundle import LoadedModelBundle, load_model_bundle
@@ -25,7 +25,7 @@ from qlib_platform.data.processors import AshareUniverseFilter, ProcessInfSingle
 from qlib_platform.runtime.runtime_safety import resolve_qlib_parallel_runtime
 from qlib_platform.settings import Settings
 from qlib_platform.runtime.signal_health import SignalHealthReport, evaluate_signal_health
-from qlib_platform.research.train_select import _next_trade_date
+from qlib_platform.research.workflow.train_select import _next_trade_date
 
 
 @dataclass(frozen=True)

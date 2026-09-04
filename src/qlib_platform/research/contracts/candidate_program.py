@@ -133,7 +133,7 @@ class Phase2Contract:
         return cast(dict[str, Any], json.loads(json.dumps(payload, ensure_ascii=False, sort_keys=True)))
 
 
-def load_phase2_contract(path: str | Path) -> Phase2Contract:
+def load_candidate_contract(path: str | Path) -> Phase2Contract:
     source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Phase 2 contract is missing: {source}")
@@ -289,7 +289,7 @@ def assert_workstream_allowed(lock: Mapping[str, Any], workstream: str) -> None:
         raise PermissionError(f"Phase 1 recommendation does not authorize workstream: {workstream}")
 
 
-def load_phase2_lock(path: str | Path) -> dict[str, Any]:
+def load_candidate_lock(path: str | Path) -> dict[str, Any]:
     source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Phase 2 contract lock is missing: {source}")
@@ -305,14 +305,14 @@ def load_phase2_lock(path: str | Path) -> dict[str, Any]:
     return lock
 
 
-def write_phase2_contract_lock(
+def write_candidate_contract_lock(
     *,
     phase1_manifest: str | Path,
     contract_path: str | Path,
     output: str | Path,
 ) -> Path:
     phase1 = load_phase1_switch(phase1_manifest)
-    contract = load_phase2_contract(contract_path)
+    contract = load_candidate_contract(contract_path)
     payload: dict[str, Any] = {
         "schemaVersion": "phase2_contract_lock_v1",
         "programId": contract.program_id,

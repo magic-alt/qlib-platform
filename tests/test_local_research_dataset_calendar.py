@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.research_timing import shared_research_calendar
+from qlib_platform.research.workflow.timing import shared_research_calendar
 from qlib_platform.settings import Paths, Settings
 
 

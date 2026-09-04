@@ -7,7 +7,7 @@ import pandas as pd
 from qlib_platform.data.ingestion import Extractor
 from qlib_platform.datasets.qlib_export import _portable_dataset_dir
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.research.train_select import _sqlite_tracking_uri
+from qlib_platform.research.workflow.train_select import _sqlite_tracking_uri
 
 
 def _settings(tmp_path: Path) -> Settings:

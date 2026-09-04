@@ -16,3 +16,8 @@ Before modifying governed research behavior, identify the research phase, input 
 - Do not infer that weak research quality disproves the certified infrastructure baseline without contradictory invariant evidence.
 - Temporal or selection-semantics changes require explicit leakage and holdout-isolation tests.
 - The active Phase 3-D program permits only P3-D00 through P3-D04 diagnostic work. Do not create candidates, select/promote models, run P2-R01 through P2-R03, open the final holdout, or authorize publishing. Use the `research-diagnostics` Skill and its Phase 3-D profile for Phase 3 work.
+
+
+## Responsibility-oriented package boundary
+
+Runtime research code must live in the responsibility packages documented in `README.md`. Do not add stage-numbered modules, compatibility shims, or phase-numbered CLI commands. Historical stage identifiers are permitted only when they are immutable artifact or governance identities.

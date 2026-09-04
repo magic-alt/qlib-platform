@@ -94,7 +94,7 @@ def test_rejects_direct_historical_link_from_current_entry_point(tmp_path: Path)
         encoding="utf-8",
     )
     (tmp_path / "README.md").write_text(
-        "[Phase 1](docs/history/research/alpha_research_phase_1.md)\n",
+        "[Phase 1](docs/history/research/alpha_research_initial_synthesis.md)\n",
         encoding="utf-8",
     )
 

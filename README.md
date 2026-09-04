@@ -299,14 +299,14 @@ Use `.\scripts\run_local_research.ps1 plan ...` or add `--dry-run` before an exp
 After a completed run or matrix, use the repository-local interpreter so the summary command does not depend on shell `PATH`:
 
 ```powershell
-& $RepoPython -m qlib_platform.research.research_summary `
+& $RepoPython -m qlib_platform.research.reporting.summary `
   data\output\quickstart\<RUN>\research_matrix.json
 ```
 
 Equivalent macOS/Linux invocation:
 
 ```bash
-$RepoPython -m qlib_platform.research.research_summary \
+$RepoPython -m qlib_platform.research.reporting.summary \
   data/output/quickstart/<RUN>/research_matrix.json
 ```
 
@@ -458,7 +458,7 @@ See [Configuration](docs/configuration.md) for canonical dependency and profile 
 | `configs/pipeline.standalone.yaml` | autonomous local research; **default** | No | only for downloads |
 | `configs/pipeline.integrated.yaml` | consume an external immutable DataRelease | Yes | No |
 | `configs/pipeline.yaml` | integrated canonical/base config | Yes | No |
-| `configs/pipeline_phase2.yaml` | frozen governed Phase 2/3 profile | depends on release | No |
+| `configs/pipeline_candidate_research.yaml` | frozen governed Phase 2/3 profile | depends on release | No |
 | `configs/pipeline_tushare_dev.yaml` | TuShare development | No | Yes |
 | `configs/pipeline_lean_mysql.yaml` | legacy migration compatibility | legacy source | No |
 

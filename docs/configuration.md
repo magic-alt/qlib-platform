@@ -28,7 +28,7 @@ The CLI default is `configs/pipeline.standalone.yaml`. A workflow that consumes 
 
 - Omit `--config` only when the standalone default is intended.
 - Use `configs/pipeline.integrated.yaml` for external Platform DataRelease verification/materialization.
-- Use `configs/pipeline_phase2.yaml` only where the frozen Phase 2/3 protocol explicitly requires it.
+- Use `configs/pipeline_candidate_research.yaml` only where the frozen Phase 2/3 protocol explicitly requires it.
 - Do not present `configs/pipeline.yaml` as the universal default.
 - After DataRelease materialization, pin a DatasetVersion ID/alias for research and inference. Do not pass a DataRelease ID to `--dataset-ref`.
 - A config change that alters governed data/model/portfolio semantics creates a new research identity; it does not rewrite prior evidence.

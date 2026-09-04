@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from qlib_platform.lineage import sha256_json
-from qlib_platform.research.research_experiment import ResearchExperimentSpec
+from qlib_platform.research.workflow.experiment import ResearchExperimentSpec
 from qlib_platform.data.store import sha256_file
 
 

@@ -6,12 +6,12 @@ from typing import Any, Mapping, Sequence
 
 from qlib_platform.lineage import sha256_json
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.artifact_io import write_immutable_json
+from qlib_platform.research.artifacts.io import write_immutable_json
 from qlib_platform.research.contracts.candidate_program import (
     MultipleTestingSpec,
     RobustnessSpec,
     assert_workstream_allowed,
-    load_phase2_lock,
+    load_candidate_lock,
 )
 from qlib_platform.research.evaluation.candidate_statistics import evaluate_candidate
 from qlib_platform.research.features.candidate_sets import EXPERIMENT_MATRIX, feature_set
@@ -28,7 +28,7 @@ _XGB_GRID = (
     {"max_depth": 10, "eta": 0.05, "min_child_weight": 10},
 )
 
-PHASE2_INCREMENTAL_CANDIDATE_FAMILY = (
+INCREMENTAL_CANDIDATE_FAMILY = (
     "H001",
     "H002",
     "H003",
@@ -43,9 +43,9 @@ PHASE2_INCREMENTAL_CANDIDATE_FAMILY = (
 )
 
 
-def write_phase2_experiment_plan(*, contract_lock: str | Path, output: str | Path) -> Path:
+def write_candidate_experiment_plan(*, contract_lock: str | Path, output: str | Path) -> Path:
     source = Path(contract_lock).expanduser().resolve()
-    lock = load_phase2_lock(source)
+    lock = load_candidate_lock(source)
     route = lock["recommendationRoute"]
     recommendation = str(route["primaryRecommendation"])
     allowed = tuple(str(value) for value in route["allowedWorkstreams"])
@@ -148,7 +148,7 @@ def write_incremental_acceptance(
     output: str | Path,
 ) -> Path:
     source = Path(contract_lock).expanduser().resolve()
-    lock = load_phase2_lock(source)
+    lock = load_candidate_lock(source)
     assert_workstream_allowed(lock, "INCREMENTAL_ACCEPTANCE")
     collector_binding: dict[str, object] | None = None
     if candidate_metrics is not None:
@@ -234,7 +234,7 @@ def write_incremental_acceptance(
         )
     if collector_binding is not None:
         actual_family = tuple(sorted(seen))
-        if actual_family != PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+        if actual_family != INCREMENTAL_CANDIDATE_FAMILY:
             raise ValueError(
                 "Phase 2 candidate metrics must contain exactly the frozen incremental candidate family"
             )

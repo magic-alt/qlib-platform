@@ -22,7 +22,7 @@ This page documents the operational contract of the most important commands. `--
 | Class | Meaning | Examples |
 | --- | --- | --- |
 | Read-only | does not intentionally publish/modify governed state | `status`, `health ...`, `release list`, `model-status` |
-| Verification-first | reads payloads and may write an explicit verification/report artifact | `release verify`, `dataset-verify`, `project-audit`, `research-audit`, `phase3-portable-verify` |
+| Verification-first | reads payloads and may write an explicit verification/report artifact | `release verify`, `dataset-verify`, `project-audit`, `research-audit`, `stability-portable-verify` |
 | Local state-changing | publishes data/artifacts or changes local registry/deployment/ops state | `dataset-build`, `dataset-promote`, `model-refit`, `model-deploy`, `live-inference`, `daily-signal-run` |
 | External delivery/integration | may send or register immutable artifacts outside this process | `outbox drain`, `outbox worker`, `lean-register` |
 
@@ -81,13 +81,13 @@ These commands create, register or deliver evidence. Confirm immutable inputs an
 
 Phase 3-D exposes:
 
-- `phase3-validate`;
-- `phase3-plan`;
-- `phase3-diagnose`;
-- `phase3-portable-export`;
-- `phase3-portable-verify`.
+- `stability-validate`;
+- `stability-plan`;
+- `stability-diagnose`;
+- `stability-portable-export`;
+- `stability-portable-verify`.
 
-`phase3-validate`, `phase3-plan`, `phase3-diagnose` and `phase3-portable-export` write explicitly named evidence. `phase3-portable-verify` is the cross-machine read-only verifier. Phase 3-D exposes no candidate-selection, final-holdout-open or publishing command.
+`stability-validate`, `stability-plan`, `stability-diagnose` and `stability-portable-export` write explicitly named evidence. `stability-portable-verify` is the cross-machine read-only verifier. Phase 3-D exposes no candidate-selection, final-holdout-open or publishing command.
 
 ## Local model lifecycle
 

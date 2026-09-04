@@ -35,7 +35,7 @@ hold_thresh          1
 risk_degree          0.95
 ```
 
-The Phase 2 research asset `configs/portfolio/rank_buffer_phase2_v1.yaml` is not modified; this file is a separate lineage.
+The Phase 2 research asset `configs/portfolio/rank_buffer_candidate_v1.yaml` is not modified; this file is a separate lineage.
 
 ## What is wired up
 

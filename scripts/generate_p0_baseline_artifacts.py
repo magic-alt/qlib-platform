@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from qlib_platform.backtesting.backtest_report import write_backtest_report
-from qlib_platform.research.p0_baseline import write_p0_artifacts
+from qlib_platform.research.workflow.baseline import write_p0_artifacts
 from qlib_platform.settings import Paths, Settings
 
 

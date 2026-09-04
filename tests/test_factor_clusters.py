@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 
 from qlib_platform.lineage import sha256_json
-from qlib_platform.research.factor_clusters import (
+from qlib_platform.research.features.clusters import (
     build_feature_clusters,
     mean_daily_rank_correlation,
 )
-from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.features.taxonomy import FactorTaxonomy, FactorTaxonomyEntry
 
 
 def _taxonomy() -> FactorTaxonomy:

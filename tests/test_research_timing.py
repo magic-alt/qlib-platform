@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from qlib_platform.research.research_timing import shared_research_calendar
+from qlib_platform.research.workflow.timing import shared_research_calendar
 from qlib_platform.settings import Paths, Settings
 
 

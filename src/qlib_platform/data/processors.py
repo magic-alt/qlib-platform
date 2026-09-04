@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from qlib.data.dataset.processor import Processor
 
-from qlib_platform.research.phase2_features import BENCHMARK_FAMILIES, INTERACTIONS, ORIENTATIONS, feature_set
+from qlib_platform.research.features.candidate_sets import BENCHMARK_FAMILIES, INTERACTIONS, ORIENTATIONS, feature_set
 
 
 class AshareUniverseFilter(Processor):

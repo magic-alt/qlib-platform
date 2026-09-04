@@ -7,7 +7,7 @@
 # ranked within entryRank.
 #
 # This is a NEW research asset. The frozen Phase 2 config
-# (configs/portfolio/rank_buffer_phase2_v1.yaml) is intentionally unchanged.
+# (configs/portfolio/rank_buffer_candidate_v1.yaml) is intentionally unchanged.
 schema: rank_buffer_alpha158_v1
 
 targetSize: 10

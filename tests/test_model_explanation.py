@@ -11,7 +11,7 @@ import pytest
 from qlib_platform.cli import parser
 from qlib_platform.lineage import sha256_json
 from qlib_platform.data.processor_state import processor_state_manifest
-from qlib_platform.research.explanation_study import (
+from qlib_platform.research.studies.explanation import (
     FoldModelInput,
     _materialize_bundle,
     _model_scores_and_shap,
@@ -19,8 +19,8 @@ from qlib_platform.research.explanation_study import (
     _resolve_recorder_artifacts,
     _universe_filter,
 )
-from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
-from qlib_platform.research.model_explanation import (
+from qlib_platform.research.features.taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.diagnostics.model_explanation import (
     derive_explanation_stability,
     derive_model_explanation_summary,
     derive_ridge_importance,

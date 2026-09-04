@@ -12,10 +12,10 @@ import yaml
 from qlib_platform.lineage import git_revision, sha256_json
 from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.phase2_features import EXPERIMENT_MATRIX, feature_set
-from qlib_platform.research.phase2_data_acceptance import REQUIRED_V2_ACCEPTANCE_CHECKS
-from qlib_platform.research.phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
-from qlib_platform.research.regime import load_regime_spec
+from qlib_platform.research.features.candidate_sets import EXPERIMENT_MATRIX, feature_set
+from qlib_platform.research.evidence.data_acceptance import REQUIRED_V2_ACCEPTANCE_CHECKS
+from qlib_platform.research.workflow.candidate_program import INCREMENTAL_CANDIDATE_FAMILY
+from qlib_platform.research.diagnostics.regimes import load_regime_spec
 
 
 PHASE3_SCHEMA = "ashare_phase3_v1"
@@ -114,7 +114,7 @@ class Phase3Contract:
         return cast(dict[str, Any], json.loads(json.dumps(payload, ensure_ascii=False, sort_keys=True)))
 
 
-def load_phase3_contract(path: str | Path) -> Phase3Contract:
+def load_stability_contract(path: str | Path) -> Phase3Contract:
     source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Phase 3 contract is missing: {source}")
@@ -253,7 +253,7 @@ def load_phase3_contract(path: str | Path) -> Phase3Contract:
     )
 
 
-def _validate_phase2_acceptance(path: Path, predecessor_program: str) -> dict[str, Any]:
+def _validate_candidate_acceptance(path: Path, predecessor_program: str) -> dict[str, Any]:
     acceptance = _load_json(path, "Phase 2 acceptance")
     if acceptance.get("schemaVersion") != PHASE2_ACCEPTANCE_SCHEMA:
         raise ValueError(f"unsupported Phase 2 acceptance: {acceptance.get('schemaVersion')}")
@@ -268,8 +268,8 @@ def _validate_phase2_acceptance(path: Path, predecessor_program: str) -> dict[st
     candidate_ids = tuple(sorted(str(item.get("candidateId") or "") for item in candidate_rows))
     hypothesis_ids = tuple(sorted(str(item.get("hypothesisId") or "") for item in candidate_rows))
     if (
-        candidate_ids != PHASE2_INCREMENTAL_CANDIDATE_FAMILY
-        or hypothesis_ids != PHASE2_INCREMENTAL_CANDIDATE_FAMILY
+        candidate_ids != INCREMENTAL_CANDIDATE_FAMILY
+        or hypothesis_ids != INCREMENTAL_CANDIDATE_FAMILY
         or any(item.get("candidateId") != item.get("hypothesisId") for item in candidate_rows)
     ):
         raise ValueError("Phase 3-D requires exactly the frozen Phase 2 candidate family")
@@ -286,7 +286,7 @@ def _validate_phase2_acceptance(path: Path, predecessor_program: str) -> dict[st
     return acceptance
 
 
-def _validate_phase2_acceptance_provenance(
+def _validate_candidate_acceptance_provenance(
     acceptance_path: Path,
     acceptance: Mapping[str, Any],
     evidence_path: Path,
@@ -327,7 +327,7 @@ def _validate_phase2_acceptance_provenance(
             for raw in _sequence(acceptance.get("candidates"), "Phase 2 acceptance candidates")
         )
     }
-    if tuple(sorted(collector_candidates)) != PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+    if tuple(sorted(collector_candidates)) != INCREMENTAL_CANDIDATE_FAMILY:
         raise ValueError("Phase 2 collector does not contain the frozen candidate family")
     frozen_fields = (
         "candidateId",
@@ -339,7 +339,7 @@ def _validate_phase2_acceptance_provenance(
         "portfolio",
         "regimeRule",
     )
-    for candidate_id in PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+    for candidate_id in INCREMENTAL_CANDIDATE_FAMILY:
         collector_row = collector_candidates[candidate_id]
         acceptance_row = acceptance_candidates[candidate_id]
         if any(collector_row.get(field) != acceptance_row.get(field) for field in frozen_fields):
@@ -571,7 +571,7 @@ def _anchor_lineage(
     return result
 
 
-def load_phase3_lock(path: str | Path) -> dict[str, Any]:
+def load_stability_lock(path: str | Path) -> dict[str, Any]:
     source = Path(path).expanduser().resolve()
     lock = _load_json(source, "Phase 3 design lock")
     if lock.get("schemaVersion") != PHASE3_LOCK_SCHEMA:
@@ -597,26 +597,26 @@ def load_phase3_lock(path: str | Path) -> dict[str, Any]:
     return lock
 
 
-def write_phase3_contract_lock(
+def write_stability_contract_lock(
     *,
-    phase2_acceptance: str | Path,
+    candidate_acceptance: str | Path,
     phase2_evidence: str | Path,
-    phase2_data_acceptance: str | Path,
+    candidate_data_acceptance: str | Path,
     contract_path: str | Path,
     output: str | Path,
 ) -> Path:
-    acceptance_path = Path(phase2_acceptance).expanduser().resolve()
+    acceptance_path = Path(candidate_acceptance).expanduser().resolve()
     evidence_path = Path(phase2_evidence).expanduser().resolve()
-    data_acceptance_path = Path(phase2_data_acceptance).expanduser().resolve()
+    data_acceptance_path = Path(candidate_data_acceptance).expanduser().resolve()
     contract_source = Path(contract_path).expanduser().resolve()
-    contract = load_phase3_contract(contract_source)
-    acceptance = _validate_phase2_acceptance(acceptance_path, contract.predecessor_program)
+    contract = load_stability_contract(contract_source)
+    acceptance = _validate_candidate_acceptance(acceptance_path, contract.predecessor_program)
     evidence = _load_json(evidence_path, "Phase 2 evidence index")
     if evidence.get("schemaVersion") != PHASE2_EVIDENCE_SCHEMA:
         raise ValueError(f"unsupported Phase 2 evidence index: {evidence.get('schemaVersion')}")
     if evidence.get("finalHoldout") is not False:
         raise ValueError("Phase 2 evidence index must set finalHoldout=false")
-    candidate_metrics_binding = _validate_phase2_acceptance_provenance(
+    candidate_metrics_binding = _validate_candidate_acceptance_provenance(
         acceptance_path, acceptance, evidence_path
     )
     contract_lock_sha = str(evidence.get("contractLockSha256") or "")
