@@ -41,6 +41,7 @@ class DatasetSpec:
         materialized_release = str(
             semantic.get("data_release_id") or manifest.get("data_release_id") or ""
         ).strip()
+        materialized_version = str(manifest.get("version_id") or "").strip()
         materialized_source = str(semantic.get("source_type") or "").strip()
         source = (
             materialized_source
@@ -58,7 +59,11 @@ class DatasetSpec:
             if source == "lean_mysql"
             else universe.get("instruments")
         )
-        dataset_id = materialized_release or (
+        # Prefer the immutable upstream DataRelease when present. Standalone local
+        # DatasetVersions may legitimately have no DataRelease lineage; in that case
+        # bind research identity to the immutable manifest version_id rather than a
+        # mutable/profile-level label such as qlib.dataset_version="local".
+        dataset_id = materialized_release or materialized_version or (
             platform_release.get("id") if source == "platform_release" else None
         )
         name = str(universe.get("label") or configured or "all")
