@@ -747,12 +747,16 @@ def verify_stability_portable_evidence(package_root: str | Path) -> dict[str, An
         raise ValueError(
             "portable verification requires the clean source-code commit frozen by the design lock"
         )
-    implementation_root = Path(__file__).resolve().parent
+    implementation_root = Path(__file__).resolve().parents[1]
     for name, expected in _mapping(
         lineage.get("implementationSha256"), "Phase 3 implementation hashes"
     ).items():
-        target = implementation_root / str(name)
-        if not target.is_file() or sha256_file(target) != expected:
+        relative = Path(str(name))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"portable verification implementation path is unsafe: {name}")
+        target = (implementation_root / relative).resolve()
+        _inside(implementation_root, target, f"Phase 3 implementation {name}")
+        if target.is_symlink() or not target.is_file() or sha256_file(target) != expected:
             raise ValueError(f"portable verification implementation drift: {name}")
 
     contract = load_stability_contract(_package_input(manifest, payloads, "phase3Contract"))
