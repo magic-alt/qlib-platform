@@ -99,6 +99,19 @@ class Extractor(_LegacyExtractor):
                 )
             )
 
+    def open_dates(self, start_date: str, end_date: str) -> list[str]:
+        """Return open market dates in the canonical ``YYYYMMDD`` partition format."""
+
+        path = self.settings.paths.metadata / "trade_calendar.parquet"
+        if not path.exists():
+            self.fetch_calendar(start_date, end_date)
+        frame = pd.read_parquet(path)
+        calendar_dates = pd.to_datetime(frame["cal_date"], errors="raise").dt.normalize()
+        start = pd.Timestamp(start_date).normalize()
+        end = pd.Timestamp(end_date).normalize()
+        mask = calendar_dates.between(start, end) & frame["is_open"].astype(int).eq(1)
+        return sorted(calendar_dates.loc[mask].dt.strftime("%Y%m%d").unique().tolist())
+
     def _backfill_lean_canonical(
         self,
         dates: list[str],
