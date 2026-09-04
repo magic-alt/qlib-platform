@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 from loguru import logger
 
-from .client import RetryPolicy, TushareClient
+from .client import DataSourceClient, RetryPolicy, TushareClient
 from .mysql_source import (
     MysqlClient,
     build_connection_kwargs,
@@ -85,7 +85,7 @@ class Extractor:
         self.settings = settings
         self.store = PartitionStore(settings.paths.raw)
         self.source_is_mysql = self._is_mysql_source(settings)
-        self.client: TushareClient | MysqlClient
+        self.client: DataSourceClient
         optional = cfg.get("optional_endpoints", {})
         mysql_endpoint_cfg: dict[str, dict[str, Any]] = {}
 
@@ -111,121 +111,75 @@ class Extractor:
                 retry_policy=policy,
             )
         else:
-            self.client = TushareClient(
-                settings.require_token(),
-                calls_per_minute=calls,
-                retry_policy=policy,
-            )
-        self.endpoints = [
-            Endpoint(
-                "daily",
-                DAILY_FIELDS,
-                True,
-                enabled=(bool(optional.get("daily", True)) if isinstance(optional, Mapping) else True),
-            ),
-            Endpoint(
-                "adj_factor",
-                ADJ_FIELDS,
-                True,
-                enabled=(bool(optional.get("adj_factor", True)) if isinstance(optional, Mapping) else True),
-            ),
-            Endpoint(
-                "daily_basic",
-                BASIC_FIELDS,
-                True,
-                enabled=(bool(optional.get("daily_basic", True)) if isinstance(optional, Mapping) else True),
-            ),
-            Endpoint(
-                "moneyflow",
-                MONEYFLOW_FIELDS,
-                False,
-                enabled=(bool(optional.get("moneyflow", True)) if isinstance(optional, Mapping) else True),
-            ),
-            Endpoint(
-                "stk_limit",
-                LIMIT_FIELDS,
-                False,
-                enabled=(bool(optional.get("stk_limit", True)) if isinstance(optional, Mapping) else True),
-            ),
-            Endpoint(
-                "suspend_d",
-                SUSPEND_FIELDS,
-                False,
-                enabled=(bool(optional.get("suspend_d", True)) if isinstance(optional, Mapping) else True),
-            ),
-            Endpoint(
-                "stock_st",
-                ST_FIELDS,
-                False,
-                enabled=(bool(optional.get("stock_st", True)) if isinstance(optional, Mapping) else True),
-            ),
+            self.client = TushareClient(settings.tushare_token, calls, policy)
+        endpoints = [
+            Endpoint("daily", DAILY_FIELDS, True, enabled=bool(optional.get("daily", True))),
+            Endpoint("adj_factor", ADJ_FIELDS, True, enabled=bool(optional.get("adj_factor", True))),
+            Endpoint("daily_basic", BASIC_FIELDS, True, enabled=bool(optional.get("daily_basic", True))),
+            Endpoint("moneyflow", MONEYFLOW_FIELDS, False, enabled=bool(optional.get("moneyflow", True))),
+            Endpoint("stk_limit", LIMIT_FIELDS, False, enabled=bool(optional.get("stk_limit", True))),
+            Endpoint("suspend_d", SUSPEND_FIELDS, False, enabled=bool(optional.get("suspend_d", True))),
+            Endpoint("stock_st", ST_FIELDS, False, enabled=bool(optional.get("stock_st", True))),
         ]
-
-        if self.source_is_mysql and mysql_endpoint_cfg:
-            for idx, endpoint in enumerate(self.endpoints):
-                configured = mysql_endpoint_cfg.get(endpoint.name)
-                if configured:
-                    self.endpoints[idx] = Endpoint(
-                        endpoint.name,
-                        endpoint.fields,
-                        bool(configured["required"]),
-                        bool(configured.get("enabled", endpoint.enabled)),
-                    )
+        if self.source_is_mysql:
+            endpoints = [
+                Endpoint(
+                    endpoint.name,
+                    endpoint.fields,
+                    bool(mysql_endpoint_cfg.get(endpoint.name, {}).get("required", endpoint.required)),
+                    bool(mysql_endpoint_cfg.get(endpoint.name, {}).get("enabled", endpoint.enabled)),
+                )
+                for endpoint in endpoints
+            ]
+        self.endpoints = endpoints
 
     def fetch_stock_master(self) -> pd.DataFrame:
-        fields = (
-            "ts_code,symbol,name,area,industry,market,exchange,list_status,list_date,delist_date,is_hs,"
-            "act_name,act_ent_type"
-        )
         frames = []
-        for status in ("L", "D", "P", "G"):
-            df = self.client.call(
-                "stock_basic", fields=fields, required=True, exchange="", list_status=status
+        for status in ("L", "D"):
+            frame = self.client.call(
+                "stock_basic",
+                required=True,
+                list_status=status,
+                fields=(
+                    "ts_code,symbol,name,area,industry,market,exchange,list_status,list_date,delist_date,"
+                    "is_hs,act_name,act_ent_type"
+                ),
             )
-            if not df.empty:
-                frames.append(df)
-        if not frames:
-            raise RuntimeError("stock_basic returned no rows for all list statuses")
-        master = pd.concat(frames, ignore_index=True).drop_duplicates("ts_code", keep="last")
-        master["list_date"] = pd.to_datetime(master["list_date"], errors="coerce")
-        master["delist_date"] = pd.to_datetime(master["delist_date"], errors="coerce")
+            frames.append(frame)
+        result = (
+            pd.concat(frames, ignore_index=True)
+            .drop_duplicates("ts_code")
+            .sort_values("ts_code")
+            .reset_index(drop=True)
+        )
         path = self.settings.paths.metadata / "stock_master.parquet"
-        _write_parquet_atomic(master, path)
-        logger.info("Saved stock master: {} rows -> {}", len(master), path)
-        return master
+        _write_parquet_atomic(result, path)
+        logger.info("Saved stock master: {} rows -> {}", len(result), path)
+        return result
 
     def fetch_calendar(self, start_date: str, end_date: str) -> pd.DataFrame:
-        cal = self.client.call(
+        frame = self.client.call(
             "trade_cal",
             required=True,
-            exchange="SSE",
+            exchange="",
             start_date=start_date,
             end_date=end_date,
             fields="exchange,cal_date,is_open,pretrade_date",
         )
-        if cal.empty:
-            raise RuntimeError(f"trade_cal returned no rows for {start_date}..{end_date}")
-        cal["cal_date"] = pd.to_datetime(cal["cal_date"], errors="raise")
-        cal["is_open"] = cal["is_open"].astype(int)
+        frame = frame.sort_values(["cal_date", "exchange"]).drop_duplicates(["cal_date", "exchange"])
         path = self.settings.paths.metadata / "trade_calendar.parquet"
-        _write_parquet_atomic(cal, path)
-        logger.info("Saved trade calendar: {} rows -> {}", len(cal), path)
-        return cal
+        _write_parquet_atomic(frame, path)
+        logger.info("Saved calendar: {} rows -> {}", len(frame), path)
+        return frame
 
     def open_dates(self, start_date: str, end_date: str) -> list[str]:
         path = self.settings.paths.metadata / "trade_calendar.parquet"
-        cal = pd.read_parquet(path) if path.exists() else self.fetch_calendar(start_date, end_date)
-        start = pd.Timestamp(start_date)
-        end = pd.Timestamp(end_date)
-        available_start = pd.to_datetime(cal["cal_date"]).min()
-        available_end = pd.to_datetime(cal["cal_date"]).max()
-        if start < available_start or end > available_end:
-            cal = self.fetch_calendar(
-                min(start, available_start).strftime("%Y%m%d"), max(end, available_end).strftime("%Y%m%d")
-            )
-        mask = (cal["is_open"] == 1) & (cal["cal_date"] >= start) & (cal["cal_date"] <= end)
-        dates = pd.to_datetime(cal.loc[mask, "cal_date"], errors="raise")
-        return [str(value) for value in dates.drop_duplicates().sort_values().dt.strftime("%Y%m%d").tolist()]
+        if not path.exists():
+            self.fetch_calendar(start_date, end_date)
+        frame = pd.read_parquet(path)
+        frame = frame[(frame["cal_date"] >= start_date) & (frame["cal_date"] <= end_date)]
+        frame = frame[frame["is_open"].astype(int) == 1]
+        return sorted(frame["cal_date"].astype(str).unique().tolist())
 
     def fetch_day(self, trade_date: str, force: bool = False) -> None:
         fetched: dict[str, pd.DataFrame] = {}
@@ -235,28 +189,23 @@ class Extractor:
                     endpoint.name,
                     trade_date,
                     status="disabled",
-                    metadata={"api": endpoint.name, "reason": "disabled_by_config"},
+                    metadata={"api": endpoint.name, "trade_date": trade_date, "reason": "disabled_by_config"},
                 )
                 continue
             if not force and self.store.is_terminal(endpoint.name, trade_date):
-                fetched[endpoint.name] = self.store.read(endpoint.name, trade_date)
                 continue
-
-            params: dict[str, str] = {"trade_date": trade_date}
-            if endpoint.name == "suspend_d":
-                params["suspend_type"] = "S"
             result = self.client.fetch(
                 endpoint.name,
                 fields=endpoint.fields,
                 required=endpoint.required,
-                **params,
+                trade_date=trade_date,
             )
             metadata = {
                 "api": endpoint.name,
                 "trade_date": trade_date,
                 "attempts": result.attempts,
                 "error": result.error,
-                "params": params,
+                "params": {"trade_date": trade_date},
             }
             if result.succeeded:
                 if endpoint.required and result.data.empty:
