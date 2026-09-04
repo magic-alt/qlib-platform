@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+import qlib_platform.research.workflow.quickstart as quickstart_module
+from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired
 from qlib_platform.research.workflow.quickstart import (
     MATRIX_ALPHA_PACKS,
     MATRIX_MODELS,
@@ -158,3 +160,33 @@ def test_last_json_ignores_logs() -> None:
     assert _last_json('training...\n{"manifest":"/tmp/run/manifest.json"}\n') == {
         "manifest": "/tmp/run/manifest.json"
     }
+
+
+def test_run_plan_surfaces_release_selection_instead_of_unknown_dataset_traceback(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = Path(__file__).parents[1] / "configs" / "pipeline.standalone.yaml"
+    settings = Settings.load(config, create_dirs=False)
+    args = parser().parse_args(["run"])
+    root = tmp_path / "run"
+    plan = {"datasetRef": settings.qlib_dataset_ref, "mode": args.mode, "jobs": []}
+
+    def missing_dataset(*_args, **_kwargs):
+        raise KeyError("unknown dataset reference: standalone-current")
+
+    def ambiguous_release(_settings):
+        raise ReleaseSelectionRequired(
+            "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
+        )
+
+    monkeypatch.setattr(quickstart_module, "_verify", missing_dataset)
+    monkeypatch.setattr(quickstart_module, "resolve_source", ambiguous_release)
+
+    code = quickstart_module.run_plan(settings, args, plan, root)
+
+    assert code == 2
+    assert plan["status"] == "RELEASE_SELECTION_REQUIRED"
+    assert plan["recommendedCommand"] == "tq release list"
+    assert plan["selectionCommand"].endswith("--alias research-release-current")
+    assert plan["retryCommand"] == "tq-research prepare --source auto"
+    assert (root / "research_matrix.json").is_file()
