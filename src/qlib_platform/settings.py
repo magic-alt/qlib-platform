@@ -82,9 +82,10 @@ class Paths:
 
     @classmethod
     def from_root(cls, root: Path) -> "Paths":
+        bronze = root / "bronze" / "market"
         return cls(
             root=root,
-            raw=root / "bronze" / "tushare" / "current",
+            raw=bronze / "current",
             curated=root / "silver" / "daily" / "current",
             staging_full=root / "gold" / "qlib_staging" / "full",
             staging_update=root / "gold" / "qlib_staging" / "update",
@@ -94,7 +95,7 @@ class Paths:
             quality=root / "quality",
             state=root / "state",
             models=root / "models",
-            bronze=root / "bronze" / "tushare",
+            bronze=bronze,
             silver=root / "silver",
             gold=root / "gold",
             registry=root / "registry",
@@ -102,6 +103,16 @@ class Paths:
             legacy=root / ".legacy",
             migration=root / ".migration",
         )
+
+    @property
+    def legacy_vendor_bronze(self) -> Path:
+        """Pre-0.4 provider-coupled bronze root retained only for migration/readback."""
+
+        return self.root / "bronze" / "tushare"
+
+    @property
+    def legacy_vendor_raw(self) -> Path:
+        return self.legacy_vendor_bronze / "current"
 
     def mkdirs(self) -> None:
         for path in self.__dict__.values():
