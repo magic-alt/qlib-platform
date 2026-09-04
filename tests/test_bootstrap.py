@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from qlib_platform.bootstrap import bootstrap
-from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired
+from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired, SourceResolution
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
 from qlib_platform.settings import Paths, Settings
 
 
@@ -74,3 +77,58 @@ def test_tushare_bootstrap_builds_all_required_release_inputs(tmp_path: Path, mo
     assert ("sync-dividends", "--bootstrap") in calls
     assert ("sync-industry", "--end", "20260824") in calls
     assert calls[-1] == ("dataset-build", "--start", "20260101", "--end", "20260824")
+
+
+def test_auto_bootstrap_recovers_dataset_alias_after_explicit_release_selection(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = _settings(tmp_path)
+    registry = DatasetRegistry(settings.registry_path)
+    release_id = "ds_selected"
+    release_manifest = tmp_path / "release.json"
+    release_manifest.write_text("{}", encoding="utf-8")
+    registry.register_release(
+        SimpleNamespace(
+            data_release_id=release_id,
+            profile="ashare_qlib_import_v1",
+            manifest_path=release_manifest,
+            manifest_sha256="0" * 64,
+            manifest={},
+            coverage={},
+        ),
+        governance_level="exploratory",
+    )
+    data_path = tmp_path / "dataset"
+    data_path.mkdir()
+    manifest_path = data_path / "dataset_manifest.json"
+    manifest = {
+        "schema_version": "3.0",
+        "version_id": "dv_selected",
+        "dataset_name": settings.qlib_dataset_name,
+        "layer": "qlib",
+        "status": "VALIDATED",
+        "data_path": str(data_path),
+        "data_release_id": release_id,
+        "coverage": {},
+        "partitions": [],
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    registry.register_dataset(manifest, manifest_path)
+    registry.promote_release("research-release-current", release_id)
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap.resolve_source",
+        lambda _settings: SourceResolution(
+            "MATERIALIZE_REQUIRED",
+            "data_release",
+            release_id,
+            action="dataset-build",
+        ),
+    )
+
+    result = bootstrap(settings, source="auto")
+
+    assert result["status"] == "READY"
+    assert result["aliasRecovered"] is True
+    assert result["dataReleaseId"] == release_id
+    assert result["datasetVersionId"] == "dv_selected"
+    assert registry.resolve(settings.qlib_dataset_ref).version_id == "dv_selected"

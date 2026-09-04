@@ -122,6 +122,17 @@ def _dataset_ref(settings: Settings, requested: str | None) -> str:
     return str(requested or settings.qlib_dataset_ref)
 
 
+def _release_selection_payload(settings: Settings, error: Exception) -> dict[str, Any]:
+    return {
+        "status": "RELEASE_SELECTION_REQUIRED",
+        "error": str(error),
+        "recommendedCommand": "tq release list",
+        "selectionCommand": "tq release promote <DATA_RELEASE_ID> --alias research-release-current",
+        "datasetRecoveryCommand": f"tq registry-rebuild --root {settings.paths.root}",
+        "retryCommand": "tq-research prepare --source auto",
+    }
+
+
 def _verify(settings: Settings, reference: str, args: argparse.Namespace) -> dict[str, Any]:
     resolved = resolve_dataset(settings, reference, allow_legacy=False)
     evidence: dict[str, object] = {}
@@ -192,11 +203,7 @@ def doctor(settings: Settings, args: argparse.Namespace) -> dict[str, Any]:
     try:
         source = resolve_source(settings)
     except ReleaseSelectionRequired as exc:
-        return {
-            "status": "RELEASE_SELECTION_REQUIRED",
-            "error": str(exc),
-            "recommendedCommand": "tq release list",
-        }
+        return _release_selection_payload(settings, exc)
     payload: dict[str, Any] = {
         "status": source.status,
         "source": source.source,
@@ -230,7 +237,17 @@ def prepare(settings: Settings, args: argparse.Namespace) -> dict[str, Any]:
         end=args.end,
     )
     if str(result.get("status")) != "READY":
-        return {"status": result.get("status", "NOT_READY"), "bootstrap": result}
+        payload: dict[str, Any] = {"status": result.get("status", "NOT_READY"), "bootstrap": result}
+        for key in (
+            "error",
+            "recommendedCommand",
+            "selectionCommand",
+            "datasetRecoveryCommand",
+            "retryCommand",
+        ):
+            if key in result:
+                payload[key] = result[key]
+        return payload
     return {
         "status": "READY",
         "bootstrap": result,
@@ -495,7 +512,28 @@ def build_plan(settings: Settings, args: argparse.Namespace, root: Path) -> dict
 
 
 def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any], root: Path) -> int:
-    dataset = _verify(settings, str(plan["datasetRef"]), args)
+    try:
+        dataset = _verify(settings, str(plan["datasetRef"]), args)
+    except KeyError as exc:
+        if str(plan["datasetRef"]) != settings.qlib_dataset_ref:
+            raise
+        try:
+            source = resolve_source(settings)
+        except ReleaseSelectionRequired as selection_error:
+            plan.update(_release_selection_payload(settings, selection_error))
+        else:
+            plan.update(
+                status="DATASET_PREPARATION_REQUIRED",
+                error=str(exc),
+                recommendedCommand="tq-research prepare --source auto",
+            )
+            if source.reference:
+                plan["sourceReference"] = source.reference
+            if source.action:
+                plan["sourceAction"] = source.action
+        plan["failureCount"] = 1
+        _write_matrix(root, plan)
+        return 2
     bound = replace(settings, qlib_data_uri=Path(str(dataset["path"])))
     for alpha in {str(job["alphaPack"]) for job in plan["jobs"]}:
         assert_alpha_pack_compatible(bound, ALPHA_PACKS[alpha])
@@ -629,17 +667,24 @@ def main() -> int:
         return 0
     code = run_plan(settings, args, plan, root)
     print(render_terminal_summary(plan, root))
-    print(
-        json.dumps(
-            {
-                "status": plan["status"],
-                "output": str(root),
-                "matrix": str(root / "research_matrix.json"),
-                "summary": str(root / "research_matrix.md"),
-            },
-            ensure_ascii=False,
-        )
-    )
+    result_payload: dict[str, Any] = {
+        "status": plan["status"],
+        "output": str(root),
+        "matrix": str(root / "research_matrix.json"),
+        "summary": str(root / "research_matrix.md"),
+    }
+    for key in (
+        "error",
+        "recommendedCommand",
+        "selectionCommand",
+        "datasetRecoveryCommand",
+        "retryCommand",
+        "sourceReference",
+        "sourceAction",
+    ):
+        if key in plan:
+            result_payload[key] = plan[key]
+    print(json.dumps(result_payload, ensure_ascii=False))
     return code
 
 

@@ -21,6 +21,46 @@ def _run_cli(settings: Settings, *args: str) -> None:
     )
 
 
+def _recover_selected_dataset_alias(settings: Settings, release_id: str) -> dict[str, Any] | None:
+    """Recover a missing DatasetVersion alias after an explicit release selection.
+
+    This deliberately does not guess between historical DataReleases. Recovery is only
+    allowed when ``research-release-current`` already points at ``release_id`` and one
+    usable DatasetVersion is bound to that release for the configured dataset name.
+    """
+
+    from qlib_platform.datasets.dataset_registry import DatasetRegistry
+
+    registry = DatasetRegistry(settings.registry_path)
+    if registry.resolve_release_alias("research-release-current") != release_id:
+        return None
+    candidates = [
+        item
+        for item in registry.list_versions(settings.qlib_dataset_name)
+        if item.data_release_id == release_id
+        and item.status in {"VALIDATED", "PUBLISHED"}
+        and item.manifest_path.is_file()
+        and item.data_path.is_dir()
+    ]
+    if len(candidates) != 1:
+        return None
+    dataset = candidates[0]
+    registry.promote_research_snapshot(
+        release_alias="research-release-current",
+        data_release_id=release_id,
+        dataset_alias=settings.qlib_dataset_ref,
+        dataset_version_id=dataset.version_id,
+    )
+    return {
+        "status": "READY",
+        "source": "dataset_version",
+        "reference": settings.qlib_dataset_ref,
+        "dataReleaseId": release_id,
+        "datasetVersionId": dataset.version_id,
+        "aliasRecovered": True,
+    }
+
+
 def bootstrap(
     settings: Settings,
     *,
@@ -38,8 +78,13 @@ def bootstrap(
                 "error": str(exc),
                 "recommendedCommand": "tq release list",
                 "selectionCommand": ("tq release promote <DATA_RELEASE_ID> --alias research-release-current"),
+                "datasetRecoveryCommand": f"tq registry-rebuild --root {settings.paths.root}",
                 "retryCommand": "tq-research prepare --source auto",
             }
+        if resolved.status == "MATERIALIZE_REQUIRED" and resolved.reference:
+            recovered = _recover_selected_dataset_alias(settings, resolved.reference)
+            if recovered is not None:
+                return recovered
         if resolved.status == "IMPORT_REQUIRED":
             release, dataset = import_qlib_dataset(settings, resolved.path or settings.qlib_data_uri)
             return {

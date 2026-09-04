@@ -142,6 +142,28 @@ If data needs to be imported or materialized, let the source resolver choose the
 bash scripts/run_local_research.sh prepare --source auto
 ```
 
+If an upgraded checkout reports `RELEASE_SELECTION_REQUIRED`, the repository has multiple immutable
+DataReleases but no active release alias. This is intentionally fail-closed and is independent of the
+operating system. Select the intended release explicitly, then rerun `prepare`:
+
+```bash
+.venv/bin/tq --config configs/pipeline.standalone.yaml release list
+.venv/bin/tq --config configs/pipeline.standalone.yaml release promote <DATA_RELEASE_ID> --alias research-release-current
+bash scripts/run_local_research.sh prepare --source auto
+```
+
+`prepare` now repairs `standalone-current` automatically when exactly one registered DatasetVersion is
+bound to that explicitly selected DataRelease. If an older checkout left DatasetVersion manifests on
+disk but the registry lost them, rebuild the registry first and retry:
+
+```bash
+.venv/bin/tq --config configs/pipeline.standalone.yaml registry-rebuild --root data
+.venv/bin/tq --config configs/pipeline.standalone.yaml dataset-list --name cn_standalone
+```
+
+The tool never chooses between multiple historical DataReleases or multiple candidate DatasetVersions.
+Those cases remain explicit operator decisions so research lineage cannot silently drift.
+
 For an existing Qlib binary provider, import it explicitly:
 
 ```powershell
