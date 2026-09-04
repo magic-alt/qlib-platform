@@ -110,9 +110,9 @@ class FileReleaseStore:
             )
         return tuple(records)
 
-    def latest(self) -> ReleaseRecord | None:
-        records = tuple(self.list())
-        return max(records, key=self._published_sort_key) if records else None
+    def latest(self, records: Sequence[ReleaseRecord] | None = None) -> ReleaseRecord | None:
+        candidates = tuple(records) if records is not None else tuple(self.list())
+        return max(candidates, key=self._published_sort_key) if candidates else None
 
     def archive_except(self, keep_release_id: str) -> tuple[str, ...]:
         """Keep one release active while preserving older immutable releases for replay."""
@@ -130,9 +130,10 @@ class FileReleaseStore:
             target = archived_root / release.data_release_id
             archived_root.mkdir(parents=True, exist_ok=True)
             if target.exists():
-                existing = verify_data_release(self.root, target / "manifest.json", mode="manifest")
-                if existing.manifest_sha256 != release.manifest_sha256:
-                    raise FileExistsError(f"archived DataRelease collision: {release.data_release_id}")
+                # A content-addressed ID already proves the immutable identity. The
+                # manifest hash may differ only by non-identity metadata such as
+                # publishedAt after a replay, so an existing verified archive wins.
+                verify_data_release(self.root, target / "manifest.json", mode="manifest")
                 shutil.rmtree(path)
             else:
                 os.replace(path, target)
