@@ -52,6 +52,8 @@ def test_standalone_optional_qlib_paths_can_come_only_from_env(tmp_path: Path, m
                 "mode: standalone",
                 "project_root: ./data",
                 "qlib:",
+                "  repo_path_env: QLIB_REPO",
+                "  dataset_dir_env: QLIB_DATA_URI",
                 "  repo_path: ''",
                 "  dataset_dir: ''",
                 "",
