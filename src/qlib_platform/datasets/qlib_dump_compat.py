@@ -1,13 +1,13 @@
-from __future__ import annotations
-
 """Packaged Qlib binary exporter compatible with the pinned pyqlib 0.9.7 layout.
 
 This module removes the runtime requirement for a separate Microsoft Qlib Git
-checkout.  When a real checkout is available, qlib_export still prefers the
-upstream ``scripts/dump_bin.py`` implementation.  The fallback implements the
+checkout. When a real checkout is available, qlib_export still prefers the
+upstream ``scripts/dump_bin.py`` implementation. The fallback implements the
 same day-frequency provider layout for the three modes used by qlib-platform:
 ``dump_all``, ``dump_update`` and ``dump_fix``.
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterable
@@ -122,13 +122,19 @@ def _read_calendar(qlib_dir: Path) -> list[pd.Timestamp]:
     path = qlib_dir / "calendars" / "day.txt"
     if not path.is_file():
         raise FileNotFoundError(f"base Qlib calendar is missing: {path}")
-    values = [pd.Timestamp(line.strip()).normalize() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    values = [
+        pd.Timestamp(line.strip()).normalize()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     if not values:
         raise ValueError("base Qlib calendar is empty")
     return values
 
 
-def _write_instruments(qlib_dir: Path, instruments: dict[str, tuple[pd.Timestamp, pd.Timestamp]]) -> None:
+def _write_instruments(
+    qlib_dir: Path, instruments: dict[str, tuple[pd.Timestamp, pd.Timestamp]]
+) -> None:
     path = qlib_dir / "instruments" / "all.txt"
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -236,7 +242,9 @@ def _dump_update(
         incremental = frame.loc[frame[date_field] > existing[1]]
         if incremental.empty:
             continue
-        segment_calendar = sorted(pd.Timestamp(value).normalize() for value in incremental[date_field].unique())
+        segment_calendar = [
+            value for value in calendar if existing[1] < value <= pd.Timestamp(incremental[date_field].max())
+        ]
         _write_fields(
             incremental,
             code=code,
