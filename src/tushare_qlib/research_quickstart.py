@@ -17,6 +17,7 @@ from .data_source_resolver import ReleaseSelectionRequired, resolve_source
 from .dataset_manifest import verify_dataset_manifest
 from .dataset_resolver import resolve_dataset
 from .model_runtime import load_model_profile, resolve_runtime
+from .research_cli_ux import filter_known_child_noise, render_terminal_summary, summarize_result
 from .runtime_resources import resource_argument, resource_path
 from .settings import Settings
 
@@ -61,6 +62,11 @@ def _research_args(p: argparse.ArgumentParser, *, matrix: bool = False) -> None:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="backtest fixed signal predictions without promoting the model",
+    )
+    p.add_argument(
+        "--verbose-child-output",
+        action="store_true",
+        help="show unfiltered child stderr and runtime-probe output",
     )
     p.add_argument("--output")
     p.add_argument("--continue-on-error", action="store_true")
@@ -364,13 +370,27 @@ def _last_json(text: str) -> dict[str, Any] | None:
     return None
 
 
-def _execute(command: list[str]) -> tuple[int, dict[str, Any] | None]:
+def _execute(
+    command: list[str], *, verbose: bool = False, echo_stdout: bool = True
+) -> tuple[int, dict[str, Any] | None]:
     run = subprocess.run(command, text=True, capture_output=True, check=False)
-    if run.stdout:
+    if echo_stdout and run.stdout:
         print(run.stdout, end="")
-    if run.stderr:
-        print(run.stderr, end="", file=sys.stderr)
+    stderr = run.stderr if verbose else filter_known_child_noise(run.stderr)
+    if stderr:
+        print(stderr, end="", file=sys.stderr)
     return run.returncode, _last_json(run.stdout)
+
+
+def _attach_summary(
+    settings: Settings, job: dict[str, Any], result: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    summary = summarize_result(settings.paths.output, result)
+    if summary:
+        job["summary"] = summary
+        if result is not None and summary.get("manifest"):
+            result.setdefault("manifest", str(summary["manifest"]))
+    return result
 
 
 def _predictions(result: Mapping[str, Any] | None) -> Path | None:
@@ -489,7 +509,11 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
             "--model-profile",
             str(job["modelProfile"]),
         ]
-        code, runtime = _execute(probe)
+        code, runtime = _execute(
+            probe,
+            verbose=args.verbose_child_output,
+            echo_stdout=args.verbose_child_output,
+        )
         job["runtime"] = runtime
         if code:
             job.update(status="RUNTIME_UNAVAILABLE", exitCode=code)
@@ -497,7 +521,8 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
             if not args.continue_on_error:
                 break
             continue
-        code, result = _execute(list(job["command"]))
+        code, result = _execute(list(job["command"]), verbose=args.verbose_child_output)
+        result = _attach_summary(settings, job, result)
         job.update(status="SUCCEEDED" if code == 0 else "FAILED", exitCode=code, result=result)
         if code:
             failures += 1
@@ -520,8 +545,14 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
                 ]
                 if args.topn is not None:
                     bt.extend(["--topn", str(args.topn)])
-                bt_code, bt_result = _execute(bt)
-                job["predictionBacktest"] = {"exitCode": bt_code, "result": bt_result}
+                bt_code, bt_result = _execute(bt, verbose=args.verbose_child_output)
+                backtest_payload: dict[str, Any] = {"exitCode": bt_code, "result": bt_result}
+                bt_summary = summarize_result(settings.paths.output, bt_result)
+                if bt_summary:
+                    backtest_payload["summary"] = bt_summary
+                    if bt_result is not None and bt_summary.get("manifest"):
+                        bt_result.setdefault("manifest", str(bt_summary["manifest"]))
+                job["predictionBacktest"] = backtest_payload
                 if bt_code:
                     failures += 1
                     if not args.continue_on_error:
@@ -593,6 +624,7 @@ def main() -> int:
         print(json.dumps({"output": str(root), "jobs": len(plan["jobs"])}, ensure_ascii=False))
         return 0
     code = run_plan(settings, args, plan, root)
+    print(render_terminal_summary(plan, root))
     print(
         json.dumps(
             {

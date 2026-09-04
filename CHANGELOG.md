@@ -8,6 +8,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Added
 
+- `tq-research run` and `matrix` now finish with a human-readable terminal summary covering DatasetVersion, AlphaPack/model, physical accelerator, IC/RankIC diagnostics, gate decision, FeatureSnapshot cache status, timings, memory, prediction-backtest status, and artifact paths while retaining the final machine-readable JSON line.
 - FeatureSnapshot manifests now record a semantic raw-feature recipe identity plus cache-build provenance, including the exact source FeatureSnapshot/DatasetVersion for safe incremental reuse.
 - LightGBM runtime evidence now reports the best-effort physical accelerator name in addition to the backend/index, using OpenCL enumeration when available and `nvidia-smi` as an NVIDIA fallback without changing device selection.
 - Apache License 2.0 project licensing and package metadata.
@@ -24,6 +25,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Changed
 
+- Quickstart child-process output now suppresses only deterministic known-nonfatal Qlib/Gym/optional-model/OpenCL/artifact-progress chatter by default, preserves unexpected warnings and tracebacks, and exposes `--verbose-child-output` to restore the raw child streams. Quickstart also resolves a research manifest from `runId` when the child payload omits an explicit manifest path so the documented prediction-only backtest stage is actually reachable.
 - Raw FeatureSnapshot caching now reuses exact immutable DatasetVersion coverage, safely extends a snapshot on the same DatasetVersion using the AlphaPack warm-up window, and may reuse across DatasetVersions only when the new manifest names exactly one direct `updated_from` parent and its sync delta proves the requested history is unchanged or tail-only. Historical symbol revisions, PIT changes, missing/ambiguous parent lineage, or insufficient warm-up evidence fail closed to full materialization. Requested loads also read only overlapping yearly partitions, and concurrent identical publishers are checksum-verified before reuse.
 - Raw feature recipe fingerprints no longer depend on cache-orchestration or fitted-processor implementation files; they remain bound to the immutable DatasetVersion, universe, AlphaPack contract, feature-defining handler/fundamental implementation, loader contract, and Qlib revision.
 - Standalone research now explicitly clears the inherited `cn_tushare_v1` experiment DataRelease binding; when a local DatasetVersion has no upstream DataRelease, canonical research identity falls back to its immutable manifest `version_id` instead of the profile-level `local` label, while explicit DataRelease mismatches remain fail-closed.
