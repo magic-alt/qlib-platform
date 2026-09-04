@@ -11,6 +11,10 @@ from .releases import missing_market_components
 from .settings import Settings
 
 
+_SOURCE_PROBE_SAMPLE_SIZE = 64
+_SOURCE_PROBE_WORKERS = 4
+
+
 @dataclass(frozen=True)
 class SourceResolution:
     status: str
@@ -32,6 +36,17 @@ def _provider_ready(path: Path) -> bool:
         and (path / "calendars" / "day.txt").is_file()
         and (path / "instruments").is_dir()
         and (path / "features").is_dir()
+    )
+
+
+def _verify_dataset_source_probe(manifest_path: Path) -> None:
+    """Bound source discovery I/O without relabeling a sampled check as deep verification."""
+
+    verify_dataset_manifest(
+        manifest_path,
+        mode="sampled",
+        sample_size=_SOURCE_PROBE_SAMPLE_SIZE,
+        workers=_SOURCE_PROBE_WORKERS,
     )
 
 
@@ -137,9 +152,14 @@ def resolve_source(
     dataset_reference, dataset = _registered_dataset(settings, registry)
     release_alias = registry.resolve_release_alias("research-release-current")
     if release_alias:
-        release = store.resolve(release_alias)
+        release = store.resolve(
+            release_alias,
+            mode="sampled",
+            sample_size=_SOURCE_PROBE_SAMPLE_SIZE,
+            workers=_SOURCE_PROBE_WORKERS,
+        )
         if dataset is not None and dataset.data_release_id == release.data_release_id:
-            verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
+            _verify_dataset_source_probe(dataset.manifest_path)
             return SourceResolution("READY", "data_release", release.data_release_id, dataset.data_path)
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
@@ -149,11 +169,11 @@ def resolve_source(
             "dataset-build",
         )
     if dataset is not None:
-        verify_dataset_manifest(dataset.manifest_path, mode="deep", workers=4)
+        _verify_dataset_source_probe(dataset.manifest_path)
         return SourceResolution("READY", "dataset_version", dataset_reference, dataset.data_path)
     current = current_manifest_dataset(settings)
     if current is not None:
-        verify_dataset_manifest(current.manifest_path, mode="deep", workers=4)
+        _verify_dataset_source_probe(current.manifest_path)
         return SourceResolution("READY", "dataset_current", current.reference, current.data_path)
     if _provider_ready(settings.qlib_data_uri):
         # The configured current provider is an explicit local selector even when it

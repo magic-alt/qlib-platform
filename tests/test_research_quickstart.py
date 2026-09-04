@@ -28,6 +28,16 @@ def test_run_defaults_to_market_alpha158_lightgbm() -> None:
     assert tuple(name for name, _ in profiles) == ("lightgbm",)
 
 
+def test_diagnostics_default_to_sampled_but_research_stays_deep() -> None:
+    command_parser = parser()
+
+    assert command_parser.parse_args(["doctor"]).verify_mode == "sampled"
+    assert command_parser.parse_args(["prepare"]).verify_mode == "sampled"
+    assert command_parser.parse_args(["run"]).verify_mode == "deep"
+    assert command_parser.parse_args(["matrix"]).verify_mode == "deep"
+    assert command_parser.parse_args(["doctor", "--verify-mode", "deep"]).verify_mode == "deep"
+
+
 def test_fixed_command_uses_explicit_windows_and_safe_signal_stage(tmp_path: Path) -> None:
     command = build_research_command(
         config=tmp_path / "config.yaml",

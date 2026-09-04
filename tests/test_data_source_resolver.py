@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import tushare_qlib.data_source_resolver as resolver_module
 from tushare_qlib.data_source_resolver import resolve_source
 from tushare_qlib.releases import import_qlib_dataset
 from tushare_qlib.settings import Settings
@@ -26,6 +27,16 @@ def _settings(tmp_path: Path) -> Settings:
         encoding="utf-8",
     )
     return Settings.load(config)
+
+
+def _provider(root: Path) -> Path:
+    (root / "calendars").mkdir(parents=True)
+    (root / "instruments").mkdir()
+    (root / "features" / "sh600000").mkdir(parents=True)
+    (root / "calendars" / "day.txt").write_text("2026-08-24\n", encoding="utf-8")
+    (root / "instruments" / "all.txt").write_text("SH600000\t2026-08-24\t2026-08-24\n", encoding="utf-8")
+    (root / "features" / "sh600000" / "close.day.bin").write_bytes(b"close")
+    return root
 
 
 def test_resolver_reports_data_unavailable_without_failing_startup(tmp_path: Path, monkeypatch):
@@ -86,16 +97,35 @@ def test_resolver_selects_exploratory_market_profile_for_minimal_raw(tmp_path: P
     assert "pit_fundamentals_source" in result.missing_components
 
 
+def test_resolver_ready_probe_uses_bounded_sampled_verification(tmp_path: Path, monkeypatch):
+    settings = _settings(tmp_path)
+    import_qlib_dataset(settings, _provider(tmp_path / "legacy"))
+    dataset_calls: list[dict[str, object]] = []
+    release_calls: list[dict[str, object]] = []
+    real_dataset_verify = resolver_module.verify_dataset_manifest
+    real_release_resolve = resolver_module.FileReleaseStore.resolve
+
+    def tracked_dataset_verify(path, **kwargs):
+        dataset_calls.append(dict(kwargs))
+        return real_dataset_verify(path, **kwargs)
+
+    def tracked_release_resolve(self, reference, **kwargs):
+        release_calls.append(dict(kwargs))
+        return real_release_resolve(self, reference, **kwargs)
+
+    monkeypatch.setattr(resolver_module, "verify_dataset_manifest", tracked_dataset_verify)
+    monkeypatch.setattr(resolver_module.FileReleaseStore, "resolve", tracked_release_resolve)
+
+    result = resolver_module.resolve_source(settings)
+
+    assert result.status == "READY"
+    assert release_calls == [{"mode": "sampled", "sample_size": 64, "workers": 4}]
+    assert dataset_calls == [{"mode": "sampled", "sample_size": 64, "workers": 4}]
+
+
 def test_resolver_rejects_corrupt_active_dataset(tmp_path: Path):
     settings = _settings(tmp_path)
-    source = tmp_path / "legacy"
-    (source / "calendars").mkdir(parents=True)
-    (source / "instruments").mkdir()
-    (source / "features" / "sh600000").mkdir(parents=True)
-    (source / "calendars" / "day.txt").write_text("2026-08-24\n", encoding="utf-8")
-    (source / "instruments" / "all.txt").write_text("SH600000\t2026-08-24\t2026-08-24\n", encoding="utf-8")
-    (source / "features" / "sh600000" / "close.day.bin").write_bytes(b"close")
-    _, dataset = import_qlib_dataset(settings, source)
+    _, dataset = import_qlib_dataset(settings, _provider(tmp_path / "legacy"))
     partition = dataset.data_path / "calendars" / "day.txt"
     partition.write_text("tampered\n", encoding="utf-8")
 

@@ -2,7 +2,7 @@
 status: ACTIVE
 owner: research
 applies_to_commit: 0ff8bf4d443a3f5c8e864d73f7d9fbd0bb778134
-last_verified: 2026-09-03
+last_verified: 2026-09-04
 ---
 
 # Local Research Quickstart
@@ -147,9 +147,10 @@ The source resolver can report:
 - `DATA_INCOMPLETE` / `DATA_UNAVAILABLE` — required inputs are missing;
 - `RELEASE_SELECTION_REQUIRED` — multiple releases exist without an active selection.
 
-When the source is `READY`, `doctor` resolves the configured alias, deep-verifies the DatasetVersion by default, checks
-AlphaPack compatibility as far as the DatasetVersion contract permits, and probes Ridge/LightGBM/XGBoost/PyTorch
-runtime availability.
+When the source is `READY`, `doctor` resolves the configured alias, uses bounded deterministic sampled verification by
+default, checks AlphaPack compatibility as far as the DatasetVersion contract permits, and probes
+Ridge/LightGBM/XGBoost/PyTorch runtime availability. Use `--verify-mode deep` when you explicitly want a full diagnostic
+checksum pass.
 
 The standalone default alias is normally `standalone-current`. The TuShare development profile uses
 `research-current`.
@@ -178,6 +179,10 @@ For exact low-level inspection:
 This reuses the existing `bootstrap` implementation. It never creates a parallel data lifecycle. If the resolver says
 that an immutable release needs an explicit selection/materialization step, follow the returned action rather than
 silently choosing one of several releases.
+
+`doctor` and `prepare` default to bounded sampled verification so discovery/bootstrap does not repeatedly hash an entire
+large local provider. `run` and `matrix` retain `deep` as their default pre-research verification tier. Any quickstart
+command can still request full verification explicitly with `--verify-mode deep`.
 
 ### Existing Qlib binary provider
 
@@ -357,7 +362,6 @@ data/output/quickstart/<timestamp>-matrix/
 ```
 
 Add PyTorch explicitly:
-
 ```powershell
 .\scripts\run_local_research.ps1 matrix `
   --model ridge --model lightgbm --model xgboost --model pytorch
