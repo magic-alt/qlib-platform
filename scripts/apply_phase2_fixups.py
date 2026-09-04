@@ -65,7 +65,7 @@ def main() -> None:
     replace(
         "docs/qlib_data_platform.md",
         "The command journals every step under `data/.migration/` and preserves every legacy source directory in\nits original location.",
-        "The command journals every step under `data/.migration/` and preserves every legacy source directory in\nits original location. In particular, the pre-0.4 `data/bronze/tushare/` tree is materialized byte-for-byte\ninto `data/bronze/market/`; the older `data/raw/` layout is also supported. If both are present, migration\nfails closed instead of merging potentially different market histories. Existing manifests and DatasetVersion\nidentities are not rewritten merely to normalize a directory name.\n\nIt",
+        "The command journals every step under `data/.migration/` and preserves every legacy source directory in\nits original location. In particular, the pre-0.4 `data/bronze/tushare/` tree is materialized byte-for-byte\ninto `data/bronze/market/`; the older `data/raw/` layout is also supported. If both are present, migration\nfails closed instead of merging potentially different market histories. Existing manifests and DatasetVersion\nidentities are not rewritten merely to normalize a directory name.",
     )
 
     print("phase-2 semantic/test fixups applied")
