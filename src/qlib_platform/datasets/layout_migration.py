@@ -185,9 +185,31 @@ class LayoutMigrator:
             self._write_journal(journal, payload)
             raise
 
+    def _market_data_mapping(self) -> tuple[Path, Path]:
+        """Resolve exactly one historical market-data layout into the canonical bronze root.
+
+        `bronze/tushare` is the immediate pre-0.4 layout. `raw/` is an older
+        pre-layered layout. If both are populated we fail closed rather than
+        merging two potentially different histories into one DatasetVersion input.
+        """
+
+        vendor_layout = self.settings.paths.legacy_vendor_bronze
+        oldest_layout = self.root / "raw"
+        vendor_exists = vendor_layout.is_dir()
+        oldest_exists = oldest_layout.is_dir()
+        if vendor_exists and oldest_exists:
+            raise RuntimeError(
+                "ambiguous legacy market-data layouts: both bronze/tushare and raw exist; "
+                "reconcile them explicitly before migration"
+            )
+        if vendor_exists:
+            return vendor_layout, self.settings.paths.bronze
+        return oldest_layout, self.settings.paths.raw
+
     def _mappings(self) -> list[tuple[Path, Path]]:
+        market_source, market_target = self._market_data_mapping()
         return [
-            (self.root / "raw", self.settings.paths.raw),
+            (market_source, market_target),
             (self.root / "curated" / "daily", self.settings.paths.curated),
             (self.root / "metadata", self.settings.paths.metadata),
             (self.root / "staging" / "full", self.settings.paths.staging_full),
