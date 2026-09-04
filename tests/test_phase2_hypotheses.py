@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.cli import parser
-from tushare_qlib.research.phase2_contract import write_phase2_contract_lock
-from tushare_qlib.research.phase2_hypotheses import (
+from qlib_platform.cli import parser
+from qlib_platform.research.phase2_contract import write_phase2_contract_lock
+from qlib_platform.research.phase2_hypotheses import (
     bind_phase2_hypothesis,
     hypothesis_definition_sha256,
     hypothesis_feature_set,

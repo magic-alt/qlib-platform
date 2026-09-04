@@ -15,7 +15,7 @@ contract.
 
 ```text
 data/
-├── bronze/tushare/current/       # replaceable materialized view used by normalization
+├── bronze/market/current/        # provider-neutral replaceable market-data working view
 ├── bronze/versions/              # immutable ingestion snapshots
 ├── silver/daily/current/         # normalized raw-price facts
 ├── silver/reference/current/     # calendars and security master
@@ -27,9 +27,10 @@ data/
 └── registry/qlib.sqlite          # rebuildable registry index
 ```
 
-`bronze/tushare/current` is the single complete local raw-data view; daily updates atomically replace
-changed partitions there and do not create a parallel `revisions` dataset. `current` directories are
-working views, not auditable versions. Each successful dataset publication freezes content-addressed
+`bronze/market/current` is the single complete local raw-data view; daily updates atomically replace
+changed partitions there and do not create a parallel `revisions` dataset. The storage path describes the
+semantic layer rather than the API vendor; provider provenance remains in manifests/configuration. `current`
+directories are working views, not auditable versions. Each successful dataset publication freezes content-addressed
 Bronze, Silver, and Gold snapshots and records their parent relationships before publishing a Qlib
 version. Research resolves `research-current` once at process entry and thereafter uses the resolved
 immutable path.
@@ -57,18 +58,21 @@ Migration is state-changing and is never implicit. First inspect the plan:
 
 ```powershell
 $RepoPython = '.\.venv\Scripts\python.exe'
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml migrate-qlib-layout
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml migrate-qlib-layout
 ```
 
 The dry run reports source/target paths, file counts, bytes, and free space without creating the new
 layout. After reviewing it, explicitly authorize and run:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml migrate-qlib-layout --apply
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml migrate-qlib-layout --apply
 ```
 
 The command journals every step under `data/.migration/` and preserves every legacy source directory in
-its original location. It builds each new working view in a temporary sibling directory, verifies the
+its original location. In particular, the pre-0.4 `data/bronze/tushare/` tree is materialized byte-for-byte
+into `data/bronze/market/`; the older `data/raw/` layout is also supported. If both are present, migration
+fails closed instead of merging potentially different market histories. Existing manifests and DatasetVersion
+identities are not rewritten merely to normalize a directory name. It builds each new working view in a temporary sibling directory, verifies the
 complete file set, sizes, and copied-file checksums, and then atomically publishes the target. Hard links
 are used where safe; copied files are byte-verified. Re-running the same `--migration-id` resumes or
 returns a completed journal. Legacy Qlib datasets are copied into immutable versions as `QUARANTINED`;
@@ -83,11 +87,11 @@ Any later cleanup is a separate, explicitly authorized operation.
 After Bronze data and extended financial data exist:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-build `
   --start 20160201 --end 20260810 --single-thread
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-list
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-resolve research-current
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current --mode deep
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-list
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-resolve research-current
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-verify research-current --mode deep
 ```
 
 `dataset-build` runs PIT materialization, Silver normalization, Gold export, Qlib conversion, smoke tests,
@@ -96,7 +100,7 @@ immutable publication, and alias promotion. A failed build leaves the old alias 
 Use an explicit dataset for reproducible research:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml research-run `
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml research-run `
   --mode walk-forward --dataset-ref <VERSION_ID>
 ```
 

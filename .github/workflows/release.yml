@@ -74,11 +74,9 @@ jobs:
           .release-venv/bin/python - <<'PY'
           import importlib.metadata
           import qlib_platform
-          import tushare_qlib
 
           print(importlib.metadata.version("qlib-platform"))
           print(qlib_platform.__name__)
-          print(tushare_qlib.__name__)
           PY
 
       - name: Generate CycloneDX SBOM

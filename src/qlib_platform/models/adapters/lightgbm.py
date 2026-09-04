@@ -9,7 +9,7 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
-from ..base import ModelAdapter, RuntimeResolution
+from qlib_platform.models.base import ModelAdapter, RuntimeResolution
 
 
 _DEFAULTS: dict[str, Any] = {

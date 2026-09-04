@@ -3,8 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.research.phase2_contract import load_phase2_contract
-from tushare_qlib.research.phase2_statistics import (
+from qlib_platform.research.phase2_contract import load_phase2_contract
+from qlib_platform.research.phase2_statistics import (
     empirical_bayes_local_fdr,
     evaluate_candidate,
     multiple_testing_table,

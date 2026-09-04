@@ -4,8 +4,8 @@ import json
 
 import pandas as pd
 
-from tushare_qlib.feature_store import materialize_feature_snapshot
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.research.feature_store import materialize_feature_snapshot
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path, *, label_horizon: int, model_profile: str) -> Settings:
@@ -46,7 +46,7 @@ def test_feature_snapshot_is_reused_across_label_model_and_subwindow(tmp_path, m
     )
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.research.feature_store._raw_features",
         lambda *args: calls.append(args) or source,
     )
 

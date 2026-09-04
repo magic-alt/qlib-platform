@@ -8,10 +8,10 @@ import pandas as pd
 import pytest
 import yaml
 
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
-from tushare_qlib.research.attribution_study import run_attribution_diagnose
-from tushare_qlib.research.failure_attribution import (
+from qlib_platform.lineage import sha256_json
+from qlib_platform.artifacts.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+from qlib_platform.research.attribution_study import run_attribution_diagnose
+from qlib_platform.research.failure_attribution import (
     derive_daily_model_topk_overlap,
     derive_daily_signal_conversion,
     derive_failure_summary,
@@ -19,7 +19,7 @@ from tushare_qlib.research.failure_attribution import (
     summarize_model_topk_overlap,
     summarize_signal_conversion,
 )
-from tushare_qlib.research.portfolio_attribution import (
+from qlib_platform.research.portfolio_attribution import (
     build_daily_holdings_conversion,
     build_daily_portfolio_bridge,
     derive_benchmark_diagnostics,
@@ -27,9 +27,9 @@ from tushare_qlib.research.portfolio_attribution import (
     derive_rolling_benchmark_diagnostics,
     summarize_portfolio_bridge,
 )
-from tushare_qlib.research.turnover_attribution import derive_turnover_attribution
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.store import sha256_file
+from qlib_platform.research.turnover_attribution import derive_turnover_attribution
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.data.store import sha256_file
 
 
 def _panel() -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict[pd.Timestamp, str]]:

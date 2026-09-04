@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from tushare_qlib.live_inference import prepare_live_features
-from tushare_qlib.model_bundle import LoadedModelBundle
+from qlib_platform.runtime.live_inference import prepare_live_features
+from qlib_platform.models.model_bundle import LoadedModelBundle
 
 
 def test_live_preprocessing_reuses_bundle_state_and_pit_filter(tmp_path: Path):

@@ -88,16 +88,16 @@ The documentation dependency is deliberately separated from `dev` so ordinary re
 Standalone:
 
 ```powershell
-& $RepoPython -m tushare_qlib status
-& $RepoPython -m tushare_qlib health ready
-& $RepoPython -m tushare_qlib health dependencies
+& $RepoPython -m qlib_platform status
+& $RepoPython -m qlib_platform health ready
+& $RepoPython -m qlib_platform health dependencies
 ```
 
 Integrated:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml status
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml release verify <DATA_RELEASE_REF>
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml status
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml release verify <DATA_RELEASE_REF>
 ```
 
 A missing optional remote dependency may produce a degraded dependency result; an identity/checksum/configuration failure must not be relabeled as mere degradation.

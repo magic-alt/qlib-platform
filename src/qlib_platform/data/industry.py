@@ -7,9 +7,9 @@ from typing import Any
 
 import pandas as pd
 
-from .ingestion import Extractor
-from ..settings import Settings
-from ..symbols import ts_to_qlib
+from qlib_platform.data.ingestion import Extractor
+from qlib_platform.settings import Settings
+from qlib_platform.data.symbols import ts_to_qlib
 
 
 def build_sw2021_industry_intervals(members: pd.DataFrame, *, coverage_end: str) -> pd.DataFrame:

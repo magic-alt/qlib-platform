@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tushare_qlib.qlib_strategies import RankBufferStrategy
-from tushare_qlib.topk_dropout import RankBufferPolicy, rank_buffer_decision
+from qlib_platform.backtesting.qlib_strategies import RankBufferStrategy
+from qlib_platform.backtesting.topk_dropout import RankBufferPolicy, rank_buffer_decision
 
 
 def test_rank_buffer_strategy_imports_without_cvxpy_dependency(monkeypatch) -> None:

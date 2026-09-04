@@ -7,9 +7,9 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from ..lineage import sha256_json
-from ..store import sha256_file
-from .phase2_contract import assert_workstream_allowed, load_phase2_lock
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.phase2_contract import assert_workstream_allowed, load_phase2_lock
 
 
 def _load_json(path: str | Path, name: str) -> tuple[Path, dict[str, Any]]:

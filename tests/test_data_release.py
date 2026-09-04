@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 
 from tests.test_platform_release import _settings, _write_release
-from tushare_qlib.data_release import load_data_release
-from tushare_qlib.dataset_manifest import write_dataset_manifest
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.releases import FileReleaseStore
+from qlib_platform.datasets.data_release import load_data_release
+from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.releases import FileReleaseStore
 
 
 def test_generic_and_legacy_release_apis_resolve_identical_contract(tmp_path: Path):

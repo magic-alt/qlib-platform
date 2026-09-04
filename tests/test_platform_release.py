@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.platform_release import (
+from qlib_platform.ops.platform_release import (
     REQUIRED_RESEARCH_COMPONENTS,
     QLIB_RESEARCH_PROFILE,
     QLIB_RESEARCH_PROFILE_V2,
@@ -16,11 +16,11 @@ from tushare_qlib.platform_release import (
     materialize_platform_release,
     platform_release_preflight,
 )
-from tushare_qlib.research.phase2_data_acceptance import (
+from qlib_platform.research.phase2_data_acceptance import (
     REQUIRED_V2_ACCEPTANCE_CHECKS,
     write_data_release_v2_acceptance,
 )
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.settings import Paths, Settings
 
 
 def _canonical_bytes(value: object) -> bytes:

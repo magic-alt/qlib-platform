@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.ops_cli import export_daily_ops
-from tushare_qlib.ops_state import DeliveryStatus, OpsState, RunStatus
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.ops.ops_cli import export_daily_ops
+from qlib_platform.ops.ops_state import DeliveryStatus, OpsState, RunStatus
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path) -> Settings:

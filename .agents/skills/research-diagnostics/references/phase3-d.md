@@ -7,10 +7,10 @@ Before acting, read:
 - `docs/research_infrastructure_certification.md`
 - `docs/alpha_research_phase_3.md`
 - `configs/research/ashare_phase3_v1.yaml`
-- `src/tushare_qlib/research/phase3_contract.py`
-- `src/tushare_qlib/research/phase3_program.py`
-- `src/tushare_qlib/research/phase3_diagnostics.py`
-- `src/tushare_qlib/research/phase3_portability.py`
+- `src/qlib_platform/research/phase3_contract.py`
+- `src/qlib_platform/research/phase3_program.py`
+- `src/qlib_platform/research/phase3_diagnostics.py`
+- `src/qlib_platform/research/phase3_portability.py`
 - the applicable `tests/test_phase3_*.py` files
 - `tests/failure_injection/test_phase3_contract_failures.py`
 

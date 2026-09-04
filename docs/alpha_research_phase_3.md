@@ -66,7 +66,7 @@ Run from the repository root with the repository-local interpreter:
 ```bash
 RepoPython=.venv/bin/python
 
-$RepoPython -m tushare_qlib \
+$RepoPython -m qlib_platform \
   --config configs/pipeline.yaml \
   phase3-validate \
   --phase2-acceptance /path/to/phase2_acceptance.json \
@@ -75,13 +75,13 @@ $RepoPython -m tushare_qlib \
   --contract configs/research/ashare_phase3_v1.yaml \
   --output /path/to/phase3_design_lock.json
 
-$RepoPython -m tushare_qlib \
+$RepoPython -m qlib_platform \
   --config configs/pipeline.yaml \
   phase3-plan \
   --contract-lock /path/to/phase3_design_lock.json \
   --output /path/to/phase3_plan.json
 
-$RepoPython -m tushare_qlib \
+$RepoPython -m qlib_platform \
   --config configs/pipeline_phase2.yaml \
   phase3-diagnose \
   --contract-lock /path/to/phase3_design_lock.json \
@@ -96,7 +96,7 @@ $RepoPython -m tushare_qlib \
 After a completed D00–D04 bundle exists, create its portable evidence package outside the source checkout:
 
 ```bash
-$RepoPython -m tushare_qlib \
+$RepoPython -m qlib_platform \
   --config configs/pipeline.yaml \
   phase3-portable-export \
   --contract-lock /path/to/phase3_design_lock.json \
@@ -110,7 +110,7 @@ $RepoPython -m tushare_qlib \
 Move the resulting directory without changing its contents. On a clean checkout at the source commit:
 
 ```bash
-$RepoPython -m tushare_qlib \
+$RepoPython -m qlib_platform \
   --config configs/pipeline.yaml \
   phase3-portable-verify \
   --package /relocated/phase3_evidence_v1

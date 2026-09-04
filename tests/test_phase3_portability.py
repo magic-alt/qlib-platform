@@ -6,19 +6,19 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.research.phase3_contract import write_phase3_contract_lock
-from tushare_qlib.research.phase3_diagnostics import (
+from qlib_platform.lineage import sha256_json
+from qlib_platform.research.phase3_contract import write_phase3_contract_lock
+from qlib_platform.research.phase3_diagnostics import (
     PHASE3_EVIDENCE_INDEX_SCHEMA,
     PHASE3_MANIFEST_NAME,
     _expected_artifact_names,
 )
-from tushare_qlib.research.phase3_portability import (
+from qlib_platform.research.phase3_portability import (
     export_phase3_portable_evidence,
     verify_phase3_portable_evidence,
 )
-from tushare_qlib.research.phase3_program import write_phase3_experiment_plan
-from tushare_qlib.store import sha256_file
+from qlib_platform.research.phase3_program import write_phase3_experiment_plan
+from qlib_platform.data.store import sha256_file
 
 from tests._phase3_helpers import phase3_entry_fixture
 
@@ -110,7 +110,7 @@ def test_portable_phase3_evidence_rejects_tampering(tmp_path: Path, monkeypatch:
     )
     package = json.loads(manifest_path.read_text(encoding="utf-8"))
     monkeypatch.setattr(
-        "tushare_qlib.research.phase3_portability.git_revision",
+        "qlib_platform.research.phase3_portability.git_revision",
         lambda _: {"commit": package["sourceCodeCommit"], "dirty": False},
     )
     verified = verify_phase3_portable_evidence(package_root)
@@ -134,7 +134,7 @@ def test_portable_phase3_evidence_rejects_unexpected_file(tmp_path: Path, monkey
     )
     package = json.loads(manifest_path.read_text(encoding="utf-8"))
     monkeypatch.setattr(
-        "tushare_qlib.research.phase3_portability.git_revision",
+        "qlib_platform.research.phase3_portability.git_revision",
         lambda _: {"commit": package["sourceCodeCommit"], "dirty": False},
     )
     (package_root / "unexpected.txt").write_text("not part of the package", encoding="utf-8")

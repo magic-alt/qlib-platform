@@ -6,9 +6,9 @@ import argparse
 import json
 from pathlib import Path
 
-from tushare_qlib.backtest_report import write_backtest_report
-from tushare_qlib.p0_baseline import write_p0_artifacts
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.backtesting.backtest_report import write_backtest_report
+from qlib_platform.research.p0_baseline import write_p0_artifacts
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings_for_data_root(data_root: Path) -> Settings:

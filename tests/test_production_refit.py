@@ -5,13 +5,13 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from tushare_qlib.production_refit import (
+from qlib_platform.models.production_refit import (
     _fit_final_model,
     _selected_training_steps,
     production_refit_plan,
     production_refit_windows,
 )
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.settings import Paths, Settings
 
 
 def test_refit_windows_end_at_latest_fully_labelled_date(tmp_path: Path, monkeypatch):
@@ -35,7 +35,7 @@ def test_refit_windows_end_at_latest_fully_labelled_date(tmp_path: Path, monkeyp
         qlib_repo=None,
         qlib_data_uri=tmp_path / "qlib",
     )
-    monkeypatch.setattr("tushare_qlib.production_refit.shared_research_calendar", lambda value: dates)
+    monkeypatch.setattr("qlib_platform.models.production_refit.shared_research_calendar", lambda value: dates)
 
     train, valid = production_refit_windows(settings, dates[-1].strftime("%Y-%m-%d"))
 

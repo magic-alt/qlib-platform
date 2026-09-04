@@ -11,11 +11,11 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from ..data_release import MARKET_IMPORT_PROFILE, DataRelease
-from ..dataset_manifest import write_dataset_manifest
-from ..dataset_registry import DatasetRegistry, DatasetVersion
-from ..settings import Settings
-from .publisher import ComponentSource, LocalReleasePublisher, release_store_root
+from qlib_platform.datasets.data_release import MARKET_IMPORT_PROFILE, DataRelease
+from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry, DatasetVersion
+from qlib_platform.settings import Settings
+from qlib_platform.releases.publisher import ComponentSource, LocalReleasePublisher, release_store_root
 
 
 MARKET_FIELDS = (

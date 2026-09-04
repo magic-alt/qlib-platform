@@ -6,8 +6,8 @@ from typing import Any, Mapping
 
 import yaml
 
-from ..lineage import sha256_json
-from ..store import sha256_file
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
 
 TAXONOMY_SCHEMA = "alpha_factor_taxonomy_v1"
 ALLOWED_FAMILIES = {

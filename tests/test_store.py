@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from tushare_qlib.quality import assert_quality, validate_raw_store
-from tushare_qlib.store import PartitionStore, frame_content_sha256
+from qlib_platform.data.quality import assert_quality, validate_raw_store
+from qlib_platform.data.store import PartitionStore, frame_content_sha256
 
 
 def test_failed_partition_is_retryable(tmp_path: Path, monkeypatch):
@@ -50,7 +50,7 @@ def test_write_if_changed_accepts_legacy_file_hash_manifest_without_rewrite(tmp_
 
 
 def test_bronze_current_does_not_create_parallel_revision_tree(tmp_path: Path):
-    store = PartitionStore(tmp_path / "bronze" / "tushare" / "current")
+    store = PartitionStore(tmp_path / "bronze" / "market" / "current")
     first = pd.DataFrame({"ts_code": ["000001.SZ"], "trade_date": ["20260810"], "close": [10.0]})
     second = first.assign(close=11.0)
 
@@ -58,7 +58,7 @@ def test_bronze_current_does_not_create_parallel_revision_tree(tmp_path: Path):
     store.write("daily", "20260810", second)
 
     assert store.read("daily", "20260810")["close"].item() == 11.0
-    assert not (tmp_path / "bronze" / "tushare" / "revisions").exists()
+    assert not (tmp_path / "bronze" / "market" / "revisions").exists()
 
 
 def _raw_frame(dataset: str, trade_date: str) -> pd.DataFrame:

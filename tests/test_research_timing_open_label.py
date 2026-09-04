@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib.research_timing import label_spec_from_settings
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.research.research_timing import label_spec_from_settings
+from qlib_platform.settings import Paths, Settings
 
 
 def test_open_label_spec_uses_open_to_open_expression_and_identity(tmp_path: Path) -> None:

@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..lineage import sha256_json
-from ..store import sha256_file
-from .phase3_contract import load_phase3_lock
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.phase3_contract import load_phase3_lock
 
 
 PHASE3_PLAN_SCHEMA = "phase3_diagnostic_plan_v1"

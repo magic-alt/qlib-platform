@@ -4,13 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.research.phase3_diagnostics import (
+from qlib_platform.research.phase3_diagnostics import (
     derive_daily_stability_metrics,
     derive_failure_windows,
     derive_regime_transition_metrics,
     derive_rolling_stability_metrics,
 )
-from tushare_qlib.research.regime_diagnostics import ModelComparisonSpec
+from qlib_platform.research.regime_diagnostics import ModelComparisonSpec
 
 
 def _predictions() -> dict[str, pd.DataFrame]:

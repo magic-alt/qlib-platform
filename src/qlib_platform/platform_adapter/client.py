@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from .outbox import OutboxItem
+from qlib_platform.platform_adapter.outbox import OutboxItem
 
 
 @dataclass(frozen=True)

@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ..lineage import sha256_json
-from ..store import sha256_file
-from .regime_diagnostics import normalize_model_predictions
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.regime_diagnostics import normalize_model_predictions
 
 
 ATTRIBUTION_SCHEMA = "ashare_failure_attribution_v1"

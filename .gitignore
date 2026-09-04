@@ -37,7 +37,9 @@ dist/
 # Repository-local Git worktree containers
 .worktrees/
 
-data
+# Generated repository-root datasets only. Do not ignore the Python data domain
+# under src/qlib_platform/data/.
+/data/
 mlruns/
 tmp/
 

@@ -73,7 +73,7 @@ def main() -> int:
     env.setdefault("QLIB_REPO", str(repo_root))
     env.setdefault("QLIB_DATA_URI", str((repo_root / "data" / "qlib").resolve()))
 
-    base = [sys.executable, "-m", "tushare_qlib", "--config", str(config)]
+    base = [sys.executable, "-m", "qlib_platform", "--config", str(config)]
     resolved = _run([*base, "dataset-resolve", args.dataset_ref], capture=True)
     if resolved.stdout:
         print(resolved.stdout, end="")

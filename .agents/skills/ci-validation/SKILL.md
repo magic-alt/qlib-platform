@@ -26,9 +26,9 @@ Before a code/config/contract PR, run the local equivalents of the full quality 
 & $RepoPython -m ruff format --check src tests
 & $RepoPython -m mypy src
 & $RepoPython scripts/check_docs.py --root .
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml validate-qrun-contract
-& $RepoPython -m pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
-& $RepoPython -m tushare_qlib project-audit --root . --output <temporary-path>
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml validate-qrun-contract
+& $RepoPython -m pytest --cov=src/qlib_platform --cov-report=term-missing --cov-fail-under=60
+& $RepoPython -m qlib_platform project-audit --root . --output <temporary-path>
 ```
 
 For governance configuration changes, also parse every `.codex/*.toml` and `.codex/agents/*.toml`, verify required custom-agent fields, validate Skill front matter/name alignment, and parse workflow YAML. When Codex CLI is available, validate changed `.rules` behavior with `codex execpolicy check` and its inline `match`/`not_match` cases.

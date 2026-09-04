@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.topk_dropout import (
+from qlib_platform.backtesting.topk_dropout import (
     TopkDropoutPolicy,
     _normalise_quotes,
     topk_dropout_decision,

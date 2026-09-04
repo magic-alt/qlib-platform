@@ -10,11 +10,11 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
-from ..full_walk_forward_acceptance import RunEvidence
-from ..lineage import git_revision, sha256_json
-from ..settings import Settings
-from ..store import sha256_file
-from .failure_attribution import (
+from qlib_platform.research.full_walk_forward_acceptance import RunEvidence
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.failure_attribution import (
     FailureAttributionSpec,
     PortfolioVariant,
     derive_daily_model_topk_overlap,
@@ -24,7 +24,7 @@ from .failure_attribution import (
     summarize_model_topk_overlap,
     summarize_signal_conversion,
 )
-from .portfolio_attribution import (
+from qlib_platform.research.portfolio_attribution import (
     build_daily_holdings_conversion,
     build_daily_portfolio_bridge,
     derive_benchmark_diagnostics,
@@ -32,9 +32,9 @@ from .portfolio_attribution import (
     derive_rolling_benchmark_diagnostics,
     summarize_portfolio_bridge,
 )
-from .regime_study import REGIME_STUDY_SCHEMA, _load_model_predictions
-from .study import _fold_assignments, _mapping, _validate_acceptance_and_run
-from .turnover_attribution import derive_turnover_attribution
+from qlib_platform.research.regime_study import REGIME_STUDY_SCHEMA, _load_model_predictions
+from qlib_platform.research.study import _fold_assignments, _mapping, _validate_acceptance_and_run
+from qlib_platform.research.turnover_attribution import derive_turnover_attribution
 
 
 ATTRIBUTION_STUDY_SCHEMA = "alpha_failure_attribution_study_v1"

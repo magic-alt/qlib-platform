@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.research_bundle_export import export_manifest_as_v2_bundle
+from qlib_platform.artifacts.research_bundle_export import export_manifest_as_v2_bundle
 
 
 def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):

@@ -5,8 +5,8 @@ import re
 from pathlib import Path
 from typing import Sequence
 
-from ..data_release import verify_data_release
-from .model import DataRelease, ReleaseRecord, VerificationResult
+from qlib_platform.datasets.data_release import verify_data_release
+from qlib_platform.releases.model import DataRelease, ReleaseRecord, VerificationResult
 
 
 _RELEASE_ID = re.compile(r"ds_[a-f0-9]{64}")

@@ -15,7 +15,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from argon2.low_level import Type
 
-from .backend import Principal
+from qlib_platform.auth.backend import Principal
 
 
 ROLE_PERMISSIONS = {

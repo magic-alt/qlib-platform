@@ -13,7 +13,7 @@ test:
 	pytest
 
 coverage:
-	pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
+	pytest --cov=src/qlib_platform --cov-report=term-missing --cov-fail-under=60
 
 contract:
 	tq --config configs/pipeline.yaml validate-qrun-contract

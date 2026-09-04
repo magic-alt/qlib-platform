@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tushare_qlib.strategy_audit import build_strategy_audit, build_strategy_decision
-from tushare_qlib.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
+from qlib_platform.backtesting.strategy_audit import build_strategy_audit, build_strategy_decision
+from qlib_platform.backtesting.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 class _MetricSeries:

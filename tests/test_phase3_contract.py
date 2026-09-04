@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tushare_qlib.cli import parser
-from tushare_qlib.research.phase3_contract import (
+from qlib_platform.cli import parser
+from qlib_platform.research.phase3_contract import (
     load_phase3_contract,
     load_phase3_lock,
     write_phase3_contract_lock,

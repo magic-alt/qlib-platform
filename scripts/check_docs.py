@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from tushare_qlib.docs_check import check_documentation
+from qlib_platform.docs_check import check_documentation
 
 
 def main() -> int:

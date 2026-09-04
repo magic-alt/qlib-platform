@@ -11,12 +11,13 @@ last_verified: 2026-08-31
 
 ## 当前数据平台口径
 
-- `data/bronze/tushare/current/` 是完整且唯一的本地 raw working view；变更分区会在此原子替换，不再生成平行的 `revisions/` 数据集。可复现性由发布时冻结的 `data/bronze/versions/` 和 immutable DataRelease 保证。
+- `data/bronze/market/current/` 是完整且唯一的 provider-neutral raw working view；变更分区会在此原子替换，不再生成平行的 `revisions/` 数据集。具体数据供应商属于 manifest/config provenance，不再进入 canonical storage identity。可复现性由发布时冻结的 immutable DataRelease/DatasetVersion 保证。
+- 历史 `data/bronze/tushare/` 不会被原地改名或删除；`migrate-qlib-layout --apply` 会在完整文件数、大小和字节校验后物化到 `data/bronze/market/`，保留旧目录与已有 manifest/DatasetVersion 身份。若同时发现更老的 `data/raw/` 与 `data/bronze/tushare/`，迁移 fail closed，要求先明确历史来源。
 - `daily-sync` 的日常入口现在覆盖：基础日频数据、公司行为/复权历史、extended `market_reference` 日分区、最近财务报告期刷新、必要时的 PIT fundamentals 重建，以及后续 Qlib/DataRelease 发布。
 - 每次成功发布都会冻结 Bronze、Silver、Gold 快照，并把父版本关系写入 Registry，随后发布不可变的 `data/qlib/versions/<version_id>/`。
 - 默认 standalone profile 的 DatasetVersion alias 是 `standalone-current`；`research-release-current` 仍是 DataRelease alias。显式使用 `configs/pipeline_tushare_dev.yaml` 时，其 DatasetVersion alias 仍为 `research-current`。
 - daily-sync 失败时不会替换当前已发布 alias；失败前已经进入发布链路的基础行情变更、历史修订或 PIT 变更由 `data/state/daily_sync/pending_publish.json` 记录以便下次恢复。
-- 空的 legacy `data/bronze/tushare/current/extended/hsgt_moneyflow/` 目录会在日更时清理；正确的 TuShare endpoint/目录名称是 `moneyflow_hsgt`。
+- 空的 `data/bronze/market/current/extended/hsgt_moneyflow/` 目录会在日更时清理；当前 TuShare adapter 的正确 endpoint/目录名称是 `moneyflow_hsgt`。
 - 股票主数据和交易日历等元数据 working view 以原子替换写入，因此后续同步不会改写已发布版本硬链接的快照。
 - Qlib close 使用首日归一化的稳定总回报序列；`export-kline` 可由本地原始数据生成 qfq/hfq 视图，不访问远端 API。
 
@@ -26,8 +27,8 @@ last_verified: 2026-08-31
 
 ```powershell
 $RepoPython = '.\.venv\Scripts\python.exe'
-& $RepoPython -m tushare_qlib sync-dividends --bootstrap --resume
-& $RepoPython -m tushare_qlib daily-sync --check-only
+& $RepoPython -m qlib_platform sync-dividends --bootstrap --resume
+& $RepoPython -m qlib_platform daily-sync --check-only
 ```
 
 `--check-only` 只检查基础日频/公司行为数据源与质量，不写入正式 Bronze、extended、PIT 或 Qlib 版本。它不会执行 extended 财务刷新。首次全量准备仍使用 `bootstrap --source tushare` 或受控的 `backfill-extended`；首次全量发布或结构性修复使用 `dataset-build`。迁移既有布局时，先按 [`qlib_data_platform.md`](qlib_data_platform.md) 的 dry run 检查，再显式执行迁移。
@@ -37,16 +38,16 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 默认 standalone profile：
 
 ```powershell
-& $RepoPython -m tushare_qlib daily-sync --as-of <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib dataset-verify standalone-current
-& $RepoPython -m tushare_qlib dataset-resolve standalone-current
+& $RepoPython -m qlib_platform daily-sync --as-of <YYYY-MM-DD>
+& $RepoPython -m qlib_platform dataset-verify standalone-current
+& $RepoPython -m qlib_platform dataset-resolve standalone-current
 ```
 
 如果显式使用 TuShare development profile：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml daily-sync --as-of <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
+& $RepoPython -m qlib_platform --config configs/pipeline_tushare_dev.yaml daily-sync --as-of <YYYY-MM-DD>
+& $RepoPython -m qlib_platform --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
 ```
 
 一次成功的 `daily-sync` 按以下顺序执行：
@@ -103,6 +104,6 @@ Linux systemd user timer 和 macOS launchd agent 使用 `scripts/render_standalo
 - 待恢复发布：`data/state/daily_sync/pending_publish.json`
 - PIT 源指纹状态：`data/state/daily_sync/pit_source_state.json`
 - extended 最近运行：`data/state/extended_backfill/last_run.json`
-- 数据集状态：`& $RepoPython -m tushare_qlib dataset-list`
+- 数据集状态：`& $RepoPython -m qlib_platform dataset-list`
 
 发布失败时保留当前已发布 alias。先检查单次 manifest、`pending_publish.json` 和 `extended_backfill/last_run.json`，修复根因后再重新运行 `daily-sync`；不要手工改写已发布版本目录。

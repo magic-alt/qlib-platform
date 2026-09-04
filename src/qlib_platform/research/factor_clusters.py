@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
-from .factor_taxonomy import FactorTaxonomy
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy
 
 
 def mean_daily_rank_correlation(

@@ -68,8 +68,8 @@ $RepoPython -m pip install -c constraints/ci.txt -e '.[dev]'
 ```powershell
 $env:QLIB_REPO = '.'
 $env:QLIB_DATA_URI = 'data/qlib'
-& $RepoPython -m tushare_qlib --config configs\pipeline_tushare_dev.yaml dataset-resolve research-current
-& $RepoPython -m tushare_qlib --config configs\pipeline_tushare_dev.yaml dataset-verify research-current --mode deep
+& $RepoPython -m qlib_platform --config configs\pipeline_tushare_dev.yaml dataset-resolve research-current
+& $RepoPython -m qlib_platform --config configs\pipeline_tushare_dev.yaml dataset-verify research-current --mode deep
 ```
 
 ### macOS / Linux
@@ -77,8 +77,8 @@ $env:QLIB_DATA_URI = 'data/qlib'
 ```bash
 export QLIB_REPO=.
 export QLIB_DATA_URI=data/qlib
-$RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
-$RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-verify research-current --mode deep
+$RepoPython -m qlib_platform --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
+$RepoPython -m qlib_platform --config configs/pipeline_tushare_dev.yaml dataset-verify research-current --mode deep
 ```
 
 这些环境变量只是让开发 profile 能加载；真正传给 qrun 的 provider path 由 runner 根据 DatasetVersion registry 解析结果重新绑定。
@@ -214,14 +214,14 @@ $RepoPython examples/local_qlib_backtest/run_backtest.py --model custom_ridge
 - `predict()` 返回保留 `datetime/instrument` MultiIndex 的预测；
 - 对空训练集、非有限输入、列变化和非法参数 fail closed。
 
-如果目的是开发仓库统一 ModelAdapter，而不是单个 qrun workflow 插件，请转到 [`docs/local_research_quickstart.md`](../../docs/local_research_quickstart.md) 的“Custom ModelAdapter”章节；正式研究 CLI 的模型族由 `src/tushare_qlib/models/` registry 管理。
+如果目的是开发仓库统一 ModelAdapter，而不是单个 qrun workflow 插件，请转到 [`docs/local_research_quickstart.md`](../../docs/local_research_quickstart.md) 的“Custom ModelAdapter”章节；正式研究 CLI 的模型族由 `src/qlib_platform/models/` registry 管理。
 
 ## 8. XGBoost / PyTorch 与完整模型矩阵
 
 本 qrun 教学目录不再复制所有模型 profile。仓库正式模型比较使用 `tq-research`：
 
 ```bash
-$RepoPython -m tushare_qlib.research_quickstart matrix
+$RepoPython -m qlib_platform.research.research_quickstart matrix
 ```
 
 默认比较：
@@ -235,7 +235,7 @@ Alpha158 PIT    × Ridge / LightGBM / XGBoost
 显式加入 PyTorch：
 
 ```bash
-$RepoPython -m tushare_qlib.research_quickstart matrix \
+$RepoPython -m qlib_platform.research.research_quickstart matrix \
   --model ridge --model lightgbm --model xgboost --model pytorch
 ```
 

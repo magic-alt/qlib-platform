@@ -10,4 +10,4 @@ if [ -d "${QLIB_DIR}" ]; then
 fi
 export PYTHONPATH
 
-exec python3 -m tushare_qlib "$@"
+exec python3 -m qlib_platform "$@"

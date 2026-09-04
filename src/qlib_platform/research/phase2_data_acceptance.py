@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..lineage import sha256_json
-from ..platform_release import QLIB_RESEARCH_PROFILE_V2, load_platform_release
-from ..settings import Settings
+from qlib_platform.lineage import sha256_json
+from qlib_platform.ops.platform_release import QLIB_RESEARCH_PROFILE_V2, load_platform_release
+from qlib_platform.settings import Settings
 
 
 REQUIRED_V2_ACCEPTANCE_CHECKS = (

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from tushare_qlib.strategy_audit import _orders_match_or_tie_equivalent
-from tushare_qlib.topk_dropout import TopkDropoutPolicy
+from qlib_platform.backtesting.strategy_audit import _orders_match_or_tie_equivalent
+from qlib_platform.backtesting.topk_dropout import TopkDropoutPolicy
 
 
 def test_order_match_accepts_exact_tie_substitution() -> None:

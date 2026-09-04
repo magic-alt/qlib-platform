@@ -8,18 +8,18 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from tushare_qlib.full_walk_forward_acceptance import build_full_walk_forward_acceptance
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.processor_state import processor_state_manifest
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.walk_forward import (
+from qlib_platform.research.full_walk_forward_acceptance import build_full_walk_forward_acceptance
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.processor_state import processor_state_manifest
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.research.walk_forward import (
     Fold,
     _checkpoint_payload,
     _inspect_checkpoint,
     _verify_fold_boundary_continuity,
     _write_continuous_oos_stream,
 )
-from tushare_qlib.walk_forward_acceptance import (
+from qlib_platform.research.walk_forward_acceptance import (
     validate_fold_integrity,
     validate_processor_isolation,
 )

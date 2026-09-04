@@ -193,7 +193,7 @@ MPS 运行时选择，使用工程的一体化 `train-select` / `research-run` �
 模型 profile、信号审计和研究门禁，请使用仓库的一体化入口：
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml research-run \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml research-run \
   --mode walk-forward --model-profile configs/model_profiles/xgboost_cpu_v1.yaml
 ```
 

@@ -6,8 +6,8 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
-from .canonical_config import StrategySpec
-from .settings import Settings
+from qlib_platform.canonical_config import StrategySpec
+from qlib_platform.settings import Settings
 
 
 _PARTICIPATION_EXPRESSION = re.compile(

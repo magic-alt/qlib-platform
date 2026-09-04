@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tushare_qlib.research.phase3_contract import write_phase3_contract_lock
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.research.phase3_program import load_phase3_plan, write_phase3_experiment_plan
+from qlib_platform.research.phase3_contract import write_phase3_contract_lock
+from qlib_platform.lineage import sha256_json
+from qlib_platform.research.phase3_program import load_phase3_plan, write_phase3_experiment_plan
 
 from tests._phase3_helpers import phase3_entry_fixture
 

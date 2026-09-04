@@ -12,18 +12,18 @@ from typing import Any, Iterable, Mapping
 
 import pandas as pd
 
-from ..data_release import (
+from qlib_platform.datasets.data_release import (
     DATA_RELEASE_PROFILES,
     PROFILE_COMPONENT_SCHEMAS,
     QLIB_IMPORT_PROFILE,
     DataRelease,
     verify_data_release,
 )
-from ..content_store import ContentAddressedStore, clone_tree_copy_on_write
-from ..dataset_manifest import write_dataset_manifest
-from ..dataset_registry import DatasetRegistry, DatasetVersion
-from ..settings import Settings
-from ..store import sha256_file
+from qlib_platform.data.content_store import ContentAddressedStore, clone_tree_copy_on_write
+from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry, DatasetVersion
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -268,7 +268,7 @@ def publish_local_research_release(
     end: str,
     parent_release_id: str | None = None,
 ) -> DataRelease:
-    from ..data_release import QLIB_RESEARCH_PROFILE_V2
+    from qlib_platform.datasets.data_release import QLIB_RESEARCH_PROFILE_V2
 
     lineage: dict[str, object] = {
         "producer": "qlib-platform",

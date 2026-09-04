@@ -10,20 +10,20 @@ from typing import Any, Mapping
 
 import pandas as pd
 
-from ..lineage import git_revision, sha256_json
-from ..settings import Settings
-from ..store import sha256_file
-from .attribution_study import ATTRIBUTION_STUDY_SCHEMA
-from .explanation_study import EXPLANATION_STUDY_SCHEMA
-from .phase1_synthesis import (
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.attribution_study import ATTRIBUTION_STUDY_SCHEMA
+from qlib_platform.research.explanation_study import EXPLANATION_STUDY_SCHEMA
+from qlib_platform.research.phase1_synthesis import (
     derive_feature_evidence,
     derive_phase1_recommendation,
     derive_regime_evidence,
     load_phase1_synthesis_spec,
 )
-from .regime import REQUIRED_DIMENSIONS
-from .regime_study import REGIME_STUDY_SCHEMA
-from .study import STUDY_SCHEMA, _mapping
+from qlib_platform.research.regime import REQUIRED_DIMENSIONS
+from qlib_platform.research.regime_study import REGIME_STUDY_SCHEMA
+from qlib_platform.research.study import STUDY_SCHEMA, _mapping
 
 
 SYNTHESIS_STUDY_SCHEMA = "alpha_phase1_synthesis_v1"

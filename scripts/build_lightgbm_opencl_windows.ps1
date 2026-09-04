@@ -47,7 +47,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "LightGBM OpenCL build failed. Verify Visual Studio C++ Build Tools and an OpenCL SDK/runtime."
 }
 
-& $resolvedPython -m tushare_qlib --config $PipelineConfig runtime-probe --model-profile $ModelProfile
+& $resolvedPython -m qlib_platform --config $PipelineConfig runtime-probe --model-profile $ModelProfile
 if ($LASTEXITCODE -ne 0) {
     throw "LightGBM installed, but the one-tree OpenCL runtime probe failed."
 }

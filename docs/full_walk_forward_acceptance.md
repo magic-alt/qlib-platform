@@ -33,17 +33,17 @@ Run one uninterrupted baseline and one interrupted/resumed sequence for each pro
 checkpoint namespaces keep the baseline independent from the recovery sequence.
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml research-run \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml research-run \
   --mode walk-forward --stage release --full-acceptance \
   --checkpoint-namespace ridge-baseline \
   --model-profile configs/model_profiles/ridge_golden_v1.yaml
 
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml research-run \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml research-run \
   --mode walk-forward --stage release --full-acceptance \
   --checkpoint-namespace ridge-resume --interrupt-after-fold 3 \
   --model-profile configs/model_profiles/ridge_golden_v1.yaml
 
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml research-run \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml research-run \
   --mode walk-forward --stage release --full-acceptance \
   --checkpoint-namespace ridge-resume \
   --model-profile configs/model_profiles/ridge_golden_v1.yaml

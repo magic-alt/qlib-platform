@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.research_quickstart import (
+from qlib_platform.research.research_quickstart import (
     MATRIX_ALPHA_PACKS,
     MATRIX_MODELS,
     _last_json,
@@ -11,7 +11,7 @@ from tushare_qlib.research_quickstart import (
     build_research_command,
     parser,
 )
-from tushare_qlib.settings import Settings
+from qlib_platform.settings import Settings
 
 
 def test_matrix_defaults_cover_three_alpha158_levels_and_core_models() -> None:

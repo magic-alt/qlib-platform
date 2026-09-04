@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import tushare_qlib.layout_migration as migration_module
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.layout_migration import LayoutMigrator
-from tushare_qlib.settings import Paths, Settings
+import pytest
+
+import qlib_platform.datasets.layout_migration as migration_module
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.layout_migration import LayoutMigrator
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -19,6 +21,15 @@ def _settings(tmp_path: Path) -> Settings:
         None,
         root / "qlib" / "legacy",
     )
+
+
+def test_paths_use_provider_neutral_market_bronze_root(tmp_path: Path):
+    paths = Paths.from_root(tmp_path / "data")
+
+    assert paths.bronze == tmp_path / "data" / "bronze" / "market"
+    assert paths.raw == paths.bronze / "current"
+    assert paths.legacy_vendor_bronze == tmp_path / "data" / "bronze" / "tushare"
+    assert paths.legacy_vendor_raw == paths.legacy_vendor_bronze / "current"
 
 
 def test_migration_dry_run_does_not_create_new_layout(tmp_path: Path):
@@ -50,6 +61,37 @@ def test_migration_apply_preserves_old_tree_and_is_resumable(tmp_path: Path):
     payload = json.loads(journal.read_text(encoding="utf-8"))
     assert payload["steps"][0]["source_preserved"] is True
     assert payload["steps"][0]["verified_files"] == 1
+
+
+def test_provider_named_bronze_migrates_without_mutating_legacy_identity(tmp_path: Path):
+    settings = _settings(tmp_path)
+    source = settings.paths.legacy_vendor_bronze
+    raw = source / "current" / "daily"
+    raw.mkdir(parents=True)
+    (raw / "part.parquet").write_bytes(b"data")
+    legacy_manifest = source / "dataset_manifest.json"
+    legacy_payload = b'{"version_id":"ds_legacy_identity","pit_semantics":"unchanged"}'
+    legacy_manifest.write_bytes(legacy_payload)
+
+    journal = LayoutMigrator(settings).apply("provider-neutral-bronze")
+
+    assert legacy_manifest.read_bytes() == legacy_payload
+    assert (settings.paths.bronze / "dataset_manifest.json").read_bytes() == legacy_payload
+    assert (settings.paths.raw / "daily" / "part.parquet").read_bytes() == b"data"
+    payload = json.loads(journal.read_text(encoding="utf-8"))
+    step = payload["steps"][0]
+    assert step["source"] == str(settings.paths.legacy_vendor_bronze)
+    assert step["target"] == str(settings.paths.bronze)
+    assert step["source_preserved"] is True
+
+
+def test_migration_fails_closed_when_two_legacy_market_layouts_exist(tmp_path: Path):
+    settings = _settings(tmp_path)
+    (settings.paths.legacy_vendor_bronze / "current").mkdir(parents=True)
+    (settings.paths.root / "raw").mkdir(parents=True)
+
+    with pytest.raises(RuntimeError, match="ambiguous legacy market-data layouts"):
+        LayoutMigrator(settings).plan()
 
 
 def test_migration_resumes_when_interrupted_during_materialization(tmp_path: Path, monkeypatch):

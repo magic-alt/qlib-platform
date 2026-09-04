@@ -3,8 +3,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.fundamentals import build_pit_from_extended
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.data.fundamentals import build_pit_from_extended
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings_with_reports(tmp_path: Path, reports: pd.DataFrame) -> Settings:

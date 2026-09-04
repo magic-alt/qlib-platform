@@ -12,16 +12,21 @@ import pandas as pd
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
-from ..feature_store import load_feature_store
-from ..lineage import git_revision, sha256_json
-from ..platform_release import PlatformRelease, load_platform_release
-from ..settings import Settings
-from ..store import sha256_file
-from .factor_taxonomy import FactorTaxonomy, load_factor_taxonomy
-from .feature_diagnostics import feature_columns
-from .regime import REQUIRED_DIMENSIONS, RegimeSpec, build_regime_labels, load_regime_spec
-from .regime_diagnostics import RegimeDiagnosticArtifacts, build_regime_diagnostics
-from .study import (
+from qlib_platform.research.feature_store import load_feature_store
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.ops.platform_release import PlatformRelease, load_platform_release
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy, load_factor_taxonomy
+from qlib_platform.research.feature_diagnostics import feature_columns
+from qlib_platform.research.regime import (
+    REQUIRED_DIMENSIONS,
+    RegimeSpec,
+    build_regime_labels,
+    load_regime_spec,
+)
+from qlib_platform.research.regime_diagnostics import RegimeDiagnosticArtifacts, build_regime_diagnostics
+from qlib_platform.research.study import (
     _fold_assignments,
     _load_bound_features,
     _mapping,

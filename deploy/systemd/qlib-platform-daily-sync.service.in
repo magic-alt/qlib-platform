@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=@REPO_ROOT@
-ExecStart=@PYTHON_EXE@ -m tushare_qlib --config @CONFIG_PATH@ daily-sync
+ExecStart=@PYTHON_EXE@ -m qlib_platform --config @CONFIG_PATH@ daily-sync
 
 [Install]
 WantedBy=default.target

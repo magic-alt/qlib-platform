@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tushare_qlib.mysql_source import (
+from qlib_platform.data.sources.mysql import (
     MysqlClient,
     _coerce_params,
     build_connection_kwargs,

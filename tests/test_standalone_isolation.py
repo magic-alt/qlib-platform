@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.runtime_resources import resource_path
-from tushare_qlib.settings import Settings
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.runtime.runtime_resources import resource_path
+from qlib_platform.settings import Settings
 
 
 FIELDS = (
@@ -153,7 +153,7 @@ def test_standalone_formal_cli_research_and_backtest_without_platform(tmp_path: 
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("PLATFORM_URL", "http://127.0.0.1:9")
-    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr("qlib_platform.settings.load_dotenv", lambda: None)
     settings = _settings(tmp_path)
     dates = _provider(tmp_path / "legacy_qlib")
     status_result = _run_cli(settings.config_path, "status", "--json")

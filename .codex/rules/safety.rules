@@ -68,9 +68,9 @@ prefix_rule(
 prefix_rule(
     pattern = ["tq"],
     decision = "forbidden",
-    justification = "Do not use a bare tq from PATH. Invoke the repository-local Python with -m tushare_qlib as required by AGENTS.md.",
+    justification = "Do not use a bare tq from PATH. Invoke the repository-local Python with -m qlib_platform as required by AGENTS.md.",
     match = ["tq status", "tq daily-sync --as-of 2026-08-31"],
-    not_match = [".venv/bin/python -m tushare_qlib status"],
+    not_match = [".venv/bin/python -m qlib_platform status"],
 )
 
 prefix_rule(

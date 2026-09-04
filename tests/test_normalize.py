@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.fundamentals import PIT_FIELDS
-from tushare_qlib.normalize import normalize_symbol
-from tushare_qlib.quality import validate_curated
+from qlib_platform.data.fundamentals import PIT_FIELDS
+from qlib_platform.data.normalize import normalize_symbol
+from qlib_platform.data.quality import validate_curated
 
 
 def test_observed_close_takes_precedence_over_conflicting_suspend_record():

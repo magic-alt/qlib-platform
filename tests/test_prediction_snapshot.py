@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-from tushare_qlib.prediction_snapshot import (
+from qlib_platform.artifacts.prediction_snapshot import (
     PredictionSnapshotSpec,
     load_prediction_snapshot,
     prediction_snapshot_path,

@@ -9,7 +9,7 @@ from typing import Any
 import pandas as pd
 from loguru import logger
 
-from .base import FetchResult, RetryPolicy
+from qlib_platform.data.sources.base import FetchResult, RetryPolicy
 
 try:
     import tushare as ts

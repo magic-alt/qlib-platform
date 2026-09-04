@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.auth import LocalAuthBackend
+from qlib_platform.auth import LocalAuthBackend
 
 
 def test_local_auth_bootstraps_and_verifies_offline_session(tmp_path: Path):

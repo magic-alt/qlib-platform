@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib.bootstrap import bootstrap
-from tushare_qlib.data_source_resolver import ReleaseSelectionRequired
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.bootstrap import bootstrap
+from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path, *, token: str | None = None) -> Settings:
@@ -31,7 +31,7 @@ def test_auto_bootstrap_returns_release_selection_guidance(tmp_path: Path, monke
             "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
         )
 
-    monkeypatch.setattr("tushare_qlib.bootstrap.resolve_source", ambiguous_release)
+    monkeypatch.setattr("qlib_platform.bootstrap.resolve_source", ambiguous_release)
 
     result = bootstrap(_settings(tmp_path), source="auto")
 
@@ -46,7 +46,7 @@ def test_auto_bootstrap_returns_release_selection_guidance(tmp_path: Path, monke
 def test_tushare_bootstrap_uses_configured_window(tmp_path: Path, monkeypatch):
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(
-        "tushare_qlib.bootstrap._run_cli",
+        "qlib_platform.bootstrap._run_cli",
         lambda _settings, *arguments: calls.append(tuple(arguments)),
     )
 
@@ -59,7 +59,7 @@ def test_tushare_bootstrap_uses_configured_window(tmp_path: Path, monkeypatch):
 def test_tushare_bootstrap_builds_all_required_release_inputs(tmp_path: Path, monkeypatch):
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(
-        "tushare_qlib.bootstrap._run_cli",
+        "qlib_platform.bootstrap._run_cli",
         lambda _settings, *arguments: calls.append(tuple(arguments)),
     )
 

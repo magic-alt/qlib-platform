@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.strategies import blend_model_scores, momentum_quality_lowvol_signals
+from qlib_platform.backtesting.strategies import blend_model_scores, momentum_quality_lowvol_signals
 
 
 def test_rank_ensemble_and_rule_strategy():

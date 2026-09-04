@@ -5,10 +5,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
-from .base import DataSourceClient, RetryPolicy
+from qlib_platform.data.sources.base import DataSourceClient, RetryPolicy
 
 if TYPE_CHECKING:
-    from ...settings import Settings
+    from qlib_platform.settings import Settings
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ def _optional_endpoints(settings: "Settings") -> Mapping[str, Any]:
 
 
 def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
-    from .tushare import TushareClient
+    from qlib_platform.data.sources.tushare import TushareClient
 
     source_cfg = _mapping(settings.data.get("data_source"))
     legacy = _mapping(settings.data.get("tushare"))
@@ -89,7 +89,7 @@ def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSou
 
 
 def _mysql_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
-    from .mysql import MysqlClient, build_connection_kwargs, build_mysql_endpoints
+    from qlib_platform.data.sources.mysql import MysqlClient, build_connection_kwargs, build_mysql_endpoints
 
     source_cfg = _mapping(settings.data.get("data_source"))
     mysql_cfg = source_cfg.get("mysql")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib.platform_adapter import ArtifactOutbox, PlatformClient
+from qlib_platform.platform_adapter import ArtifactOutbox, PlatformClient
 
 
 def test_outbox_survives_platform_failure_and_acks_after_recovery(tmp_path: Path):
@@ -56,7 +56,7 @@ def test_platform_client_sends_contract_identity_headers(tmp_path: Path, monkeyp
         captured["timeout"] = timeout
         return Response()
 
-    monkeypatch.setattr("tushare_qlib.platform_adapter.client.urlopen", fake_open)
+    monkeypatch.setattr("qlib_platform.platform_adapter.client.urlopen", fake_open)
     PlatformClient("https://platform.example/artifacts", timeout_seconds=4).send(item)
 
     request = captured["request"]

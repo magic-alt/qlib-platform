@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.artifacts import ArtifactContractError, ArtifactType, validate_artifact
-from tushare_qlib.lean_bridge import export_lean_targets
+from qlib_platform.artifacts import ArtifactContractError, ArtifactType, validate_artifact
+from qlib_platform.ops.lean_bridge import export_lean_targets
 
 
 def test_parquet_round_trip_preserves_artifact_checksum(tmp_path, governed_artifact):

@@ -47,14 +47,14 @@ rolling OOS evidence; the holdout is used only by the existing locked final eval
 ## Feature-diagnostics foundation
 
 The first implementation is an independent, read-only Research Study Layer under
-`tushare_qlib.research`. It consumes the certified raw FeatureSnapshot and the rolling OOS labels
+`qlib_platform.research`. It consumes the certified raw FeatureSnapshot and the rolling OOS labels
 already embedded in the aggregate PredictionSnapshot. It does not call feature materialization,
 fit or replay a model, execute a portfolio, authorize publishing, or read final-holdout payloads.
 
 Run it with the repository-local interpreter:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml alpha-diagnose \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml alpha-diagnose \
   --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
   --walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
   --feature-snapshot <FEATURE_SNAPSHOT_DIRECTORY> \
@@ -153,7 +153,7 @@ It validates the three accepted rolling OOS prediction checksums and consumes no
 artifact. Run it with:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml regime-diagnose \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml regime-diagnose \
   --base-study <ALPHA_PHASE1_FEATURE_MANIFEST> \
   --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
   --walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
@@ -190,7 +190,7 @@ as a linear reference on identical rolling OOS keys. The explanation study runs 
 feature, regime, and failure-attribution studies pass their own integrity contracts:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml explanation-diagnose \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml explanation-diagnose \
   --base-study <ALPHA_PHASE1_FEATURE_MANIFEST> \
   --regime-study <REGIME_STUDY_MANIFEST> \
   --attribution-study <ATTRIBUTION_STUDY_MANIFEST> \
@@ -255,7 +255,7 @@ baseline and bounded prediction-only portfolio manifests use the exact accepted 
 Run it with:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml attribution-diagnose \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml attribution-diagnose \
   --regime-study <REGIME_STUDY_MANIFEST> \
   --acceptance <FULL_WALK_FORWARD_ACCEPTANCE_JSON> \
   --walk-forward <CERTIFIED_XGBOOST_WALK_FORWARD_BUNDLE> \
@@ -300,7 +300,7 @@ and the complete parent/identity chain; and derives one recommendation from thre
 `configs/synthesis/ashare_phase1_synthesis_v1.yaml`:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase1-synthesize \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml phase1-synthesize \
   --feature-study <ALPHA_PHASE1_FEATURE_MANIFEST> \
   --regime-study <REGIME_STUDY_MANIFEST> \
   --attribution-study <ATTRIBUTION_STUDY_MANIFEST> \

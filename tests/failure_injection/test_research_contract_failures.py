@@ -5,15 +5,15 @@ import json
 import pandas as pd
 import pytest
 
-from tushare_qlib.feature_store import load_feature_store
-from tushare_qlib.prediction_snapshot import (
+from qlib_platform.research.feature_store import load_feature_store
+from qlib_platform.artifacts.prediction_snapshot import (
     PredictionSnapshotSpec,
     load_prediction_snapshot,
     write_prediction_snapshot,
 )
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.store import sha256_file
-from tushare_qlib.walk_forward import _validated_checkpoint_manifest
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.walk_forward import _validated_checkpoint_manifest
 
 
 def test_corrupt_feature_partition_fails_before_training(tmp_path):

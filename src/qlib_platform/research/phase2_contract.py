@@ -8,8 +8,8 @@ from typing import Any, Mapping, cast
 
 import yaml
 
-from ..lineage import sha256_json
-from ..store import sha256_file
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
 
 
 PHASE2_SCHEMA = "ashare_phase2_v1"

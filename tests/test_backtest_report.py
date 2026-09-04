@@ -8,13 +8,13 @@ import pandas as pd
 import pytest
 from pypdf import PdfReader
 
-from tushare_qlib.backtest_report import (
+from qlib_platform.backtesting.backtest_report import (
     _plot_font,
     export_holding_snapshots,
     load_run_data,
     write_backtest_report,
 )
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.settings import Paths, Settings
 
 
 class _Position:

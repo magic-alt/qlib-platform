@@ -7,11 +7,11 @@ import pandas as pd
 from qlib.contrib.data.handler import check_transform_proc
 from qlib.data.dataset.handler import DataHandlerLP
 
-from tushare_qlib.alpha.registry import get_alpha_pack
-from tushare_qlib.feature_store import prepare_feature_data
-from tushare_qlib.research_timing import LabelSpec
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.train_select import build_dataset
+from qlib_platform.alpha.registry import get_alpha_pack
+from qlib_platform.research.feature_store import prepare_feature_data
+from qlib_platform.research.research_timing import LabelSpec
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.research.train_select import build_dataset
 
 
 def test_label_spec_is_the_canonical_expression_for_non_default_signal_lag():
@@ -119,7 +119,9 @@ def test_label_values_match_with_feature_store_on_and_off(tmp_path, monkeypatch)
         qlib_repo=None,
         qlib_data_uri=qlib_data,
     )
-    monkeypatch.setattr("tushare_qlib.train_select.handler_class", lambda pack: _MiniResearchHandler)
+    monkeypatch.setattr(
+        "qlib_platform.research.train_select.handler_class", lambda pack: _MiniResearchHandler
+    )
 
     import qlib
     from qlib.constant import REG_CN
@@ -138,7 +140,7 @@ def test_label_values_match_with_feature_store_on_and_off(tmp_path, monkeypatch)
             instruments or "all", start_time=start_time, end_time=end_time
         )
 
-    monkeypatch.setattr("tushare_qlib.feature_store._raw_features", load_raw_features)
+    monkeypatch.setattr("qlib_platform.research.feature_store._raw_features", load_raw_features)
     label_spec = LabelSpec(horizon_days=5, signal_lag_days=2)
     alpha_pack = get_alpha_pack("alpha158_daily_v1")
     train = (str(dates[0].date()), str(dates[9].date()))

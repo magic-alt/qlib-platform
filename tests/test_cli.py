@@ -5,10 +5,10 @@ import sys
 
 import pytest
 
-from tushare_qlib.cli import _report_payload, main, parser
-from tushare_qlib.releases.capabilities import ReleaseCapabilityError
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.standalone_status import collect_status
+from qlib_platform.cli import _report_payload, main, parser
+from qlib_platform.releases.capabilities import ReleaseCapabilityError
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.runtime.standalone_status import collect_status
 
 
 def test_report_payload_omits_uncreated_minimal_report_files(tmp_path):
@@ -106,9 +106,9 @@ def test_governed_phase_commands_require_current_release_capability(
         calls.append(requested)
         raise ReleaseCapabilityError("guard-called")
 
-    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr("qlib_platform.settings.load_dotenv", lambda: None)
     monkeypatch.setattr(
-        "tushare_qlib.releases.capabilities.require_release_capability",
+        "qlib_platform.releases.capabilities.require_release_capability",
         reject,
     )
     monkeypatch.setattr(
@@ -169,21 +169,21 @@ def test_handoff_commands_check_release_capability_before_writing_or_network(
         raise ReleaseCapabilityError("guard-called")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr("qlib_platform.settings.load_dotenv", lambda: None)
     monkeypatch.setattr(
-        "tushare_qlib.releases.capabilities.require_release_capability",
+        "qlib_platform.releases.capabilities.require_release_capability",
         reject,
     )
     monkeypatch.setattr(
-        "tushare_qlib.releases.capabilities.data_release_id_from_artifact",
+        "qlib_platform.releases.capabilities.data_release_id_from_artifact",
         lambda _path: "ds_" + "a" * 64,
     )
     monkeypatch.setattr(
-        "tushare_qlib.releases.capabilities.data_release_id_from_bundle",
+        "qlib_platform.releases.capabilities.data_release_id_from_bundle",
         lambda _path: "ds_" + "a" * 64,
     )
     monkeypatch.setattr(
-        "tushare_qlib.trade_plan.resolve_selection_path",
+        "qlib_platform.backtesting.trade_plan.resolve_selection_path",
         lambda *_args, **_kwargs: tmp_path / "selection.csv",
     )
     monkeypatch.setattr(

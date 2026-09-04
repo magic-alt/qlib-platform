@@ -5,18 +5,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .data_source_resolver import (
+from qlib_platform.datasets.data_source_resolver import (
     ReleaseSelectionRequired,
     resolve_local_raw_source,
     resolve_source,
 )
-from .releases import import_qlib_dataset, publish_local_market_release
-from .settings import Settings
+from qlib_platform.releases import import_qlib_dataset, publish_local_market_release
+from qlib_platform.settings import Settings
 
 
 def _run_cli(settings: Settings, *args: str) -> None:
     subprocess.run(
-        [sys.executable, "-m", "tushare_qlib", "--config", str(settings.config_path), *args],
+        [sys.executable, "-m", "qlib_platform", "--config", str(settings.config_path), *args],
         check=True,
     )
 

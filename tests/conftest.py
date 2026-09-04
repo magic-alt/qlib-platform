@@ -8,7 +8,7 @@ from typing import Callable
 import pandas as pd
 import pytest
 
-from tushare_qlib.artifacts import ArtifactType, PromotionStatus, stamp_artifact
+from qlib_platform.artifacts import ArtifactType, PromotionStatus, stamp_artifact
 
 
 @pytest.fixture

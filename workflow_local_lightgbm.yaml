@@ -93,6 +93,6 @@ task:
             ana_long_short: False
             ann_scaler: 252
         - class: ASharePortAnaRecord
-          module_path: tushare_qlib.workflow_records
+          module_path: qlib_platform.backtesting.workflow_records
           kwargs:
             config: *port_analysis_config

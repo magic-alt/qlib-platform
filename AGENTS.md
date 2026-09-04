@@ -1,9 +1,16 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/qlib_platform/`: canonical Python package for the research platform. New implementation code belongs here.
-- `src/qlib_platform/data/`: provider-neutral ingestion and data contracts; concrete vendor/transport adapters belong under `data/sources/`.
-- `src/tushare_qlib/`: deprecated import-compatibility namespace only. Do not add implementation modules here.
+- `src/qlib_platform/`: canonical provider-neutral Python package. Package root is reserved for cross-domain composition/core surfaces such as CLI, settings, lineage, bootstrap, workflow contracts, and project audit.
+- `src/qlib_platform/data/`: market-data ingestion, normalization, quality, PIT data preparation, symbol/universe handling, and provider adapters; concrete vendor/transport integrations belong under `data/sources/`.
+- `src/qlib_platform/datasets/`: DatasetVersion manifests/registry/resolution, lakehouse freezing, verification, Qlib export, and layout/data migration.
+- `src/qlib_platform/backtesting/`: portfolio/strategy policies, Qlib strategy integration, prediction backtests, execution/strategy audits, and backtest reporting.
+- `src/qlib_platform/artifacts/`: artifact contracts, prediction/live artifacts, resolvers, institutional artifacts, and research bundle export.
+- `src/qlib_platform/research/`: research orchestration, feature store, train/select, walk-forward, diagnostics, Phase 1/2/3 governance, and acceptance logic.
+- `src/qlib_platform/models/`: model adapters, runtime resolution, bundles, registry, and production refit.
+- `src/qlib_platform/runtime/`: live inference, daily signal orchestration, health/monitoring, runtime safety/resources, and scheduler rendering.
+- `src/qlib_platform/ops/`: operational state, delivery ledger, LEAN/platform integration, and operational CLI surfaces.
+- `src/qlib_platform/releases/`, `platform_adapter/`, `feedback/`, `auth/`, and `notifier/`: explicit bounded supporting domains.
 - `tests/`: pytest test suites (`test_*.py`).
 - `scripts/`: utility entry scripts.
 - `configs/`: pipeline and workflow YAML files.
@@ -15,7 +22,7 @@
 
 ## Build, Test, and Development Commands
 - Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\Scripts\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
-- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m qlib_platform --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile. `python -m tushare_qlib` remains a compatibility entry point only.
+- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m qlib_platform --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile. `python -m qlib_platform` is the canonical module entry point.
 - Install core development dependencies: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev]"`.
 - Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[data]"`; the `data` extra currently contains the supported Tushare Pro and MySQL adapter dependencies. Install all operational dependencies with `<repo-python> -m pip install -e ".[all,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
 - Pipeline example: `<repo-python> -m qlib_platform --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.
@@ -30,14 +37,16 @@
 - Naming: `snake_case` for functions/modules, `PascalCase` for classes, `UPPER_SNAKE_CASE` for constants.
 - Prefer small, composable functions for extraction/normalize/stage steps.
 - Store credentials in environment variables, never in code.
-- Do not encode a market-data vendor in core package or domain names. Provider SDKs, credentials, rate limits, endpoint translations, and transport-specific behavior belong behind `qlib_platform.data.sources` adapters.
-- Do not add new flat implementation modules at `src/qlib_platform/` when a domain package exists. Continue the staged migration toward domain packages; compatibility shims may remain at the root when required by downstream imports.
+- Do not encode a market-data vendor in core package, domain, or canonical storage-path names. Provider SDKs, credentials, rate limits, endpoint translations, and transport-specific behavior belong behind `qlib_platform.data.sources` adapters.
+- Do not add flat implementation modules at `src/qlib_platform/` when a domain package owns the concern. The root is a composition boundary, not a compatibility dumping ground.
+- The historical `src/tushare_qlib` namespace has been removed. Do not recreate it or add import hooks that silently resurrect it; downstream code must migrate to the canonical `qlib_platform` domain path.
 
 ## Testing Guidelines
 - Test framework: `pytest` (declared in optional dev dependencies; invoke it through the repository-local interpreter).
 - Keep tests deterministic and lightweight; avoid live vendor/API calls in tests.
 - Add/extend tests under `tests/` with file names like `test_<feature>.py`.
 - Data-source adapters require contract/registry tests and must be testable without live credentials.
+- Storage-layout migrations must preserve legacy source bytes and fail closed on ambiguous source layouts; never rewrite DatasetVersion/PIT identity merely to normalize a directory name.
 - Run targeted tests with `<repo-python> -m pytest tests/test_normalize.py` before broad runs.
 - Before a PR, run the local equivalents of CI quality gates: ruff, mypy, `validate-qrun-contract`, `pytest --cov=src/qlib_platform --cov-report=term-missing --cov-fail-under=60`, and `project-audit --root . --output <temporary-path>`.
 - For execution-boundary updates, update `docs/architecture_boundary.md`, `docs/qmt_gateway.md`, and boundary tests together.
@@ -73,7 +82,6 @@
 - Execution-state modules for broker/order state are intentionally out-of-repo: do not add order submission, cancellation, replacement, ledger, or broker-state writes here.
 - Validate date windows before running full rebuilds; production jobs should run idempotent checks and data-completeness guards.
 - Treat `backfill`, `stage-*`, `dump-*`, `daily-sync`, `production-*`, `model-deploy`, `model-rollback`, and scheduled-task installation/removal as state-changing operations. Run them only with explicit user authorization and report affected outputs.
-
 
 ## Repository Invariants
 - `qlib-platform` is a Research / Alpha Factory. It consumes immutable `DataRelease` inputs, performs research, and publishes research artifacts through Artifact Contract v2.

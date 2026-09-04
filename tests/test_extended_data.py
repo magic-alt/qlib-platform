@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from tushare_qlib.client import FetchResult
-from tushare_qlib.extended_data import EXTENDED_ENDPOINTS
-from tushare_qlib.extended_parallel import FastExtendedDataBackfill
-from tushare_qlib.settings import Settings
-from tushare_qlib.store import PartitionStore
+from qlib_platform.data.sources import FetchResult
+from qlib_platform.data.extended_data import EXTENDED_ENDPOINTS
+from qlib_platform.data.extended_parallel import FastExtendedDataBackfill
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import PartitionStore
 
 
 class _Client:

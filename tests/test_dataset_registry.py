@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.dataset_resolver import resolve_dataset
-from tushare_qlib.dataset_resolver import pin_dataset
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.dataset_resolver import resolve_dataset
+from qlib_platform.datasets.dataset_resolver import pin_dataset
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path) -> Settings:

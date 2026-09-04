@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from tushare_qlib.strategy_targets import latest_strategy_targets
-from tushare_qlib.topk_dropout import TopkDropoutPolicy
+from qlib_platform.backtesting.strategy_targets import latest_strategy_targets
+from qlib_platform.backtesting.topk_dropout import TopkDropoutPolicy
 
 
 def test_latest_strategy_targets_keeps_model_candidates_separate_from_orders_and_post_trade_inventory() -> (

@@ -9,8 +9,8 @@ import pandas as pd
 import torch
 from qlib.contrib.model.pytorch_nn import Net
 
-from tushare_qlib.model_bundle import create_model_bundle, load_model_bundle
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.models.model_bundle import create_model_bundle, load_model_bundle
+from qlib_platform.settings import Paths, Settings
 
 
 class RobustZScoreNorm:

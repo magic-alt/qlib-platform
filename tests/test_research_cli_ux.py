@@ -2,13 +2,13 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from tushare_qlib.research_cli_ux import (
+from qlib_platform.research.research_cli_ux import (
     filter_known_child_noise,
     render_terminal_summary,
     result_manifest_path,
     summarize_result,
 )
-from tushare_qlib.research_quickstart import _attach_summary, parser
+from qlib_platform.research.research_quickstart import _attach_summary, parser
 
 
 def _write_manifest(output_root: Path, run_id: str = "run-123") -> Path:

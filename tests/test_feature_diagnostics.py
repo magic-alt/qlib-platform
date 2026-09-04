@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
-from tushare_qlib.research.feature_diagnostics import (
+from qlib_platform.lineage import sha256_json
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.feature_diagnostics import (
     FeatureDiagnosticsSpec,
     align_oos_features,
     build_feature_diagnostics,

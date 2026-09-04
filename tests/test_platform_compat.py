@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from tushare_qlib.extract import Extractor
-from tushare_qlib.qlib_export import _portable_dataset_dir
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.train_select import _sqlite_tracking_uri
+from qlib_platform.data.ingestion import Extractor
+from qlib_platform.datasets.qlib_export import _portable_dataset_dir
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.research.train_select import _sqlite_tracking_uri
 
 
 def _settings(tmp_path: Path) -> Settings:

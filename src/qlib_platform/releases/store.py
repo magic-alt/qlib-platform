@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, Sequence
 
-from .model import DataRelease, ReleaseRecord, VerificationResult
+from qlib_platform.releases.model import DataRelease, ReleaseRecord, VerificationResult
 
 
 class ReleaseStore(Protocol):

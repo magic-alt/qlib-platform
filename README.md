@@ -155,7 +155,7 @@ bash scripts/run_local_research.sh prepare --source qlib --path /data/qlib/cn_da
 The equivalent low-level command is:
 
 ```powershell
-& $RepoPython -m tushare_qlib release import-qlib --path <QLIB_PROVIDER>
+& $RepoPython -m qlib_platform release import-qlib --path <QLIB_PROVIDER>
 ```
 
 The import freezes the provider into an immutable exploratory DataRelease/DatasetVersion. It does **not** invent missing daily-basic or PIT-fundamental fields.
@@ -299,14 +299,14 @@ Use `.\scripts\run_local_research.ps1 plan ...` or add `--dry-run` before an exp
 After a completed run or matrix, use the repository-local interpreter so the summary command does not depend on shell `PATH`:
 
 ```powershell
-& $RepoPython -m tushare_qlib.research_summary `
+& $RepoPython -m qlib_platform.research.research_summary `
   data\output\quickstart\<RUN>\research_matrix.json
 ```
 
 Equivalent macOS/Linux invocation:
 
 ```bash
-$RepoPython -m tushare_qlib.research_summary \
+$RepoPython -m qlib_platform.research.research_summary \
   data/output/quickstart/<RUN>/research_matrix.json
 ```
 
@@ -499,14 +499,14 @@ $RepoPython scripts/check_docs.py --root .
 $RepoPython -m ruff check src tests
 $RepoPython -m ruff format --check src tests
 $RepoPython -m mypy src
-$RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml validate-qrun-contract
+$RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml validate-qrun-contract
 $RepoPython -m pytest
 ```
 
 Coverage:
 
 ```bash
-$RepoPython -m pytest --cov=src/tushare_qlib --cov-report=term-missing
+$RepoPython -m pytest --cov=src/qlib_platform --cov-report=term-missing
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for contributor onboarding, change classification, validation expectations and pull-request guidance.

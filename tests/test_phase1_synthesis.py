@@ -7,22 +7,22 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from tushare_qlib.cli import parser
-from tushare_qlib.research.phase1_synthesis import (
+from qlib_platform.cli import parser
+from qlib_platform.research.phase1_synthesis import (
     RECOMMENDATIONS,
     derive_feature_evidence,
     derive_phase1_recommendation,
     derive_regime_evidence,
     load_phase1_synthesis_spec,
 )
-from tushare_qlib.research.synthesis_study import (
+from qlib_platform.research.synthesis_study import (
     _bundle_relative_path,
     _load_source,
     _validate_regime_availability,
     run_phase1_synthesis,
 )
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.store import sha256_file
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.data.store import sha256_file
 
 
 def _spec():

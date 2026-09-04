@@ -25,7 +25,7 @@ _LINK_RE = re.compile(r"!?(?:\[[^\]]*\])\(([^)]+)\)")
 _BAD_WINDOWS_PYTHON = re.compile(r"(?i)\.venv[\\/]python\.exe")
 _PERSONAL_PATH = re.compile(r"(?i)(?:/Users/[^/\s]+/|[A-Z]:[\\/]Users[\\/][^\\/\s]+[\\/])")
 _CLI_RE = re.compile(
-    r"-m\s+tushare_qlib(?:\s+--config\s+\S+)?\s+([a-z][a-z0-9-]*)"
+    r"-m\s+qlib_platform(?:\s+--config\s+\S+)?\s+([a-z][a-z0-9-]*)"
     r"(?:\s+([a-z][a-z0-9-]*))?"
 )
 
@@ -129,7 +129,7 @@ def _markdown_findings(root: Path, files: list[Path]) -> list[DocumentationFindi
 
 
 def _cli_findings(root: Path, files: list[Path]) -> list[DocumentationFinding]:
-    from .cli import parser
+    from qlib_platform.cli import parser
 
     known = _commands(parser())
     findings: list[DocumentationFinding] = []

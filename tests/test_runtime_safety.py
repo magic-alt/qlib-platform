@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tushare_qlib.runtime_safety import (
+from qlib_platform.runtime.runtime_safety import (
     resolve_qlib_parallel_runtime,
     validate_multiprocessing_runtime,
 )
@@ -43,7 +43,7 @@ def test_windows_missing_console_launcher_is_rejected(tmp_path):
 
 
 def test_runtime_defaults_to_loky(monkeypatch):
-    monkeypatch.setattr("tushare_qlib.runtime_safety.os.name", "posix")
+    monkeypatch.setattr("qlib_platform.runtime.runtime_safety.os.name", "posix")
     runtime = resolve_qlib_parallel_runtime(SimpleNamespace(data={"research": {"qlib_kernels": 6}}))
 
     assert runtime.kernels == 6

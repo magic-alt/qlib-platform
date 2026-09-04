@@ -3,7 +3,7 @@ import pickle
 
 import pandas as pd
 
-from tushare_qlib.backtest_audit import audit_mlflow_run
+from qlib_platform.backtesting.backtest_audit import audit_mlflow_run
 
 
 def test_audit_rejects_report_before_predictions(tmp_path: Path):

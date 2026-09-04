@@ -9,10 +9,10 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
-from ..lineage import sha256_json
-from ..prediction_snapshot import load_prediction_snapshot
-from ..store import sha256_file
-from .realized_labels import load_realized_label_snapshot
+from qlib_platform.lineage import sha256_json
+from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
+from qlib_platform.data.store import sha256_file
+from qlib_platform.feedback.realized_labels import load_realized_label_snapshot
 
 
 PREDICTION_EVALUATION_SCHEMA = "prediction_evaluation_snapshot_v1"

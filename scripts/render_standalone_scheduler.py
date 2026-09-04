@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tushare_qlib.scheduler import main
+from qlib_platform.runtime.scheduler import main
 
 
 if __name__ == "__main__":

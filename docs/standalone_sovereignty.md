@@ -60,11 +60,11 @@ DatasetVersion and DataRelease verification expose three explicit levels:
 Legacy migration acceptance is deliberately separate from bootstrap:
 
 ```powershell
-& $RepoPython -m tushare_qlib migration-acceptance --source qlib `
+& $RepoPython -m qlib_platform migration-acceptance --source qlib `
   --source-root <READ_ONLY_LEGACY_PROVIDER> `
   --acceptance-root <NEW_EMPTY_ACCEPTANCE_ROOT>
 
-& $RepoPython -m tushare_qlib migration-acceptance --source research `
+& $RepoPython -m qlib_platform migration-acceptance --source research `
   --source-root <READ_ONLY_LEGACY_DATA_ROOT> `
   --acceptance-root <NEW_EMPTY_ACCEPTANCE_ROOT> `
   --start <YYYY-MM-DD> --end <YYYY-MM-DD> --single-thread
@@ -120,8 +120,8 @@ pending delivery bytes. Failed delivery stays pending. A one-shot recovery or lo
 retry worker can deliver to an explicitly configured Platform Artifact v2 endpoint:
 
 ```powershell
-& $RepoPython -m tushare_qlib outbox drain --endpoint https://platform.example/api/artifacts
-& $RepoPython -m tushare_qlib outbox worker --endpoint https://platform.example/api/artifacts
+& $RepoPython -m qlib_platform outbox drain --endpoint https://platform.example/api/artifacts
+& $RepoPython -m qlib_platform outbox worker --endpoint https://platform.example/api/artifacts
 ```
 
 `PLATFORM_ARTIFACT_ENDPOINT` may replace `--endpoint`; its value is never included in

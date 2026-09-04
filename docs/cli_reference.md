@@ -10,7 +10,7 @@ last_verified: 2026-08-31
 Invoke the CLI as:
 
 ```text
-<repo-python> -m tushare_qlib [--config PROFILE] COMMAND
+<repo-python> -m qlib_platform [--config PROFILE] COMMAND
 ```
 
 The default profile is `configs/pipeline.standalone.yaml`. Prefer the repository-local interpreter and an explicit config whenever a workflow depends on integrated data or a frozen research protocol.
@@ -31,11 +31,11 @@ A command that writes an explicitly named output is still a write even when its 
 ## Runtime and health
 
 ```powershell
-& $RepoPython -m tushare_qlib status
-& $RepoPython -m tushare_qlib status --json
-& $RepoPython -m tushare_qlib health live
-& $RepoPython -m tushare_qlib health ready
-& $RepoPython -m tushare_qlib health dependencies
+& $RepoPython -m qlib_platform status
+& $RepoPython -m qlib_platform status --json
+& $RepoPython -m qlib_platform health live
+& $RepoPython -m qlib_platform health ready
+& $RepoPython -m qlib_platform health dependencies
 ```
 
 - `health live` checks process responsiveness only.

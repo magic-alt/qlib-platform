@@ -8,8 +8,8 @@ from typing import Any
 
 import pandas as pd
 
-from .settings import Settings
-from .runtime_resources import resource_argument
+from qlib_platform.settings import Settings
+from qlib_platform.runtime.runtime_resources import resource_argument
 
 
 def parser() -> argparse.ArgumentParser:
@@ -480,14 +480,14 @@ def _report_payload(manifest_path: Path, latest_selection: Path | None = None) -
 def main() -> None:
     args = parser().parse_args()
     if args.command == "status":
-        from .standalone_status import collect_status, render_status
+        from qlib_platform.runtime.standalone_status import collect_status, render_status
 
         status_settings = Settings.load(args.config, create_dirs=False)
         payload = collect_status(status_settings)
         print(json.dumps(payload, ensure_ascii=False) if args.as_json else render_status(payload))
         return
     if args.command == "health":
-        from .health import dependency_health, live_health, ready_health
+        from qlib_platform.runtime.health import dependency_health, live_health, ready_health
 
         health_settings = Settings.load(args.config, create_dirs=False)
         payload = {
@@ -498,7 +498,7 @@ def main() -> None:
         print(json.dumps(payload, ensure_ascii=False))
         return
     if args.command == "outbox":
-        from .platform_adapter import ArtifactOutbox, OutboxWorker, PlatformClient
+        from qlib_platform.platform_adapter import ArtifactOutbox, OutboxWorker, PlatformClient
 
         outbox_settings = Settings.load(args.config, create_dirs=False)
         endpoint = str(args.endpoint or os.getenv("PLATFORM_ARTIFACT_ENDPOINT", "")).strip()
@@ -529,7 +529,7 @@ def main() -> None:
         import getpass
         import hmac
 
-        from .auth import local_auth_backend
+        from qlib_platform.auth import local_auth_backend
 
         auth_settings = Settings.load(args.config, create_dirs=False)
         backend = local_auth_backend(auth_settings.paths.root)
@@ -560,7 +560,7 @@ def main() -> None:
         print(json.dumps({"username": principal.username, "roles": list(principal.roles)}))
         return
     if args.command == "migrate-qlib-layout":
-        from .layout_migration import LayoutMigrator
+        from qlib_platform.datasets.layout_migration import LayoutMigrator
 
         migration_settings = Settings.load(args.config, create_dirs=False)
         migrator = LayoutMigrator(migration_settings)
@@ -572,7 +572,7 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False))
         return
     if args.command == "project-audit":
-        from .project_audit import audit_project, write_audit as write_project_audit
+        from qlib_platform.project_audit import audit_project, write_audit as write_project_audit
 
         report = audit_project(args.root)
         path = write_project_audit(report, args.output)
@@ -585,7 +585,7 @@ def main() -> None:
         return
 
     if args.command == "validate-qrun-contract":
-        from .workflow_contract import validate_qrun_contract
+        from qlib_platform.workflow_contract import validate_qrun_contract
 
         settings = Settings.load(args.config, create_dirs=False)
         result = validate_qrun_contract(settings, args.workflow)
@@ -595,7 +595,10 @@ def main() -> None:
         return
 
     if args.command == "research-audit":
-        from .backtest_audit import audit_mlflow_run, write_audit as write_backtest_audit
+        from qlib_platform.backtesting.backtest_audit import (
+            audit_mlflow_run,
+            write_audit as write_backtest_audit,
+        )
 
         report = audit_mlflow_run(args.run_dir)
         path = write_backtest_audit(report, args.output)
@@ -605,8 +608,8 @@ def main() -> None:
         return
 
     if args.command == "lean-register":
-        from .lean_integration import register_manifest
-        from .releases.capabilities import (
+        from qlib_platform.ops.lean_integration import register_manifest
+        from qlib_platform.releases.capabilities import (
             data_release_id_from_bundle,
             require_release_capability,
         )
@@ -618,8 +621,11 @@ def main() -> None:
         return
 
     if args.command == "artifact-v2-export":
-        from .releases.capabilities import require_release_capability
-        from .research_bundle_export import export_manifest_as_v2_bundle, resolve_data_release_id
+        from qlib_platform.releases.capabilities import require_release_capability
+        from qlib_platform.artifacts.research_bundle_export import (
+            export_manifest_as_v2_bundle,
+            resolve_data_release_id,
+        )
 
         export_settings = Settings.load(args.config, create_dirs=False)
         source_manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
@@ -633,7 +639,7 @@ def main() -> None:
             container_digest=args.container_digest,
             data_release_id=release_id,
         )
-        from .platform_adapter import ArtifactOutbox
+        from qlib_platform.platform_adapter import ArtifactOutbox
 
         queued = ArtifactOutbox(export_settings.paths.state / "platform_adapter" / "outbox.sqlite").enqueue(
             path, release_id
@@ -647,11 +653,11 @@ def main() -> None:
         return
 
     if args.command == "build-target-portfolio":
-        from .releases.capabilities import (
+        from qlib_platform.releases.capabilities import (
             data_release_id_from_artifact,
             require_release_capability,
         )
-        from .trade_plan import build_trade_plan, resolve_selection_path
+        from qlib_platform.backtesting.trade_plan import build_trade_plan, resolve_selection_path
 
         boundary_settings = Settings.load(args.config, create_dirs=False)
         selection_path = resolve_selection_path(
@@ -674,7 +680,11 @@ def main() -> None:
 
     if args.command == "research-gate":
         import yaml
-        from .research_gate import ResearchThresholds, evaluate_research_metrics, write_gate_report
+        from qlib_platform.research.research_gate import (
+            ResearchThresholds,
+            evaluate_research_metrics,
+            write_gate_report,
+        )
 
         metrics = json.loads(Path(args.metrics_json).read_text(encoding="utf-8"))
         cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {}
@@ -690,8 +700,8 @@ def main() -> None:
         return
 
     if args.command == "lean-export":
-        from .lean_bridge import export_lean_targets
-        from .releases.capabilities import (
+        from qlib_platform.ops.lean_bridge import export_lean_targets
+        from qlib_platform.releases.capabilities import (
             data_release_id_from_artifact,
             require_release_capability,
         )
@@ -718,7 +728,7 @@ def main() -> None:
         return
 
     if args.command == "ingest-pit-fundamentals":
-        from .fundamentals import ingest_pit_fundamentals
+        from qlib_platform.data.fundamentals import ingest_pit_fundamentals
 
         pit_settings = Settings.load(args.config, create_dirs=False)
         calendar = args.calendar or str(pit_settings.paths.metadata / "trade_calendar.parquet")
@@ -731,13 +741,13 @@ def main() -> None:
     # installation before export can validate it.
     settings = Settings.load(args.config, require_tushare=False)
     if args.command == "sync-industry":
-        from .industry import sync_sw2021_industry
+        from qlib_platform.data.industry import sync_sw2021_industry
 
         path = sync_sw2021_industry(settings, coverage_end=args.end)
         print(json.dumps({"industryClassificationPit": str(path)}, ensure_ascii=False))
         return
     if args.command == "bootstrap":
-        from .bootstrap import bootstrap
+        from qlib_platform.bootstrap import bootstrap
 
         result = bootstrap(
             settings,
@@ -749,7 +759,7 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False, default=str))
         return
     if args.command == "migration-acceptance":
-        from .migration_acceptance import run_migration_acceptance
+        from qlib_platform.datasets.migration_acceptance import run_migration_acceptance
 
         evidence = run_migration_acceptance(
             settings,
@@ -763,8 +773,8 @@ def main() -> None:
         print(json.dumps({"evidence": str(evidence)}, ensure_ascii=False))
         return
     if args.command == "release":
-        from .dataset_registry import DatasetRegistry
-        from .releases import FileReleaseStore, import_qlib_dataset, release_store_root
+        from qlib_platform.datasets.dataset_registry import DatasetRegistry
+        from qlib_platform.releases import FileReleaseStore, import_qlib_dataset, release_store_root
 
         store = FileReleaseStore(release_store_root(settings))
         if args.release_command == "list":
@@ -815,7 +825,7 @@ def main() -> None:
                 )
             )
         elif args.release_command in {"build-local", "build-tushare"}:
-            from .bootstrap import bootstrap
+            from qlib_platform.bootstrap import bootstrap
 
             source = "raw" if args.release_command == "build-local" else "tushare"
             print(
@@ -850,7 +860,7 @@ def main() -> None:
                     "formal Phase 2 hypotheses must be executed as the frozen rolling-OOS folds; "
                     "generic walk-forward includes final holdout and is forbidden"
                 )
-            from .research.phase2_hypotheses import bind_phase2_hypothesis
+            from qlib_platform.research.phase2_hypotheses import bind_phase2_hypothesis
 
             binding = bind_phase2_hypothesis(
                 args.contract_lock,
@@ -874,9 +884,9 @@ def main() -> None:
         "dataset-promote",
         "registry-rebuild",
     }:
-        from .dataset_manifest import verify_dataset_manifest
-        from .dataset_registry import DatasetRegistry
-        from .dataset_resolver import resolve_dataset
+        from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest
+        from qlib_platform.datasets.dataset_registry import DatasetRegistry
+        from qlib_platform.datasets.dataset_resolver import resolve_dataset
 
         dataset_registry = DatasetRegistry(settings.registry_path)
         dataset_registry.initialize()
@@ -951,7 +961,7 @@ def main() -> None:
     dataset_ref = getattr(args, "dataset_ref", None)
     if dataset_ref:
         from dataclasses import replace
-        from .dataset_resolver import resolve_dataset
+        from qlib_platform.datasets.dataset_resolver import resolve_dataset
 
         resolved = resolve_dataset(settings, dataset_ref, allow_legacy=False)
         settings = replace(settings, qlib_data_uri=resolved.data_path)
@@ -959,18 +969,18 @@ def main() -> None:
     if args.command == "dataset-build":
         import uuid
 
-        from .dataset_registry import DatasetRegistry
-        from .fundamentals import build_pit_from_extended
-        from .lakehouse import freeze_pipeline_layers
-        from .normalize import build_all_curated, export_full_staging
-        from .qlib_export import dump_full
+        from qlib_platform.datasets.dataset_registry import DatasetRegistry
+        from qlib_platform.data.fundamentals import build_pit_from_extended
+        from qlib_platform.datasets.lakehouse import freeze_pipeline_layers
+        from qlib_platform.data.normalize import build_all_curated, export_full_staging
+        from qlib_platform.datasets.qlib_export import dump_full
 
         run_id = f"dataset-build-{uuid.uuid4().hex}"
         run_registry = DatasetRegistry(settings.registry_path)
         run_registry.start_pipeline_run(run_id, "dataset_build")
         try:
             if settings.uses_platform_release():
-                from .platform_release import materialize_platform_release
+                from qlib_platform.ops.platform_release import materialize_platform_release
 
                 release = materialize_platform_release(settings)
                 path = dump_full(
@@ -996,7 +1006,7 @@ def main() -> None:
                     mode="full",
                     gold_sources=(("qlib_input", settings.paths.staging_full),),
                 )
-                from .releases import publish_local_research_release
+                from qlib_platform.releases import publish_local_research_release
 
                 release = publish_local_research_release(
                     settings,
@@ -1036,7 +1046,7 @@ def main() -> None:
         return
 
     if args.command == "ops-query":
-        from .ops_cli import query_ops
+        from qlib_platform.ops.ops_cli import query_ops
 
         print(
             json.dumps(
@@ -1052,7 +1062,7 @@ def main() -> None:
         )
         return
     if args.command == "feedback-build-labels":
-        from .feedback.realized_labels import RealizedLabelSpec, write_realized_label_snapshot
+        from qlib_platform.feedback.realized_labels import RealizedLabelSpec, write_realized_label_snapshot
 
         labels = pd.read_parquet(Path(args.labels).expanduser().resolve())
         if {"datetime", "instrument"}.issubset(labels.columns):
@@ -1075,7 +1085,7 @@ def main() -> None:
         print(json.dumps(manifest, ensure_ascii=False))
         return
     if args.command == "feedback-evaluate":
-        from .feedback.prediction_evaluation import evaluate_prediction_snapshot
+        from qlib_platform.feedback.prediction_evaluation import evaluate_prediction_snapshot
 
         manifest = evaluate_prediction_snapshot(
             args.output,
@@ -1090,13 +1100,13 @@ def main() -> None:
             raise SystemExit(2)
         return
     if args.command == "ops-retry-delivery":
-        from .ops_cli import state_from_settings
+        from qlib_platform.ops.ops_cli import state_from_settings
 
         state_from_settings(settings).recover_delivery(args.idempotency_key)
         print(json.dumps({"idempotencyKey": args.idempotency_key, "status": "RETRY_READY"}))
         return
     if args.command == "ops-ack":
-        from .ops_cli import state_from_settings
+        from qlib_platform.ops.ops_cli import state_from_settings
 
         state_from_settings(settings).acknowledge(
             args.entity, args.entity_id, operator=args.operator, reason=args.reason
@@ -1104,7 +1114,7 @@ def main() -> None:
         print(json.dumps({"entity": args.entity, "id": args.entity_id, "acknowledged": True}))
         return
     if args.command == "ops-summary":
-        from .ops_cli import export_daily_ops, state_from_settings
+        from qlib_platform.ops.ops_cli import export_daily_ops, state_from_settings
 
         if args.output:
             path = export_daily_ops(settings, args.business_date, args.output)
@@ -1119,13 +1129,13 @@ def main() -> None:
             )
         return
     if args.command == "model-refit":
-        from .production_refit import refit_production_model
+        from qlib_platform.models.production_refit import refit_production_model
 
         path = refit_production_model(settings, args.research_run, as_of=args.as_of)
         print(json.dumps({"manifest": str(path)}, ensure_ascii=False))
         return
     if args.command in {"model-deploy", "model-rollback", "model-status"}:
-        from .model_registry import ModelRegistry
+        from qlib_platform.models.model_registry import ModelRegistry
 
         model_registry = ModelRegistry(settings)
         if args.command == "model-deploy":
@@ -1142,7 +1152,7 @@ def main() -> None:
             from dataclasses import replace
 
             settings = replace(settings, qlib_data_uri=Path(args.dataset_uri).expanduser().resolve())
-        from .live_inference import run_live_inference
+        from qlib_platform.runtime.live_inference import run_live_inference
 
         live_result = run_live_inference(
             settings,
@@ -1157,7 +1167,7 @@ def main() -> None:
             "health": live_result.health.to_dict(),
         }
         if args.compare_research:
-            from .live_parity import compare_research_live_scores
+            from qlib_platform.runtime.live_parity import compare_research_live_scores
 
             manifest = json.loads(live_result.manifest_path.read_text(encoding="utf-8"))
             topk = int(manifest["canonicalConfig"]["strategy"]["topk"])
@@ -1177,7 +1187,7 @@ def main() -> None:
             raise SystemExit(3)
         return
     if args.command == "daily-signal-run":
-        from .daily_signal_runner import run_daily_signal
+        from qlib_platform.runtime.daily_signal_runner import run_daily_signal
 
         daily_result = run_daily_signal(
             settings,
@@ -1189,7 +1199,7 @@ def main() -> None:
         print(json.dumps({"signalId": daily_result.signal_id, "manifest": str(daily_result.manifest_path)}))
         return
     if args.command == "daily-sync":
-        from .daily_sync import run_daily_sync
+        from qlib_platform.data.daily_sync import run_daily_sync
 
         sync_manifest_path = run_daily_sync(
             settings,
@@ -1203,8 +1213,8 @@ def main() -> None:
     if args.command == "sync-dividends":
         if not args.bootstrap:
             raise ValueError("sync-dividends currently requires --bootstrap; daily deltas use daily-sync")
-        from .corporate_actions import CorporateActionStore
-        from .extract import Extractor
+        from qlib_platform.data.corporate_actions import CorporateActionStore
+        from qlib_platform.data.ingestion import Extractor
 
         extractor = Extractor(settings)
         master_path = settings.paths.metadata / "stock_master.parquet"
@@ -1218,7 +1228,7 @@ def main() -> None:
         return
 
     if args.command == "backfill-extended":
-        from .extended_parallel import FastExtendedDataBackfill
+        from qlib_platform.data.extended_parallel import FastExtendedDataBackfill
 
         result = FastExtendedDataBackfill(settings, max_workers=args.workers).backfill(
             args.start or settings.data["start_date"],
@@ -1228,7 +1238,7 @@ def main() -> None:
         )
         groups = result.get("groups", [])
         if isinstance(groups, list) and "financial" in groups:
-            from .fundamentals import build_pit_from_extended
+            from qlib_platform.data.fundamentals import build_pit_from_extended
 
             pit_source = settings.paths.raw / "extended" / "fina_indicator_vip"
             result["pit_fundamentals"] = (
@@ -1239,7 +1249,7 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False))
         return
     if args.command == "export-kline":
-        from .kline_export import export_kline
+        from qlib_platform.data.kline_export import export_kline
 
         path = export_kline(
             settings,
@@ -1253,7 +1263,7 @@ def main() -> None:
         return
 
     if args.command == "research-report":
-        from .backtest_report import write_backtest_report
+        from qlib_platform.backtesting.backtest_report import write_backtest_report
 
         run_dir = Path(args.run_dir).expanduser().resolve()
         write_backtest_report(settings, run_dir, positions_file=args.positions_file)
@@ -1261,7 +1271,7 @@ def main() -> None:
         return
 
     if args.command == "alpha-diagnose":
-        from .research.study import run_alpha_diagnose
+        from qlib_platform.research.study import run_alpha_diagnose
 
         manifest_path = run_alpha_diagnose(
             settings,
@@ -1286,7 +1296,7 @@ def main() -> None:
         return
 
     if args.command == "regime-diagnose":
-        from .research.regime_study import run_regime_diagnose
+        from qlib_platform.research.regime_study import run_regime_diagnose
 
         manifest_path = run_regime_diagnose(
             settings,
@@ -1315,7 +1325,7 @@ def main() -> None:
         return
 
     if args.command == "attribution-diagnose":
-        from .research.attribution_study import run_attribution_diagnose
+        from qlib_platform.research.attribution_study import run_attribution_diagnose
 
         manifest_path = run_attribution_diagnose(
             settings,
@@ -1343,7 +1353,7 @@ def main() -> None:
         return
 
     if args.command == "explanation-diagnose":
-        from .research.explanation_study import run_explanation_diagnose
+        from qlib_platform.research.explanation_study import run_explanation_diagnose
 
         manifest_path = run_explanation_diagnose(
             settings,
@@ -1376,7 +1386,7 @@ def main() -> None:
         return
 
     if args.command == "phase1-synthesize":
-        from .research.synthesis_study import run_phase1_synthesis
+        from qlib_platform.research.synthesis_study import run_phase1_synthesis
 
         manifest_path = run_phase1_synthesis(
             settings,
@@ -1405,7 +1415,7 @@ def main() -> None:
     if args.command.startswith("phase2-") or (
         args.command.startswith("phase3-") and args.command != "phase3-portable-verify"
     ):
-        from .releases.capabilities import require_release_capability
+        from qlib_platform.releases.capabilities import require_release_capability
 
         require_release_capability(
             settings,
@@ -1413,7 +1423,7 @@ def main() -> None:
         )
 
     if args.command == "phase2-validate":
-        from .research.phase2_contract import write_phase2_contract_lock
+        from qlib_platform.research.phase2_contract import write_phase2_contract_lock
 
         lock_path = write_phase2_contract_lock(
             phase1_manifest=args.phase1_manifest,
@@ -1435,7 +1445,7 @@ def main() -> None:
         return
 
     if args.command == "phase2-plan":
-        from .research.phase2_program import write_phase2_experiment_plan
+        from qlib_platform.research.phase2_program import write_phase2_experiment_plan
 
         path = write_phase2_experiment_plan(
             contract_lock=args.contract_lock,
@@ -1445,7 +1455,7 @@ def main() -> None:
         return
 
     if args.command == "phase2-data-accept":
-        from .research.phase2_data_acceptance import write_data_release_v2_acceptance
+        from qlib_platform.research.phase2_data_acceptance import write_data_release_v2_acceptance
 
         evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
         checks = evidence.get("checks") if isinstance(evidence, dict) else None
@@ -1456,7 +1466,7 @@ def main() -> None:
         return
 
     if args.command == "phase2-collect":
-        from .research.phase2_collector import collect_phase2_evidence
+        from qlib_platform.research.phase2_collector import collect_phase2_evidence
 
         path = collect_phase2_evidence(
             contract_lock=args.contract_lock,
@@ -1467,7 +1477,7 @@ def main() -> None:
         return
 
     if args.command == "phase2-accept":
-        from .research.phase2_program import write_incremental_acceptance
+        from qlib_platform.research.phase2_program import write_incremental_acceptance
 
         path = write_incremental_acceptance(
             contract_lock=args.contract_lock,
@@ -1478,7 +1488,7 @@ def main() -> None:
         return
 
     if args.command == "phase2-select":
-        from .research.phase2_selection import write_phase2_selection_lock
+        from qlib_platform.research.phase2_selection import write_phase2_selection_lock
 
         acceptance = json.loads(Path(args.acceptance).read_text(encoding="utf-8"))
         candidates = acceptance.get("candidates") if isinstance(acceptance, dict) else None
@@ -1495,7 +1505,7 @@ def main() -> None:
         return
 
     if args.command == "phase2-final-holdout-open":
-        from .research.phase2_selection import open_final_holdout
+        from qlib_platform.research.phase2_selection import open_final_holdout
 
         calendar_path = Path(args.calendar).expanduser().resolve()
         if calendar_path.suffix.lower() == ".json":
@@ -1517,7 +1527,7 @@ def main() -> None:
         return
 
     if args.command == "phase3-validate":
-        from .research.phase3_contract import write_phase3_contract_lock
+        from qlib_platform.research.phase3_contract import write_phase3_contract_lock
 
         path = write_phase3_contract_lock(
             phase2_acceptance=args.phase2_acceptance,
@@ -1541,14 +1551,14 @@ def main() -> None:
         return
 
     if args.command == "phase3-plan":
-        from .research.phase3_program import write_phase3_experiment_plan
+        from qlib_platform.research.phase3_program import write_phase3_experiment_plan
 
         path = write_phase3_experiment_plan(contract_lock=args.contract_lock, output=args.output)
         print(path)
         return
 
     if args.command == "phase3-diagnose":
-        from .research.phase3_diagnostics import run_phase3_diagnose
+        from qlib_platform.research.phase3_diagnostics import run_phase3_diagnose
 
         path = run_phase3_diagnose(
             settings,
@@ -1562,7 +1572,7 @@ def main() -> None:
         return
 
     if args.command == "phase3-portable-export":
-        from .research.phase3_portability import export_phase3_portable_evidence
+        from qlib_platform.research.phase3_portability import export_phase3_portable_evidence
 
         path = export_phase3_portable_evidence(
             contract_lock=args.contract_lock,
@@ -1576,12 +1586,12 @@ def main() -> None:
         return
 
     if args.command == "phase3-portable-verify":
-        from .research.phase3_portability import verify_phase3_portable_evidence
+        from qlib_platform.research.phase3_portability import verify_phase3_portable_evidence
 
         print(json.dumps(verify_phase3_portable_evidence(args.package), ensure_ascii=False, sort_keys=True))
         return
     if args.command == "backtest-predictions":
-        from .prediction_backtest import backtest_predictions
+        from qlib_platform.backtesting.prediction_backtest import backtest_predictions
 
         manifest_path = backtest_predictions(
             settings,
@@ -1602,14 +1612,14 @@ def main() -> None:
         "sync-benchmark",
         "sync-universe",
     }:
-        from .extract import Extractor
+        from qlib_platform.data.ingestion import Extractor
 
         if settings.uses_platform_release():
             if args.command != "source-preflight":
                 raise ValueError(
                     f"{args.command} is disabled for platform_release; platform owns production ingestion"
                 )
-            from .platform_release import platform_release_preflight
+            from qlib_platform.ops.platform_release import platform_release_preflight
 
             result = platform_release_preflight(
                 settings,
@@ -1655,7 +1665,7 @@ def main() -> None:
             )
             print(json.dumps({"intervals": len(frame)}, ensure_ascii=False))
     elif args.command in {"curate", "curate-day", "stage-full", "stage-update"}:
-        from .normalize import (
+        from qlib_platform.data.normalize import (
             build_all_curated,
             build_curated_day,
             export_full_staging,
@@ -1671,7 +1681,7 @@ def main() -> None:
         else:
             export_incremental_staging(settings, args.trade_dates)
     elif args.command in {"dump-full", "dump-update"}:
-        from .qlib_export import dump_full, dump_update
+        from qlib_platform.datasets.qlib_export import dump_full, dump_update
 
         path = (
             dump_full(settings, single_thread=args.single_thread)
@@ -1680,12 +1690,12 @@ def main() -> None:
         )
         print(path)
     elif args.command == "runtime-probe":
-        from .model_runtime import load_model_profile, resolve_runtime
+        from qlib_platform.models.model_runtime import load_model_profile, resolve_runtime
 
         runtime = resolve_runtime(load_model_profile(settings, args.model_profile))
         print(json.dumps(runtime.to_manifest(), ensure_ascii=False))
     elif args.command == "feature-store":
-        from .feature_store import prepare_feature_data
+        from qlib_platform.research.feature_store import prepare_feature_data
 
         _, feature_metadata = prepare_feature_data(
             settings,
@@ -1695,12 +1705,12 @@ def main() -> None:
         )
         print(json.dumps(feature_metadata, ensure_ascii=False))
     elif args.command in {"train-select", "research-run"}:
-        from .train_select import train_backtest_select
+        from qlib_platform.research.train_select import train_backtest_select
 
         if args.command == "research-run" and args.mode == "walk-forward":
             if args.stage != "release":
                 raise ValueError("walk-forward currently requires --stage release")
-            from .walk_forward import run_walk_forward
+            from qlib_platform.research.walk_forward import run_walk_forward
 
             walk_manifest_path = run_walk_forward(
                 settings,

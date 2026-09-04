@@ -12,8 +12,8 @@ from typing import Any
 import pandas as pd
 from ruamel.yaml import YAML
 
-from tushare_qlib.backtest_report import export_holding_snapshots, write_backtest_report
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.backtesting.backtest_report import export_holding_snapshots, write_backtest_report
+from qlib_platform.settings import Paths, Settings
 
 
 def _required_artifact(root: Path, relative_path: str) -> Path:

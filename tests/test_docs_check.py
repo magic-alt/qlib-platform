@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.docs_check import check_documentation
+from qlib_platform.docs_check import check_documentation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,14 +32,14 @@ def test_repository_documentation_baseline_is_clean():
 
 
 def test_accepts_governed_doc_with_existing_link_and_cli(tmp_path: Path):
-    _write_active_doc(tmp_path, "& $RepoPython -m tushare_qlib status")
+    _write_active_doc(tmp_path, "& $RepoPython -m qlib_platform status")
     (tmp_path / "README.md").write_text("[Guide](docs/guide.md)\n", encoding="utf-8")
 
     assert check_documentation(tmp_path) == []
 
 
 def test_validates_cli_positional_choices(tmp_path: Path):
-    path = _write_active_doc(tmp_path, "& $RepoPython -m tushare_qlib health dependencies")
+    path = _write_active_doc(tmp_path, "& $RepoPython -m qlib_platform health dependencies")
 
     assert check_documentation(tmp_path) == []
 
@@ -54,7 +54,7 @@ def test_validates_cli_positional_choices(tmp_path: Path):
         ("[missing](missing.md)", "DOC-001"),
         (r"$RepoPython = '.\.venv\python.exe'", "DOC-004"),
         ("/Users/example/qlib/data", "DOC-005"),
-        ("& $RepoPython -m tushare_qlib command-that-does-not-exist", "DOC-003"),
+        ("& $RepoPython -m qlib_platform command-that-does-not-exist", "DOC-003"),
     ],
 )
 def test_rejects_common_documentation_drift(tmp_path: Path, body: str, rule_id: str):

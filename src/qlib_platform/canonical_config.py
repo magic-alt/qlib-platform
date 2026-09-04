@@ -4,11 +4,11 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping
 
-from .model_runtime import ResolvedRuntime
-from .portfolio import PortfolioPolicy
-from .research_gate import ResearchThresholds
-from .settings import Settings
-from .topk_dropout import RankBufferPolicy, TopkDropoutPolicy
+from qlib_platform.models.model_runtime import ResolvedRuntime
+from qlib_platform.backtesting.portfolio import PortfolioPolicy
+from qlib_platform.research.research_gate import ResearchThresholds
+from qlib_platform.settings import Settings
+from qlib_platform.backtesting.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -229,7 +229,7 @@ class RiskSpec:
             raise ValueError("risk.max_sector_exposure must be in (0, 1]")
         if not 0 < spec.max_daily_loss < 1:
             raise ValueError("risk.max_daily_loss must be in (0, 1)")
-        from .exposure_overlay import ExposureOverlayPolicy
+        from qlib_platform.backtesting.exposure_overlay import ExposureOverlayPolicy
 
         ExposureOverlayPolicy.from_mapping(spec.exposure_overlay)
         return spec

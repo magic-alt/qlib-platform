@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.workflow_contract import validate_qrun_contract
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.workflow_contract import validate_qrun_contract
 
 
 def _settings(tmp_path: Path) -> Settings:

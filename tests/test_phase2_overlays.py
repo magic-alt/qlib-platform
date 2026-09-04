@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.research.phase2_overlays import (
+from qlib_platform.research.phase2_overlays import (
     apply_gross_exposure,
     apply_lowvol_regime_weight,
     causal_volatility_scale,

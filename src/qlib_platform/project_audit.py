@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .docs_check import check_documentation
+from qlib_platform.docs_check import check_documentation
 
 
 @dataclass(frozen=True)

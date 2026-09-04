@@ -5,7 +5,7 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
-from .failure_attribution import FailureAttributionSpec
+from qlib_platform.research.failure_attribution import FailureAttributionSpec
 
 
 REQUIRED_PORTFOLIO_COLUMNS = {"return", "bench", "cost"}

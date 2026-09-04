@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.settings import Settings
+from qlib_platform.settings import Settings
 
 
 def test_settings_extends_base_and_appends_qlib_fields(tmp_path: Path):
@@ -71,7 +71,7 @@ def test_standalone_profile_loads_without_platform_or_tushare_environment(monkey
         "TUSHARE_TOKEN",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr("qlib_platform.settings.load_dotenv", lambda: None)
 
     settings = Settings.load("configs/pipeline.standalone.yaml", create_dirs=False)
 
@@ -85,7 +85,7 @@ def test_standalone_profile_loads_without_platform_or_tushare_environment(monkey
 
 def test_standalone_root_environment_is_optional_override(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("QLIB_DATA_ROOT", str(tmp_path / "standalone-root"))
-    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr("qlib_platform.settings.load_dotenv", lambda: None)
 
     settings = Settings.load("configs/pipeline.standalone.yaml", create_dirs=False)
 

@@ -3,12 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.research.factor_clusters import (
+from qlib_platform.lineage import sha256_json
+from qlib_platform.research.factor_clusters import (
     build_feature_clusters,
     mean_daily_rank_correlation,
 )
-from tushare_qlib.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
 
 
 def _taxonomy() -> FactorTaxonomy:

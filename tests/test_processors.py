@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
-from tushare_qlib.processors import CrossSectionalFactorProcessor, ProcessInfSingleThread
+from qlib_platform.data.processors import CrossSectionalFactorProcessor, ProcessInfSingleThread
 
 
 def test_process_inf_replaces_each_date_with_its_finite_column_mean() -> None:
