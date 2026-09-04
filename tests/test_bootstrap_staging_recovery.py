@@ -32,9 +32,7 @@ def _settings(tmp_path: Path, *, mode: str = "standalone") -> Settings:
     )
 
 
-def test_auto_bootstrap_rebuilds_bad_staging_from_certified_raw(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_auto_bootstrap_rebuilds_bad_staging_from_certified_raw(tmp_path: Path, monkeypatch) -> None:
     settings = _settings(tmp_path)
     release_id = "ds_" + "a" * 64
     resolutions = iter(
@@ -64,9 +62,7 @@ def test_auto_bootstrap_rebuilds_bad_staging_from_certified_raw(
     monkeypatch.setattr(
         "qlib_platform.bootstrap._materialize_selected_release",
         lambda *_args: (_ for _ in ()).throw(
-            QlibStagingContractError(
-                "qlib_staging file must contain date and symbol columns: 00000.parquet"
-            )
+            QlibStagingContractError("qlib_staging file must contain date and symbol columns: 00000.parquet")
         ),
     )
     monkeypatch.setattr(
@@ -93,9 +89,7 @@ def test_auto_bootstrap_rebuilds_bad_staging_from_certified_raw(
     assert calls == [("dataset-build", "--start", "20260101", "--end", "20260824")]
 
 
-def test_auto_bootstrap_fails_closed_when_certified_raw_is_incomplete(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_auto_bootstrap_fails_closed_when_certified_raw_is_incomplete(tmp_path: Path, monkeypatch) -> None:
     settings = _settings(tmp_path)
     release_id = "ds_" + "b" * 64
     monkeypatch.setattr(
@@ -115,9 +109,7 @@ def test_auto_bootstrap_fails_closed_when_certified_raw_is_incomplete(
     monkeypatch.setattr(
         "qlib_platform.bootstrap._materialize_selected_release",
         lambda *_args: (_ for _ in ()).throw(
-            QlibStagingContractError(
-                "qlib_staging file must contain date and symbol columns: 00000.parquet"
-            )
+            QlibStagingContractError("qlib_staging file must contain date and symbol columns: 00000.parquet")
         ),
     )
     monkeypatch.setattr(
@@ -166,9 +158,7 @@ def test_integrated_bootstrap_does_not_auto_rebuild_bad_immutable_release(
     monkeypatch.setattr(
         "qlib_platform.bootstrap._materialize_selected_release",
         lambda *_args: (_ for _ in ()).throw(
-            QlibStagingContractError(
-                "qlib_staging file must contain date and symbol columns: 00000.parquet"
-            )
+            QlibStagingContractError("qlib_staging file must contain date and symbol columns: 00000.parquet")
         ),
     )
 
