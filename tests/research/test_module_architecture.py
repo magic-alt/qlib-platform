@@ -38,12 +38,8 @@ def test_phase_named_runtime_modules_are_compatibility_only() -> None:
 
 
 def test_programs_share_immutable_artifact_writer() -> None:
-    candidate_program = (_RESEARCH_ROOT / "workflow" / "candidate_program.py").read_text(
-        encoding="utf-8"
-    )
-    stability_program = (_RESEARCH_ROOT / "workflow" / "stability_program.py").read_text(
-        encoding="utf-8"
-    )
+    candidate_program = (_RESEARCH_ROOT / "workflow" / "candidate_program.py").read_text(encoding="utf-8")
+    stability_program = (_RESEARCH_ROOT / "workflow" / "stability_program.py").read_text(encoding="utf-8")
     for source in (candidate_program, stability_program):
         assert "from qlib_platform.research.artifact_io import write_immutable_json" in source
         assert "def _write_immutable" not in source
