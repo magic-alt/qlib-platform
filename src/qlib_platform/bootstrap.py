@@ -166,9 +166,7 @@ def _materialize_selected_release(settings: Settings, release_id: str) -> dict[s
         sync_context={
             "data_release_id": materialized.data_release_id,
             "data_release_manifest_sha256": materialized.manifest_sha256,
-            "dataset_parents": [
-                {"version_id": materialized.data_release_id, "relation": "converted_from"}
-            ],
+            "dataset_parents": [{"version_id": materialized.data_release_id, "relation": "converted_from"}],
         },
         promote_alias=False,
     )
@@ -177,9 +175,7 @@ def _materialize_selected_release(settings: Settings, release_id: str) -> dict[s
     registry = DatasetRegistry(settings.registry_path)
     policies = release.manifest.get("policies", {})
     governance = (
-        str(policies.get("governanceLevel") or "research")
-        if isinstance(policies, dict)
-        else "research"
+        str(policies.get("governanceLevel") or "research") if isinstance(policies, dict) else "research"
     )
     registry.register_release(release, governance_level=governance)
     registry.promote_research_snapshot(
@@ -235,9 +231,7 @@ def bootstrap(
                 "status": exc.code,
                 "error": str(exc),
                 "recommendedCommand": "tq release list",
-                "selectionCommand": (
-                    "tq release promote <DATA_RELEASE_ID> --alias research-release-current"
-                ),
+                "selectionCommand": ("tq release promote <DATA_RELEASE_ID> --alias research-release-current"),
                 "datasetRecoveryCommand": f"tq registry-rebuild --root {settings.paths.root}",
                 "retryCommand": "tq-research prepare --source auto",
             }
