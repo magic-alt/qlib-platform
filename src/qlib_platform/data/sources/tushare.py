@@ -43,7 +43,7 @@ class TushareClient:
 
     def __init__(
         self,
-        token: str,
+        token: str | None,
         calls_per_minute: int = 180,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
