@@ -98,17 +98,24 @@ def test_resolver_selects_exploratory_market_profile_for_minimal_raw(tmp_path: P
     assert "pit_fundamentals_source" in result.missing_components
 
 
-def test_resolver_auto_selects_latest_release_in_standalone(tmp_path: Path, monkeypatch) -> None:
+def test_resolver_auto_selects_latest_materializable_release_in_standalone(
+    tmp_path: Path, monkeypatch
+) -> None:
     settings = _settings(tmp_path)
     older = SimpleNamespace(
         data_release_id="ds_" + "1" * 64,
         manifest_path=tmp_path / "older.json",
         profile="ashare_qlib_research_v2",
     )
-    latest = SimpleNamespace(
+    latest_compatible = SimpleNamespace(
         data_release_id="ds_" + "2" * 64,
-        manifest_path=tmp_path / "latest.json",
+        manifest_path=tmp_path / "latest-compatible.json",
         profile="ashare_qlib_research_v2",
+    )
+    newer_but_incompatible = SimpleNamespace(
+        data_release_id="ds_" + "3" * 64,
+        manifest_path=tmp_path / "newer-incompatible.json",
+        profile="cn-equity-daily-research-v2",
     )
 
     class FakeStore:
@@ -116,17 +123,18 @@ def test_resolver_auto_selects_latest_release_in_standalone(tmp_path: Path, monk
             pass
 
         def list(self):
-            return (older, latest)
+            return (older, latest_compatible, newer_but_incompatible)
 
-        def latest(self):
-            return latest
+        def latest(self, records=None):
+            assert records == [older, latest_compatible]
+            return latest_compatible
 
     monkeypatch.setattr(resolver_module, "FileReleaseStore", FakeStore)
 
     result = resolver_module.resolve_source(settings)
 
     assert result.status == "MATERIALIZE_REQUIRED"
-    assert result.reference == latest.data_release_id
+    assert result.reference == latest_compatible.data_release_id
     assert result.action == "dataset-materialize"
     assert result.profile == "ashare_qlib_research_v2"
 
