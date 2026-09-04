@@ -30,9 +30,7 @@ def _provider(root: Path, dates: list[str], payload: bytes) -> Path:
     (root / "instruments").mkdir()
     (root / "features" / "sh600000").mkdir(parents=True)
     (root / "calendars" / "day.txt").write_text("\n".join(dates) + "\n", encoding="utf-8")
-    (root / "instruments" / "all.txt").write_text(
-        f"SH600000\t{dates[0]}\t{dates[-1]}\n", encoding="utf-8"
-    )
+    (root / "instruments" / "all.txt").write_text(f"SH600000\t{dates[0]}\t{dates[-1]}\n", encoding="utf-8")
     (root / "features" / "sh600000" / "close.day.bin").write_bytes(payload)
     return root
 
