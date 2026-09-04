@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from tushare_qlib.migration_acceptance import _ohlc_suspension_quality, run_migration_acceptance
-from tushare_qlib.settings import Settings
+from qlib_platform.migration_acceptance import _ohlc_suspension_quality, run_migration_acceptance
+from qlib_platform.settings import Settings
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -130,7 +130,7 @@ def test_research_migration_rejects_dirty_lineage_before_writing(
     source.mkdir()
     target = tmp_path / "acceptance"
     monkeypatch.setattr(
-        "tushare_qlib.migration_acceptance.git_revision",
+        "qlib_platform.migration_acceptance.git_revision",
         lambda _path: {"commit": "a" * 40, "dirty": True},
     )
 

@@ -16,7 +16,7 @@ from .topk_dropout import RankBufferPolicy
 class RankBufferStrategy(BaseSignalStrategy):
     """Qlib execution strategy implementing the pre-registered rank buffer.
 
-    The decision mirrors :func:`tushare_qlib.topk_dropout.rank_buffer_decision`
+    The decision mirrors :func:`qlib_platform.topk_dropout.rank_buffer_decision`
     so that the formal backtest, the decision replay and the StrategyAudit
     agree on the same buy/sell intent:
 

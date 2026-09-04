@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib.canonical_config import DatasetSpec, PortfolioSpec, StrategySpec
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
+from qlib_platform.canonical_config import DatasetSpec, PortfolioSpec, StrategySpec
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 def _settings(tmp_path: Path, data: dict[str, object]) -> Settings:

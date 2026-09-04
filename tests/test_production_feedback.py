@@ -5,18 +5,18 @@ import json
 import pandas as pd
 import pytest
 
-from tushare_qlib.feedback.prediction_evaluation import (
+from qlib_platform.feedback.prediction_evaluation import (
     evaluate_prediction_snapshot,
     load_prediction_evaluation,
     prediction_evaluation_manifest_path,
 )
-from tushare_qlib.feedback.realized_labels import (
+from qlib_platform.feedback.realized_labels import (
     RealizedLabelSpec,
     load_realized_label_snapshot,
     realized_label_manifest_path,
     write_realized_label_snapshot,
 )
-from tushare_qlib.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
 
 
 CALENDAR = pd.date_range("2026-01-05", periods=6, freq="B")

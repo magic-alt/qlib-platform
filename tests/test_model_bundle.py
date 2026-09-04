@@ -10,8 +10,8 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.model_bundle import create_model_bundle, load_model_bundle, verify_model_bundle
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.model_bundle import create_model_bundle, load_model_bundle, verify_model_bundle
+from qlib_platform.settings import Paths, Settings
 
 
 class RobustZScoreNorm:

@@ -18,7 +18,7 @@ $logPath = Join-Path $logRoot "daily-sync-$stamp.log"
 
 Push-Location $resolvedRepo
 try {
-    & $resolvedPython -m tushare_qlib --config $resolvedConfig daily-sync *>> $logPath
+    & $resolvedPython -m qlib_platform --config $resolvedConfig daily-sync *>> $logPath
     exit $LASTEXITCODE
 }
 finally {

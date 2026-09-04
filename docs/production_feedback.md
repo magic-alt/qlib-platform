@@ -28,7 +28,7 @@ Neither feedback artifact authorizes candidate selection, final-holdout access, 
 Create a matured-label snapshot with:
 
 ```bash
-$RepoPython -m tushare_qlib feedback-build-labels \
+$RepoPython -m qlib_platform feedback-build-labels \
   --labels /path/to/labels.parquet \
   --calendar /path/to/pinned_calendar.txt \
   --observed-through YYYY-MM-DD \
@@ -50,7 +50,7 @@ The input Parquet may carry `datetime`/`instrument` as columns; the CLI normaliz
 Evaluate one verified PredictionSnapshot against one compatible RealizedLabelSnapshot:
 
 ```bash
-$RepoPython -m tushare_qlib feedback-evaluate \
+$RepoPython -m qlib_platform feedback-evaluate \
   --predictions /path/to/prediction_snapshot \
   --realized-labels /path/to/realized_labels.parquet \
   --output /path/to/prediction_evaluation.parquet \

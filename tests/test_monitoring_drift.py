@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from tushare_qlib.monitoring import evaluate_signal_drift, signal_drift_snapshot
+from qlib_platform.monitoring import evaluate_signal_drift, signal_drift_snapshot
 
 
 def test_signal_drift_tracks_psi_topk_overlap_and_rank_turnover():

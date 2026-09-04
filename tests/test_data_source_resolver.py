@@ -5,10 +5,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import tushare_qlib.data_source_resolver as resolver_module
-from tushare_qlib.data_source_resolver import resolve_source
-from tushare_qlib.releases import import_qlib_dataset
-from tushare_qlib.settings import Settings
+import qlib_platform.data_source_resolver as resolver_module
+from qlib_platform.data_source_resolver import resolve_source
+from qlib_platform.releases import import_qlib_dataset
+from qlib_platform.settings import Settings
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -41,7 +41,7 @@ def _provider(root: Path) -> Path:
 
 def test_resolver_reports_data_unavailable_without_failing_startup(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
-    monkeypatch.setattr("tushare_qlib.settings.load_dotenv", lambda: None)
+    monkeypatch.setattr("qlib_platform.settings.load_dotenv", lambda: None)
     settings = _settings(tmp_path)
 
     result = resolve_source(settings)

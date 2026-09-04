@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.artifacts import ArtifactType
-from tushare_qlib.cli import parser
+from qlib_platform.artifacts import ArtifactType
+from qlib_platform.cli import parser
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +56,7 @@ def test_retired_execution_commands_fail_at_argument_parsing(command: str):
 
 
 def test_execution_broker_and_ledger_sources_are_physically_removed():
-    package = ROOT / "src" / "tushare_qlib"
+    package = ROOT / "src" / "qlib_platform"
     assert not (package / "broker").exists()
     assert not (package / "qmt_gateway").exists()
     assert not {path.name for path in package.iterdir()} & RETIRED_MODULES

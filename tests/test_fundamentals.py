@@ -5,16 +5,16 @@ from types import ModuleType
 import pandas as pd
 import pytest
 
-from tushare_qlib.custom_handler import (
+from qlib_platform.custom_handler import (
     PIT_FEATURE_EXPRESSIONS,
     PIT_FEATURE_NAMES,
     TushareAlpha158Daily,
     TushareAlpha158Fundamental,
 )
-from tushare_qlib.fundamentals import PIT_FIELDS, build_pit_fundamentals
-from tushare_qlib.normalize import _merge_pit_fundamentals
-from tushare_qlib.qlib_export import smoke_test_dataset
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.fundamentals import PIT_FIELDS, build_pit_fundamentals
+from qlib_platform.normalize import _merge_pit_fundamentals
+from qlib_platform.qlib_export import smoke_test_dataset
+from qlib_platform.settings import Paths, Settings
 
 
 def test_pit_fundamentals_do_not_leak_before_announcement():

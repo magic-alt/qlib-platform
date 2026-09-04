@@ -132,7 +132,7 @@ $RepoPython -m pytest
 ### Contract-sensitive changes
 
 ```bash
-$RepoPython -m tushare_qlib \
+$RepoPython -m qlib_platform \
   --config configs/pipeline.integrated.yaml \
   validate-qrun-contract
 ```
@@ -147,7 +147,7 @@ $RepoPython -m mkdocs build --strict
 ### Coverage
 
 ```bash
-$RepoPython -m pytest --cov=src/tushare_qlib --cov-report=term-missing
+$RepoPython -m pytest --cov=src/qlib_platform --cov-report=term-missing
 ```
 
 CI is authoritative for the merge gate. Local success is necessary evidence, not a substitute for required GitHub checks.

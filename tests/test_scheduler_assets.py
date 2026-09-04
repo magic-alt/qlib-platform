@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib import scheduler
+from qlib_platform import scheduler
 
 
 ROOT = Path(__file__).parents[1]

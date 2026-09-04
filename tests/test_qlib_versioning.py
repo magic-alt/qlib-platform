@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from tushare_qlib.dataset_resolver import ResolvedDataset
-from tushare_qlib.qlib_export import _clone_base_dataset, _deduplicate_unchanged
+from qlib_platform.dataset_resolver import ResolvedDataset
+from qlib_platform.qlib_export import _clone_base_dataset, _deduplicate_unchanged
 
 
 def _resolved(path: Path) -> ResolvedDataset:

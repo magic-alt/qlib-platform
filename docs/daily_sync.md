@@ -26,8 +26,8 @@ last_verified: 2026-08-31
 
 ```powershell
 $RepoPython = '.\.venv\Scripts\python.exe'
-& $RepoPython -m tushare_qlib sync-dividends --bootstrap --resume
-& $RepoPython -m tushare_qlib daily-sync --check-only
+& $RepoPython -m qlib_platform sync-dividends --bootstrap --resume
+& $RepoPython -m qlib_platform daily-sync --check-only
 ```
 
 `--check-only` 只检查基础日频/公司行为数据源与质量，不写入正式 Bronze、extended、PIT 或 Qlib 版本。它不会执行 extended 财务刷新。首次全量准备仍使用 `bootstrap --source tushare` 或受控的 `backfill-extended`；首次全量发布或结构性修复使用 `dataset-build`。迁移既有布局时，先按 [`qlib_data_platform.md`](qlib_data_platform.md) 的 dry run 检查，再显式执行迁移。
@@ -37,16 +37,16 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 默认 standalone profile：
 
 ```powershell
-& $RepoPython -m tushare_qlib daily-sync --as-of <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib dataset-verify standalone-current
-& $RepoPython -m tushare_qlib dataset-resolve standalone-current
+& $RepoPython -m qlib_platform daily-sync --as-of <YYYY-MM-DD>
+& $RepoPython -m qlib_platform dataset-verify standalone-current
+& $RepoPython -m qlib_platform dataset-resolve standalone-current
 ```
 
 如果显式使用 TuShare development profile：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml daily-sync --as-of <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
+& $RepoPython -m qlib_platform --config configs/pipeline_tushare_dev.yaml daily-sync --as-of <YYYY-MM-DD>
+& $RepoPython -m qlib_platform --config configs/pipeline_tushare_dev.yaml dataset-resolve research-current
 ```
 
 一次成功的 `daily-sync` 按以下顺序执行：
@@ -103,6 +103,6 @@ Linux systemd user timer 和 macOS launchd agent 使用 `scripts/render_standalo
 - 待恢复发布：`data/state/daily_sync/pending_publish.json`
 - PIT 源指纹状态：`data/state/daily_sync/pit_source_state.json`
 - extended 最近运行：`data/state/extended_backfill/last_run.json`
-- 数据集状态：`& $RepoPython -m tushare_qlib dataset-list`
+- 数据集状态：`& $RepoPython -m qlib_platform dataset-list`
 
 发布失败时保留当前已发布 alias。先检查单次 manifest、`pending_publish.json` 和 `extended_backfill/last_run.json`，修复根因后再重新运行 `daily-sync`；不要手工改写已发布版本目录。

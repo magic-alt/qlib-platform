@@ -27,7 +27,7 @@ Exporting a bundle does not mean it was delivered. Delivering a bundle does not 
 Supply the endpoint explicitly:
 
 ```powershell
-& $RepoPython -m tushare_qlib outbox drain --endpoint <PLATFORM_ARTIFACT_ENDPOINT>
+& $RepoPython -m qlib_platform outbox drain --endpoint <PLATFORM_ARTIFACT_ENDPOINT>
 ```
 
 or configure `PLATFORM_ARTIFACT_ENDPOINT` in the process environment. Do not place endpoint secrets/tokens in documentation or logs.
@@ -35,8 +35,8 @@ or configure `PLATFORM_ARTIFACT_ENDPOINT` in the process environment. Do not pla
 ## One-shot delivery
 
 ```powershell
-& $RepoPython -m tushare_qlib outbox drain --endpoint <ENDPOINT>
-& $RepoPython -m tushare_qlib outbox worker --endpoint <ENDPOINT> --once
+& $RepoPython -m qlib_platform outbox drain --endpoint <ENDPOINT>
+& $RepoPython -m qlib_platform outbox worker --endpoint <ENDPOINT> --once
 ```
 
 Both forms perform a bounded worker cycle. The command reports acknowledged and pending counts.
@@ -44,7 +44,7 @@ Both forms perform a bounded worker cycle. The command reports acknowledged and 
 ## Long-running worker
 
 ```powershell
-& $RepoPython -m tushare_qlib outbox worker `
+& $RepoPython -m qlib_platform outbox worker `
   --endpoint <ENDPOINT> `
   --poll-seconds 30 `
   --max-poll-seconds 300
@@ -69,8 +69,8 @@ Only a successful HTTP 2xx response acknowledges an item. Network errors/non-2xx
 ## Inspect and recover
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-query --entity deliveries
-& $RepoPython -m tushare_qlib ops-retry-delivery <IDEMPOTENCY_KEY>
+& $RepoPython -m qlib_platform ops-query --entity deliveries
+& $RepoPython -m qlib_platform ops-retry-delivery <IDEMPOTENCY_KEY>
 ```
 
 `ops-retry-delivery` changes local recovery state; use the exact delivery idempotency key, not an arbitrary pipeline run ID.
@@ -78,7 +78,7 @@ Only a successful HTTP 2xx response acknowledges an item. Network errors/non-2xx
 If an operator acknowledgement is required:
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-ack `
+& $RepoPython -m qlib_platform ops-ack `
   --entity delivery --id <DELIVERY_ID> `
   --operator <OPERATOR> --reason <REASON>
 ```

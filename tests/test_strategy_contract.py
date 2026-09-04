@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from tushare_qlib.strategy_contract import strategy_contract_from_audit_decision
+from qlib_platform.strategy_contract import strategy_contract_from_audit_decision
 
 
 def test_strategy_contract_distinguishes_candidates_targets_orders_and_expected_inventory() -> None:

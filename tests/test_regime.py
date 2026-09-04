@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tushare_qlib.research.regime import (
+from qlib_platform.research.regime import (
     RegimeSpec,
     _expanding_quantile_states,
     build_regime_labels,

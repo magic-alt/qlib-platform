@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.research.phase3_decay import attach_model_age, derive_model_age_decay
+from qlib_platform.research.phase3_decay import attach_model_age, derive_model_age_decay
 
 
 def _daily() -> pd.DataFrame:

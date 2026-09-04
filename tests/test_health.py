@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tushare_qlib.health import dependency_health, live_health, ready_health
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.health import dependency_health, live_health, ready_health
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path) -> Settings:

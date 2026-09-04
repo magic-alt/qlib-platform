@@ -30,7 +30,7 @@ src/
 │   ├── platform_adapter/          # cross-repository artifact handoff
 │   ├── feedback/                  # realized-label / evaluation feedback
 │   └── ...                        # existing modules retained during staged migration
-└── tushare_qlib/                  # deprecated compatibility namespace only
+└── qlib_platform/                  # deprecated compatibility namespace only
 ```
 
 The remaining root-level modules under `qlib_platform` are compatibility-preserving implementation surfaces from the original flat package. New functionality should be placed in a domain package rather than adding another root-level module. Subsequent refactors can migrate those modules domain-by-domain without another package-name migration.
@@ -84,7 +84,7 @@ Existing top-level `tushare:` settings remain accepted as a compatibility fallba
 - New code and documentation use `qlib_platform`.
 - `python -m qlib_platform` and the `qlib-platform` console script are canonical entry points.
 - Existing `tq`, `tq-research`, `tq-research-summary`, and `tq-render-scheduler` entry points remain available.
-- `tushare_qlib` is retained only as an import compatibility namespace so downstream users do not need a flag-day migration.
+- `qlib_platform` is retained only as an import compatibility namespace so downstream users do not need a flag-day migration.
 - The compatibility namespace should not receive new implementation modules.
 
 This migration deliberately does not change point-in-time semantics, DatasetVersion identities, feature/model logic, strategy rules, backtest behavior, promotion gates, or the research/execution repository boundary.

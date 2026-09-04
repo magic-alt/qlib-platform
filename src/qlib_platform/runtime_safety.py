@@ -62,14 +62,14 @@ def validate_multiprocessing_runtime(
     if entrypoint is None or entrypoint.strip().lower() in _UNSAFE_MAIN_FILES:
         raise RuntimeError(
             "Unsafe Windows multiprocessing entrypoint for Qlib. "
-            "Run with `python -m tushare_qlib ...` or a .py file protected by "
+            "Run with `python -m qlib_platform ...` or a .py file protected by "
             "`if __name__ == '__main__':`; do not pipe code to `python -` or use `python -c`. "
             "Use research.qlib_kernels=1 only for an isolation smoke test."
         )
     if entrypoint.startswith("<") or not _is_importable_entrypoint(entrypoint):
         raise RuntimeError(
             f"Windows Qlib entrypoint is not safely importable: {entrypoint!r}. "
-            "Use `python -m tushare_qlib ...` or a guarded .py file."
+            "Use `python -m qlib_platform ...` or a guarded .py file."
         )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tushare_qlib.alpha import ALPHA_PACKS, get_alpha_pack
+from qlib_platform.alpha import ALPHA_PACKS, get_alpha_pack
 
 
 def test_first_alpha_pack_set_is_registered_with_stable_contracts():

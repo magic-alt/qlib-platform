@@ -33,11 +33,11 @@ This runbook covers Research Plane incidents. Execution-plane incidents involvin
 ## Diagnostic commands
 
 ```powershell
-& $RepoPython -m tushare_qlib status --json
-& $RepoPython -m tushare_qlib health ready
-& $RepoPython -m tushare_qlib health dependencies
-& $RepoPython -m tushare_qlib ops-query --entity runs --business-date <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib ops-query --entity deliveries
+& $RepoPython -m qlib_platform status --json
+& $RepoPython -m qlib_platform health ready
+& $RepoPython -m qlib_platform health dependencies
+& $RepoPython -m qlib_platform ops-query --entity runs --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-query --entity deliveries
 ```
 
 Add `release verify` and `dataset-verify` when the incident can involve data identity.

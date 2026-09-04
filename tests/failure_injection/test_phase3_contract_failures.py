@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.research.phase3_contract import write_phase3_contract_lock
-from tushare_qlib.store import sha256_file
+from qlib_platform.lineage import sha256_json
+from qlib_platform.research.phase3_contract import write_phase3_contract_lock
+from qlib_platform.store import sha256_file
 
 from tests._phase3_helpers import phase3_entry_fixture
 

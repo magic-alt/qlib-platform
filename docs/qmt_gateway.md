@@ -16,7 +16,7 @@ platform/web/backend/app/broker/qmt_gateway
 platform/docs/qmt_gateway.md
 ```
 
-P3 physically removed `src/tushare_qlib/qmt_gateway` and its installer/configuration
+P3 physically removed `src/qlib_platform/qmt_gateway` and its installer/configuration
 surface. Gateway changes and operational commands must be made in `platform`.
 
 Qlib publishes `TARGET_PORTFOLIO`; platform owns QMT observations, hard risk,

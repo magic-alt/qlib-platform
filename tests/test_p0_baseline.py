@@ -6,12 +6,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.p0_baseline import (
+from qlib_platform.p0_baseline import (
     child_audit_receipts,
     cost_stress_test,
     write_orthogonal_synthesis_receipt,
 )
-from tushare_qlib.store import sha256_file
+from qlib_platform.store import sha256_file
 
 
 def test_cost_stress_reports_extra_friction_and_net_excess() -> None:

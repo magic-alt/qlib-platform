@@ -62,9 +62,9 @@ See [Production Feedback](production_feedback.md).
 Portfolio simulation inside Qlib is a research concern, not the Execution Plane. The configured strategy policy selects one research-backtest implementation:
 
 - `topk_dropout_v1` — Qlib-native `TopkDropoutStrategy` (`qlib.contrib.strategy.signal_strategy`), the frozen research default;
-- `rank_buffer_v1` — `RankBufferStrategy` (`tushare_qlib.qlib_strategies`), a pre-registered buy/hold rank-buffer strategy with `target_size` decoupled from `entry_rank`.
+- `rank_buffer_v1` — `RankBufferStrategy` (`qlib_platform.qlib_strategies`), a pre-registered buy/hold rank-buffer strategy with `target_size` decoupled from `entry_rank`.
 
-`tushare_qlib.strategy_factory` resolves the policy, builds the Qlib `PortAnaRecord` strategy block, and tags research manifests with `strategyPolicy`. `strategy_audit.build_strategy_audit` replays the same decision function and reconciles it against **simulated Qlib fills**.
+`qlib_platform.strategy_factory` resolves the policy, builds the Qlib `PortAnaRecord` strategy block, and tags research manifests with `strategyPolicy`. `strategy_audit.build_strategy_audit` replays the same decision function and reconciles it against **simulated Qlib fills**.
 
 Some historical/internal manifest fields use the namespace `execution.strategyPolicy`; that field name does not grant broker, OMS or authoritative execution ownership to this repository.
 

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from tushare_qlib.p0_baseline import write_orthogonal_synthesis_receipt
+from qlib_platform.p0_baseline import write_orthogonal_synthesis_receipt
 
 
 def main() -> None:

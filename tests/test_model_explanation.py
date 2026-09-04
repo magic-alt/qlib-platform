@@ -8,10 +8,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.cli import parser
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.processor_state import processor_state_manifest
-from tushare_qlib.research.explanation_study import (
+from qlib_platform.cli import parser
+from qlib_platform.lineage import sha256_json
+from qlib_platform.processor_state import processor_state_manifest
+from qlib_platform.research.explanation_study import (
     FoldModelInput,
     _materialize_bundle,
     _model_scores_and_shap,
@@ -19,8 +19,8 @@ from tushare_qlib.research.explanation_study import (
     _resolve_recorder_artifacts,
     _universe_filter,
 )
-from tushare_qlib.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
-from tushare_qlib.research.model_explanation import (
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.model_explanation import (
     derive_explanation_stability,
     derive_model_explanation_summary,
     derive_ridge_importance,
@@ -258,7 +258,7 @@ def test_explanation_bundle_is_immutable_and_detects_tamper(tmp_path: Path):
 
 def test_processor_replay_matches_fold_state_and_model_resolution_is_unique(tmp_path: Path):
     from qlib.data.dataset.processor import CSRankNorm, DropnaLabel, Fillna, RobustZScoreNorm
-    from tushare_qlib.processors import ProcessInfSingleThread
+    from qlib_platform.processors import ProcessInfSingleThread
 
     dates = pd.bdate_range("2026-01-05", periods=4)
     instruments = ["A", "B", "C"]

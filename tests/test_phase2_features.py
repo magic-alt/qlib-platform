@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.alpha.registry import ALPHA_PACKS
-from tushare_qlib.fundamentals import PIT_FIELDS_V2
-from tushare_qlib.research.phase2_features import (
+from qlib_platform.alpha.registry import ALPHA_PACKS
+from qlib_platform.fundamentals import PIT_FIELDS_V2
+from qlib_platform.research.phase2_features import (
     BENCHMARK_FAMILIES,
     EXPERIMENT_MATRIX,
     FEATURE_SETS,
@@ -16,7 +16,7 @@ from tushare_qlib.research.phase2_features import (
     residualize_lowvol,
     select_cluster_representative,
 )
-from tushare_qlib.processors import Phase2FeatureSetProcessor
+from qlib_platform.processors import Phase2FeatureSetProcessor
 
 
 def _raw() -> pd.DataFrame:

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.daily_signal_runner import run_daily_signal
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.daily_signal_runner import run_daily_signal
+from qlib_platform.settings import Paths, Settings
 
 
 class _Notifier:
@@ -45,9 +45,9 @@ def test_close_failures_do_not_release_signal_and_emit_domain_alert(
 ):
     settings = _settings(tmp_path)
     notifier = _Notifier()
-    monkeypatch.setattr("tushare_qlib.daily_signal_runner.feishu_notifier_from_environment", lambda: notifier)
+    monkeypatch.setattr("qlib_platform.daily_signal_runner.feishu_notifier_from_environment", lambda: notifier)
     monkeypatch.setattr(
-        "tushare_qlib.daily_signal_runner.run_live_inference",
+        "qlib_platform.daily_signal_runner.run_live_inference",
         lambda *args, **kwargs: (_ for _ in ()).throw(error),
     )
 

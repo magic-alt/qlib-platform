@@ -16,7 +16,7 @@ from .settings import Settings
 
 def _run_cli(settings: Settings, *args: str) -> None:
     subprocess.run(
-        [sys.executable, "-m", "tushare_qlib", "--config", str(settings.config_path), *args],
+        [sys.executable, "-m", "qlib_platform", "--config", str(settings.config_path), *args],
         check=True,
     )
 

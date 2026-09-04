@@ -5,18 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.bootstrap import bootstrap
-from tushare_qlib.data_source_resolver import ReleaseSelectionRequired, resolve_source
-from tushare_qlib.dataset_manifest import write_dataset_manifest
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.dataset_resolver import resolve_dataset
-from tushare_qlib.releases import (
+from qlib_platform.bootstrap import bootstrap
+from qlib_platform.data_source_resolver import ReleaseSelectionRequired, resolve_source
+from qlib_platform.dataset_manifest import write_dataset_manifest
+from qlib_platform.dataset_registry import DatasetRegistry
+from qlib_platform.dataset_resolver import resolve_dataset
+from qlib_platform.releases import (
     FileReleaseStore,
     LocalReleasePublisher,
     import_qlib_dataset,
     release_store_root,
 )
-from tushare_qlib.settings import Settings
+from qlib_platform.settings import Settings
 
 
 def _settings(

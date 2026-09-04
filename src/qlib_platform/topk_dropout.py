@@ -19,7 +19,7 @@ def enforce_deterministic_qlib_position_order() -> None:
     from qlib.backtest.position import Position
 
     current = Position.get_stock_list
-    if bool(getattr(current, "_tushare_qlib_deterministic", False)):
+    if bool(getattr(current, "_qlib_platform_deterministic", False)):
         return
 
     def get_stock_list(position: object) -> list[str]:
@@ -27,7 +27,7 @@ def enforce_deterministic_qlib_position_order() -> None:
         raw = getattr(position, "position")
         return sorted(str(key) for key in raw if key not in excluded)
 
-    get_stock_list._tushare_qlib_deterministic = True  # type: ignore[attr-defined]
+    get_stock_list._qlib_platform_deterministic = True  # type: ignore[attr-defined]
     Position.get_stock_list = get_stock_list  # type: ignore[method-assign]
 
 

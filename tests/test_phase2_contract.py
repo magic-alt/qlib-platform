@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.cli import parser
-from tushare_qlib.research.phase2_contract import (
+from qlib_platform.cli import parser
+from qlib_platform.research.phase2_contract import (
     RECOMMENDATION_ROUTES,
     assert_workstream_allowed,
     load_phase2_contract,

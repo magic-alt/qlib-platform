@@ -33,7 +33,7 @@ powershell -ExecutionPolicy Bypass -File scripts/build_lightgbm_opencl_windows.p
 LightGBM 4.6.0、启用 `USE_GPU=ON`，随后调用：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.standalone.yaml runtime-probe `
+& $RepoPython -m qlib_platform --config configs/pipeline.standalone.yaml runtime-probe `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 ```
 
@@ -42,7 +42,7 @@ LightGBM 4.6.0、启用 `USE_GPU=ON`，随后调用：
 ## 使用方式
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.standalone.yaml train-select `
+& $RepoPython -m qlib_platform --config configs/pipeline.standalone.yaml train-select `
   --model-profile configs/model_profiles/lightgbm_gpu_windows.yaml
 ```
 

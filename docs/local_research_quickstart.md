@@ -24,7 +24,7 @@ remain the authoritative implementations.
 The repository now has one discoverable local-research entry point:
 
 ```text
-<repo-python> -m tushare_qlib.research_quickstart COMMAND
+<repo-python> -m qlib_platform.research_quickstart COMMAND
 ```
 
 After editable/wheel installation, the equivalent console entry point is `tq-research`. Repository development and
@@ -45,7 +45,7 @@ The main commands are:
 A separate comparison command summarizes completed matrix evidence:
 
 ```text
-<repo-python> -m tushare_qlib.research_summary <research_matrix.json>
+<repo-python> -m qlib_platform.research_summary <research_matrix.json>
 ```
 
 It produces IC, RankIC, ICIR, RankICIR, ExcessIR, max drawdown, turnover when available, and cost in one table without
@@ -58,7 +58,7 @@ Use the three layers for different goals:
 | Goal | Recommended entry point |
 | --- | --- |
 | First local experiment / model matrix | `scripts/run_local_research.ps1` or `scripts/run_local_research.sh` |
-| Exact governed research primitive | `<repo-python> -m tushare_qlib ...` |
+| Exact governed research primitive | `<repo-python> -m qlib_platform ...` |
 | Learn upstream Qlib workflow YAML / custom Qlib Model | `examples/local_qlib_backtest/` |
 
 The quickstart launches the existing repository CLI as subprocesses. There is one DatasetVersion verifier, one
@@ -158,9 +158,9 @@ The standalone default alias is normally `standalone-current`. The TuShare devel
 For exact low-level inspection:
 
 ```powershell
-& $RepoPython -m tushare_qlib dataset-list
-& $RepoPython -m tushare_qlib dataset-resolve standalone-current
-& $RepoPython -m tushare_qlib dataset-verify standalone-current --mode deep
+& $RepoPython -m qlib_platform dataset-list
+& $RepoPython -m qlib_platform dataset-resolve standalone-current
+& $RepoPython -m qlib_platform dataset-verify standalone-current --mode deep
 ```
 
 > [!NOTE]
@@ -199,7 +199,7 @@ bash scripts/run_local_research.sh prepare --source qlib --path /data/qlib/cn_da
 Equivalent low-level command:
 
 ```powershell
-& $RepoPython -m tushare_qlib release import-qlib --path D:\quant\cn_data
+& $RepoPython -m qlib_platform release import-qlib --path D:\quant\cn_data
 ```
 
 The import freezes the provider into an immutable exploratory DataRelease/DatasetVersion and moves the configured local
@@ -227,7 +227,7 @@ This requires `TUSHARE_TOKEN` and delegates to the current ingestion/bootstrap c
 When you intentionally need the low-level builder:
 
 ```powershell
-& $RepoPython -m tushare_qlib dataset-build --start 20160104 --end 20260810
+& $RepoPython -m qlib_platform dataset-build --start 20160104 --end 20260810
 ```
 
 Do not rebuild merely because a model result is weak.
@@ -275,8 +275,8 @@ The quickstart recognizes:
 Every quickstart job runs the existing `runtime-probe` before training. Probe explicitly with:
 
 ```powershell
-& $RepoPython -m tushare_qlib runtime-probe --model-profile configs/model_profiles/lightgbm_auto.yaml
-& $RepoPython -m tushare_qlib runtime-probe --model-profile configs/model_profiles/pytorch_auto.yaml
+& $RepoPython -m qlib_platform runtime-probe --model-profile configs/model_profiles/lightgbm_auto.yaml
+& $RepoPython -m qlib_platform runtime-probe --model-profile configs/model_profiles/pytorch_auto.yaml
 ```
 
 The portable PyTorch profile is particularly useful on Apple Silicon: MPS is selected when available, while NVIDIA
@@ -386,14 +386,14 @@ Run `multifactor_core_v1` with the same interface:
 After a completed quickstart matrix, generate the comparison table:
 
 ```powershell
-& $RepoPython -m tushare_qlib.research_summary `
+& $RepoPython -m qlib_platform.research_summary `
   data\output\quickstart\<RUN>\research_matrix.json
 ```
 
 macOS/Linux:
 
 ```bash
-$RepoPython -m tushare_qlib.research_summary \
+$RepoPython -m qlib_platform.research_summary \
   data/output/quickstart/<RUN>/research_matrix.json
 ```
 
@@ -498,7 +498,7 @@ the selected pipeline profile.
 Explicit pre-materialization remains available:
 
 ```powershell
-& $RepoPython -m tushare_qlib feature-store `
+& $RepoPython -m qlib_platform feature-store `
   --dataset-ref standalone-current `
   --start 2018-10-01 `
   --end 2026-08-10
@@ -581,7 +581,7 @@ Run the template with the cross-platform command above and then replace only the
 ## 16. Custom qlib-platform `ModelAdapter`
 
 An integrated model family is different from a raw Qlib `Model` plugin. Implement
-`tushare_qlib.models.base.ModelAdapter` and register it with `tushare_qlib.models.registry`.
+`qlib_platform.models.base.ModelAdapter` and register it with `qlib_platform.models.registry`.
 
 A complete adapter owns:
 
@@ -655,7 +655,7 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 .\scripts\run_local_research.ps1 matrix
 
 # Compare the completed matrix
-& $RepoPython -m tushare_qlib.research_summary data\output\quickstart\<RUN>\research_matrix.json
+& $RepoPython -m qlib_platform.research_summary data\output\quickstart\<RUN>\research_matrix.json
 
 # Walk-forward after narrowing the recipe
 .\scripts\run_local_research.ps1 run --mode walk-forward --alpha-pack alpha158_pit_v1 --model lightgbm
@@ -683,7 +683,7 @@ Add PyTorch and verify MPS resolution:
 
 ```bash
 $RepoPython -m pip install -c constraints/ci.txt -e '.[dev,pytorch]'
-$RepoPython -m tushare_qlib runtime-probe --model-profile configs/model_profiles/pytorch_auto.yaml
+$RepoPython -m qlib_platform runtime-probe --model-profile configs/model_profiles/pytorch_auto.yaml
 bash scripts/run_local_research.sh run --alpha-pack alpha158_pit_v1 --model pytorch
 ```
 
@@ -713,8 +713,8 @@ Freeze the intended provider explicitly:
 Do not let the convenience layer choose among multiple immutable releases. Inspect and promote deliberately:
 
 ```powershell
-& $RepoPython -m tushare_qlib release list
-& $RepoPython -m tushare_qlib release promote <DATA_RELEASE_ID> --alias research-release-current
+& $RepoPython -m qlib_platform release list
+& $RepoPython -m qlib_platform release promote <DATA_RELEASE_ID> --alias research-release-current
 ```
 
 Then resolve/materialize the intended DatasetVersion.

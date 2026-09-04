@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from tushare_qlib.extract import _write_parquet_atomic
+from qlib_platform.extract import _write_parquet_atomic
 
 
 def test_atomic_metadata_write_preserves_hard_linked_snapshot(tmp_path: Path):

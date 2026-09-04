@@ -36,7 +36,7 @@ def build_qlib_strategy_config(policy: StrategyPolicy, *, signal: str = "<PRED>"
         policy.validate()
         return {
             "class": "RankBufferStrategy",
-            "module_path": "tushare_qlib.qlib_strategies",
+            "module_path": "qlib_platform.qlib_strategies",
             "kwargs": {"signal": signal, **asdict(policy)},
         }
     policy.validate()

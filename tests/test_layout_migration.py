@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import tushare_qlib.layout_migration as migration_module
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.layout_migration import LayoutMigrator
-from tushare_qlib.settings import Paths, Settings
+import qlib_platform.layout_migration as migration_module
+from qlib_platform.dataset_registry import DatasetRegistry
+from qlib_platform.layout_migration import LayoutMigrator
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path) -> Settings:

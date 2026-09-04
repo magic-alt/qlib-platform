@@ -23,10 +23,10 @@ Platform unavailability must not be reported as a research-process liveness fail
 ## Baseline checks
 
 ```powershell
-& $RepoPython -m tushare_qlib status --json
-& $RepoPython -m tushare_qlib health live
-& $RepoPython -m tushare_qlib health ready
-& $RepoPython -m tushare_qlib health dependencies
+& $RepoPython -m qlib_platform status --json
+& $RepoPython -m qlib_platform health live
+& $RepoPython -m qlib_platform health ready
+& $RepoPython -m qlib_platform health dependencies
 ```
 
 Record the selected profile and resolved immutable references when comparing two machines; a different config/release/dataset can legitimately yield different dependency state.
@@ -36,9 +36,9 @@ Record the selected profile and resolved immutable references when comparing two
 Query runs and deliveries explicitly:
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-query --entity runs --business-date <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib ops-query --entity deliveries --status <STATUS>
-& $RepoPython -m tushare_qlib ops-summary --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-query --entity runs --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-query --entity deliveries --status <STATUS>
+& $RepoPython -m qlib_platform ops-summary --business-date <YYYY-MM-DD>
 ```
 
 `ops-query` requires `--entity`. `ops-summary` requires `--business-date`; with `--output` it also writes a report file.

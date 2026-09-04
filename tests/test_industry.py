@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tushare_qlib.industry import build_sw2021_industry_intervals
+from qlib_platform.industry import build_sw2021_industry_intervals
 
 
 def test_sw2021_membership_is_converted_to_non_overlapping_pit_intervals():

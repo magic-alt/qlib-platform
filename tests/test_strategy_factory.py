@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.canonical_config import StrategySpec
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.strategy_factory import (
+from qlib_platform.canonical_config import StrategySpec
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.strategy_factory import (
     build_qlib_strategy_config,
     resolve_strategy_policy,
     strategy_policy_id,
 )
-from tushare_qlib.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
+from qlib_platform.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 def _settings(tmp_path: Path, data: dict[str, object]) -> Settings:
@@ -93,7 +93,7 @@ def test_build_qlib_strategy_config_points_rank_buffer_at_local_strategy() -> No
     config = build_qlib_strategy_config(policy)
 
     assert config["class"] == "RankBufferStrategy"
-    assert config["module_path"] == "tushare_qlib.qlib_strategies"
+    assert config["module_path"] == "qlib_platform.qlib_strategies"
     kwargs = config["kwargs"]
     assert kwargs["signal"] == "<PRED>"
     assert kwargs["target_size"] == 10

@@ -57,14 +57,14 @@ Migration is state-changing and is never implicit. First inspect the plan:
 
 ```powershell
 $RepoPython = '.\.venv\Scripts\python.exe'
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml migrate-qlib-layout
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml migrate-qlib-layout
 ```
 
 The dry run reports source/target paths, file counts, bytes, and free space without creating the new
 layout. After reviewing it, explicitly authorize and run:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml migrate-qlib-layout --apply
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml migrate-qlib-layout --apply
 ```
 
 The command journals every step under `data/.migration/` and preserves every legacy source directory in
@@ -83,11 +83,11 @@ Any later cleanup is a separate, explicitly authorized operation.
 After Bronze data and extended financial data exist:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-build `
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-build `
   --start 20160201 --end 20260810 --single-thread
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-list
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-resolve research-current
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml dataset-verify research-current --mode deep
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-list
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-resolve research-current
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml dataset-verify research-current --mode deep
 ```
 
 `dataset-build` runs PIT materialization, Silver normalization, Gold export, Qlib conversion, smoke tests,
@@ -96,7 +96,7 @@ immutable publication, and alias promotion. A failed build leaves the old alias 
 Use an explicit dataset for reproducible research:
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.yaml research-run `
+& $RepoPython -m qlib_platform --config configs/pipeline.yaml research-run `
   --mode walk-forward --dataset-ref <VERSION_ID>
 ```
 

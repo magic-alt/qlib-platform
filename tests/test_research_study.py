@@ -7,13 +7,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tushare_qlib.cli import parser
-from tushare_qlib.lineage import sha256_json
-from tushare_qlib.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
-from tushare_qlib.research.feature_diagnostics import FeatureDiagnosticsSpec
-from tushare_qlib.research.study import run_alpha_diagnose
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.store import sha256_file
+from qlib_platform.cli import parser
+from qlib_platform.lineage import sha256_json
+from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+from qlib_platform.research.feature_diagnostics import FeatureDiagnosticsSpec
+from qlib_platform.research.study import run_alpha_diagnose
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.store import sha256_file
 
 
 def _settings(tmp_path: Path) -> Settings:

@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tushare_qlib import lineage as lineage_module
-from tushare_qlib.lineage import build_lineage, dirty_research_override_enabled, resolve_qlib_repo
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.store import sha256_file
+from qlib_platform import lineage as lineage_module
+from qlib_platform.lineage import build_lineage, dirty_research_override_enabled, resolve_qlib_repo
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.store import sha256_file
 
 
 def _settings(tmp_path: Path, *, allow_dirty_research: bool = False) -> Settings:

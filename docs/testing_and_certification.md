@@ -15,8 +15,8 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 & $RepoPython -m ruff check src tests
 & $RepoPython -m ruff format --check src tests
 & $RepoPython -m mypy src
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml validate-qrun-contract
-& $RepoPython -m pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml validate-qrun-contract
+& $RepoPython -m pytest --cov=src/qlib_platform --cov-report=term-missing --cov-fail-under=60
 ```
 
 Use targeted deterministic tests first. Add failure-injection coverage when a change affects PIT, identity, lineage, snapshots, checkpoints, folds, holdout or Research/Execution boundaries.
@@ -51,7 +51,7 @@ For an ACTIVE doc change:
 
 1. verify `status`, `owner`, `applies_to_commit` and `last_verified`;
 2. run `scripts/check_docs.py --root .`;
-3. compare command syntax against `tushare_qlib.cli.parser()` / `--help`;
+3. compare command syntax against `qlib_platform.cli.parser()` / `--help`;
 4. classify commands as read-only, verification output, local state-changing or external delivery;
 5. verify DataRelease/DatasetVersion and Research/Execution terminology;
 6. ensure current-state facts live in `current_state.md`, not frozen/history docs;

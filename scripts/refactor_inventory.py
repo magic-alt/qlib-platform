@@ -44,7 +44,7 @@ def main() -> None:
             continue
         rel = path.relative_to(ROOT).as_posix()
         for lineno, line in enumerate(text.splitlines(), start=1):
-            if "tushare_qlib" in line:
+            if "qlib_platform" in line:
                 vendor_refs.append(f"{rel}:{lineno}:{line.strip()}")
             if "bronze/tushare" in line or '"tushare" / "current"' in line or '"bronze" / "tushare"' in line:
                 storage_refs.append(f"{rel}:{lineno}:{line.strip()}")

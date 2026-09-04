@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from tushare_qlib.feature_store import (
+from qlib_platform.feature_store import (
     FEATURE_LOADER_CONTRACT,
     _contract,
     _raw_features,
@@ -12,7 +12,7 @@ from tushare_qlib.feature_store import (
     materialize_feature_store,
     prepare_feature_data,
 )
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path, *, feature_store: dict[str, object] | None = None) -> Settings:
@@ -42,9 +42,9 @@ def test_feature_store_partitions_and_reuses_raw_features(tmp_path, monkeypatch)
     columns = pd.MultiIndex.from_tuples([("feature", "A"), ("label", "LABEL0")])
     source = pd.DataFrame([[1.0, 0.1], [2.0, 0.2]], index=index, columns=columns)
     calls = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args: calls.append(args) or source,
     )
 
@@ -69,9 +69,9 @@ def test_prepare_feature_data_reports_materialization_and_reuse(tmp_path, monkey
     )
     source = pd.DataFrame([[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args: calls.append(args) or source,
     )
 
@@ -131,9 +131,9 @@ def test_raw_features_uses_feature_only_loader(tmp_path, monkeypatch):
             observed["load"] = (instruments, start_time, end_time)
             return expected
 
-    monkeypatch.setattr("tushare_qlib.feature_store.alpha_pack_from_settings", lambda settings: object())
-    monkeypatch.setattr("tushare_qlib.feature_store.assert_alpha_pack_compatible", lambda *args: None)
-    monkeypatch.setattr("tushare_qlib.feature_store.handler_class", lambda pack: FakeHandler)
+    monkeypatch.setattr("qlib_platform.feature_store.alpha_pack_from_settings", lambda settings: object())
+    monkeypatch.setattr("qlib_platform.feature_store.assert_alpha_pack_compatible", lambda *args: None)
+    monkeypatch.setattr("qlib_platform.feature_store.handler_class", lambda pack: FakeHandler)
     monkeypatch.setattr("qlib.data.dataset.loader.QlibDataLoader", FakeLoader)
 
     actual = _raw_features(settings, "2024-01-02", "2024-01-02")
@@ -165,17 +165,17 @@ def test_feature_store_extends_same_dataset_without_full_recompute(tmp_path, mon
         pd.DataFrame([[20.0], [3.0]], index=extension_index, columns=columns),
     ]
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args, **kwargs: calls.append((*args, kwargs)) or frames[len(calls) - 1],
     )
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._lookback_start",
+        "qlib_platform.feature_store._lookback_start",
         lambda value, trading_days: "2026-01-03",
     )
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._dataset_snapshot",
+        "qlib_platform.feature_store._dataset_snapshot",
         lambda settings: {
             "sha256": "same",
             "versionId": "same",
@@ -224,13 +224,13 @@ def test_feature_store_incrementally_refreshes_changed_tail_from_direct_parent(t
         pd.DataFrame([[20.0, 0.2], [3.0, 0.3]], index=refresh_index, columns=columns),
     ]
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args, **kwargs: calls.append((*args, kwargs)) or frames[len(calls) - 1],
     )
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._lookback_start",
+        "qlib_platform.feature_store._lookback_start",
         lambda value, trading_days: "2026-01-03",
     )
     state = {"snapshot": "old"}
@@ -263,7 +263,7 @@ def test_feature_store_incrementally_refreshes_changed_tail_from_direct_parent(t
             "parents": [{"version_id": "old", "relation": "updated_from"}],
         }
 
-    monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
+    monkeypatch.setattr("qlib_platform.feature_store._dataset_snapshot", snapshot)
     store = materialize_feature_store(settings, "2026-01-02", "2026-01-03")
     state["snapshot"] = "new"
 
@@ -291,9 +291,9 @@ def test_feature_store_rebinds_direct_parent_when_changes_are_after_requested_ra
     )
     source = pd.DataFrame([[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args: calls.append(args) or source,
     )
     state = {"snapshot": "old"}
@@ -319,7 +319,7 @@ def test_feature_store_rebinds_direct_parent_when_changes_are_after_requested_ra
             "parents": [{"version_id": "old", "relation": "updated_from"}],
         }
 
-    monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
+    monkeypatch.setattr("qlib_platform.feature_store._dataset_snapshot", snapshot)
     old_path = materialize_feature_store(settings, "2026-01-02", "2026-01-03")
     state["snapshot"] = "new"
 
@@ -343,9 +343,9 @@ def test_cross_version_cache_without_direct_parent_fails_closed(tmp_path, monkey
     new = pd.DataFrame([[10.0], [20.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     frames = [old, new]
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args: calls.append(args) or frames[len(calls) - 1],
     )
     state = {"snapshot": "old"}
@@ -371,7 +371,7 @@ def test_cross_version_cache_without_direct_parent_fails_closed(tmp_path, monkey
             "parents": [],
         }
 
-    monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
+    monkeypatch.setattr("qlib_platform.feature_store._dataset_snapshot", snapshot)
     materialize_feature_store(settings, "2026-01-02", "2026-01-03")
     state["snapshot"] = "new"
 
@@ -403,9 +403,9 @@ def test_feature_store_revised_symbols_fail_closed_to_full_materialization(tmp_p
         pd.DataFrame([[10.0], [20.0], [3.0]], index=second_index, columns=columns),
     ]
     calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr("qlib_platform.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
-        "tushare_qlib.feature_store._raw_features",
+        "qlib_platform.feature_store._raw_features",
         lambda *args: calls.append(args) or frames[len(calls) - 1],
     )
     state = {"snapshot": "old"}
@@ -434,7 +434,7 @@ def test_feature_store_revised_symbols_fail_closed_to_full_materialization(tmp_p
             "parents": [{"version_id": "old", "relation": "updated_from"}],
         }
 
-    monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
+    monkeypatch.setattr("qlib_platform.feature_store._dataset_snapshot", snapshot)
     materialize_feature_store(settings, "2026-01-02", "2026-01-03")
     state["snapshot"] = "new"
 

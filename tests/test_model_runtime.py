@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.model_runtime import (
+from qlib_platform.model_runtime import (
     ModelProfile,
     ResolvedRuntime,
     StageTimings,
@@ -13,8 +13,8 @@ from tushare_qlib.model_runtime import (
     resolved_model_parameters,
     resolve_runtime,
 )
-from tushare_qlib.models.registry import model_families
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.models.registry import model_families
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path: Path, research: dict[str, object] | None = None) -> Settings:
@@ -83,9 +83,9 @@ def test_bundled_model_profiles_are_valid(tmp_path, name):
 
 
 def test_lightgbm_auto_falls_back_but_explicit_cuda_fails(monkeypatch):
-    monkeypatch.setattr("tushare_qlib.models.adapters.lightgbm.sys.platform", "linux")
+    monkeypatch.setattr("qlib_platform.models.adapters.lightgbm.sys.platform", "linux")
     monkeypatch.setattr(
-        "tushare_qlib.models.adapters.lightgbm.probe_cuda",
+        "qlib_platform.models.adapters.lightgbm.probe_cuda",
         lambda device_index: (False, "CUDA build missing", "4.7.0"),
     )
     auto = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test")
@@ -100,13 +100,13 @@ def test_lightgbm_auto_falls_back_but_explicit_cuda_fails(monkeypatch):
 
 
 def test_lightgbm_windows_auto_uses_opencl_gpu(monkeypatch):
-    monkeypatch.setattr("tushare_qlib.models.adapters.lightgbm.sys.platform", "win32")
+    monkeypatch.setattr("qlib_platform.models.adapters.lightgbm.sys.platform", "win32")
     monkeypatch.setattr(
-        "tushare_qlib.models.adapters.lightgbm.probe_opencl",
+        "qlib_platform.models.adapters.lightgbm.probe_opencl",
         lambda platform_id, device_index: (True, None, "4.7"),
     )
     monkeypatch.setattr(
-        "tushare_qlib.models.adapters.lightgbm.opencl_device_name",
+        "qlib_platform.models.adapters.lightgbm.opencl_device_name",
         lambda platform_id, device_index: "NVIDIA GeForce RTX 5060",
     )
     profile = ModelProfile("auto", "lightgbm", "auto", 0, {}, "test", 2)

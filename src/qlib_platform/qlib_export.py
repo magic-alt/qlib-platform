@@ -131,7 +131,7 @@ def _smoke_test_dataset_subprocess(dataset_dir: Path, instruments_name: str = "a
     marker = "__TQ_SMOKE_RESULT__="
     script = (
         "import json, sys; from pathlib import Path; "
-        "from tushare_qlib.qlib_export import smoke_test_dataset; "
+        "from qlib_platform.qlib_export import smoke_test_dataset; "
         f"print('{marker}' + json.dumps(smoke_test_dataset(Path(sys.argv[1]), sys.argv[2])))"
     )
     completed = subprocess.run(

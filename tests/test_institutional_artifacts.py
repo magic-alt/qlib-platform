@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tushare_qlib.institutional_artifacts import (
+from qlib_platform.institutional_artifacts import (
     ResearchArtifactType,
     ResearchBundleContext,
     ResearchPromotionStatus,

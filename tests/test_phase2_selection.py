@@ -6,8 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.research.phase2_contract import write_phase2_contract_lock
-from tushare_qlib.research.phase2_selection import open_final_holdout, write_phase2_selection_lock
+from qlib_platform.research.phase2_contract import write_phase2_contract_lock
+from qlib_platform.research.phase2_selection import open_final_holdout, write_phase2_selection_lock
 
 
 def _json(path: Path, value: object) -> Path:

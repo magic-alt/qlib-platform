@@ -5,7 +5,7 @@ import types
 from types import SimpleNamespace
 
 import pandas as pd
-from tushare_qlib.topk_dropout import (
+from qlib_platform.topk_dropout import (
     RankBufferPolicy,
     TopkDropoutPolicy,
     enforce_deterministic_qlib_position_order,

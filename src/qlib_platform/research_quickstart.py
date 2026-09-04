@@ -287,7 +287,7 @@ def _overlay(settings: Settings, root: Path, alpha: str) -> Path:
 
 
 def _base(config: Path) -> list[str]:
-    return [sys.executable, "-m", "tushare_qlib", "--config", str(config)]
+    return [sys.executable, "-m", "qlib_platform", "--config", str(config)]
 
 
 def build_research_command(

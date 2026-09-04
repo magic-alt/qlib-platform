@@ -21,11 +21,11 @@ Every program starts from the real local Phase 1 synthesis manifest. Its
 `primaryRecommendation` is the only workstream switch:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-validate \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml phase2-validate \
   --phase1-manifest /path/to/alpha_phase_1_manifest.json \
   --output /path/to/phase2_contract_lock.json
 
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-plan \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml phase2-plan \
   --contract-lock /path/to/phase2_contract_lock.json \
   --output /path/to/phase2_experiment_plan.json
 ```
@@ -85,7 +85,7 @@ Use the v2 config and the feature set/model named by the immutable plan, for
 example:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline_phase2.yaml research-run \
+.venv/bin/python -m qlib_platform --config configs/pipeline_phase2.yaml research-run \
   --mode walk-forward --stage release --feature-set A1 \
   --model-profile configs/model_profiles/ridge_golden_v1.yaml
 ```
@@ -98,7 +98,7 @@ H001–H106 primary test is a separate, frozen nested Ridge pair. Bind every run
 to the contract definition instead of manually selecting a broad feature set:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline_phase2.yaml research-run \
+.venv/bin/python -m qlib_platform --config configs/pipeline_phase2.yaml research-run \
   --mode fixed --stage release --hypothesis-id H104 --hypothesis-role candidate \
   --contract-lock /path/to/phase2_contract_lock.json \
   --model-profile configs/model_profiles/ridge_golden_v1.yaml \
@@ -130,7 +130,7 @@ predictions-only candidate and baseline portfolio manifests. Paths may be
 absolute or relative to the evidence index.
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-collect \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml phase2-collect \
   --contract-lock /path/to/phase2_contract_lock.json \
   --evidence /path/to/phase2_evidence_index.json \
   --output /path/to/candidate_metrics.json
@@ -157,7 +157,7 @@ spread is mean candidate return minus benchmark and the registered cost
 multiple. The resulting artifact is immutable and remains research-only.
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-accept \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml phase2-accept \
   --contract-lock /path/to/phase2_contract_lock.json \
   --candidate-metrics /path/to/candidate_metrics.json \
   --output /path/to/phase2_acceptance.json
@@ -183,7 +183,7 @@ entry/exit rank buffer. It reuses predictions and does not train a model.
 After rolling-OOS design, freeze one to three gate-passing candidates:
 
 ```bash
-.venv/bin/python -m tushare_qlib --config configs/pipeline.yaml phase2-select \
+.venv/bin/python -m qlib_platform --config configs/pipeline.yaml phase2-select \
   --contract-lock /path/to/phase2_contract_lock.json \
   --acceptance /path/to/phase2_acceptance.json \
   --design-release /path/to/design_release_manifest.json \

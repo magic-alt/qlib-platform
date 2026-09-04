@@ -39,14 +39,14 @@ Verify DataRelease and DatasetVersion independently. A successful DatasetVersion
 ## 3. Query state before retry
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-query --entity runs --business-date <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib ops-query --entity deliveries --status <STATUS>
+& $RepoPython -m qlib_platform ops-query --entity runs --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-query --entity deliveries --status <STATUS>
 ```
 
 For a delivery retry:
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-retry-delivery <IDEMPOTENCY_KEY>
+& $RepoPython -m qlib_platform ops-retry-delivery <IDEMPOTENCY_KEY>
 ```
 
 Retry only after the reason the delivery is retryable is understood. Preserve the same immutable payload and identity.
@@ -56,7 +56,7 @@ Retry only after the reason the delivery is retryable is understood. Preserve th
 When an audited acknowledgement is appropriate:
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-ack `
+& $RepoPython -m qlib_platform ops-ack `
   --entity run --id <RUN_ID> `
   --operator <OPERATOR> --reason <REASON>
 ```

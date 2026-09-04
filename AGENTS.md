@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - `src/qlib_platform/`: canonical Python package for the research platform. New implementation code belongs here.
 - `src/qlib_platform/data/`: provider-neutral ingestion and data contracts; concrete vendor/transport adapters belong under `data/sources/`.
-- `src/tushare_qlib/`: deprecated import-compatibility namespace only. Do not add implementation modules here.
+- `src/qlib_platform/`: deprecated import-compatibility namespace only. Do not add implementation modules here.
 - `tests/`: pytest test suites (`test_*.py`).
 - `scripts/`: utility entry scripts.
 - `configs/`: pipeline and workflow YAML files.
@@ -15,7 +15,7 @@
 
 ## Build, Test, and Development Commands
 - Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\Scripts\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
-- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m qlib_platform --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile. `python -m tushare_qlib` remains a compatibility entry point only.
+- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m qlib_platform --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile. `python -m qlib_platform` remains a compatibility entry point only.
 - Install core development dependencies: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev]"`.
 - Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[data]"`; the `data` extra currently contains the supported Tushare Pro and MySQL adapter dependencies. Install all operational dependencies with `<repo-python> -m pip install -e ".[all,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
 - Pipeline example: `<repo-python> -m qlib_platform --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.

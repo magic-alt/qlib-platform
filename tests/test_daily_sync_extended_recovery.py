@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from tushare_qlib.daily_sync import DailySyncService
-from tushare_qlib.settings import Paths, Settings
-from tushare_qlib.store import PartitionStore
+from qlib_platform.daily_sync import DailySyncService
+from qlib_platform.settings import Paths, Settings
+from qlib_platform.store import PartitionStore
 
 
 class _Extractor:

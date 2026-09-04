@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-import tushare_qlib.dataset_manifest as dataset_manifest_module
-from tushare_qlib.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
-from tushare_qlib.releases import FileReleaseStore, LocalReleasePublisher
-from tushare_qlib.verification import deterministic_sample
+import qlib_platform.dataset_manifest as dataset_manifest_module
+from qlib_platform.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
+from qlib_platform.releases import FileReleaseStore, LocalReleasePublisher
+from qlib_platform.verification import deterministic_sample
 
 
 def _dataset(tmp_path: Path) -> Path:

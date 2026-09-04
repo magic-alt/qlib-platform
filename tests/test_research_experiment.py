@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from tushare_qlib.alpha import get_alpha_pack
-from tushare_qlib.canonical_config import CanonicalConfig
-from tushare_qlib.model_runtime import ModelProfile, ResolvedRuntime
-from tushare_qlib.research_experiment import ResearchExperimentSpec
-from tushare_qlib.research_timing import LabelSpec
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.alpha import get_alpha_pack
+from qlib_platform.canonical_config import CanonicalConfig
+from qlib_platform.model_runtime import ModelProfile, ResolvedRuntime
+from qlib_platform.research_experiment import ResearchExperimentSpec
+from qlib_platform.research_timing import LabelSpec
+from qlib_platform.settings import Paths, Settings
 
 
 def _settings(tmp_path, experiment: dict[str, object]) -> Settings:

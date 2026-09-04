@@ -8,7 +8,7 @@
   <array>
     <string>@PYTHON_EXE@</string>
     <string>-m</string>
-    <string>tushare_qlib</string>
+    <string>qlib_platform</string>
     <string>--config</string>
     <string>@CONFIG_PATH@</string>
     <string>daily-sync</string>

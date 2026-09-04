@@ -12,18 +12,18 @@ This runbook covers one local research/signal business date. It does not authori
 ## Preflight
 
 ```powershell
-& $RepoPython -m tushare_qlib status --json
-& $RepoPython -m tushare_qlib health ready
-& $RepoPython -m tushare_qlib health dependencies
-& $RepoPython -m tushare_qlib model-status
+& $RepoPython -m qlib_platform status --json
+& $RepoPython -m qlib_platform health ready
+& $RepoPython -m qlib_platform health dependencies
+& $RepoPython -m qlib_platform model-status
 ```
 
 Before a governed run, verify the selected release and dataset independently:
 
 ```powershell
-& $RepoPython -m tushare_qlib release verify <DATA_RELEASE_REF> --mode deep
-& $RepoPython -m tushare_qlib dataset-resolve <DATASET_VERSION_REF>
-& $RepoPython -m tushare_qlib dataset-verify <DATASET_VERSION_REF> --mode deep
+& $RepoPython -m qlib_platform release verify <DATA_RELEASE_REF> --mode deep
+& $RepoPython -m qlib_platform dataset-resolve <DATASET_VERSION_REF>
+& $RepoPython -m qlib_platform dataset-verify <DATASET_VERSION_REF> --mode deep
 ```
 
 Confirm that the DatasetVersion is bound to the intended DataRelease and that the requested `as-of` date is a valid research/signal date.
@@ -33,7 +33,7 @@ Confirm that the DatasetVersion is bound to the intended DataRelease and that th
 Use this when the data publication/sync requirement has already been satisfied:
 
 ```powershell
-& $RepoPython -m tushare_qlib live-inference `
+& $RepoPython -m qlib_platform live-inference `
   --as-of <YYYY-MM-DD> `
   --dataset-ref <DATASET_VERSION_REF> `
   --deployment-id <LOCAL_DEPLOYMENT_ID>
@@ -44,7 +44,7 @@ Use this when the data publication/sync requirement has already been satisfied:
 ## Option B: daily orchestration
 
 ```powershell
-& $RepoPython -m tushare_qlib daily-signal-run --as-of <YYYY-MM-DD>
+& $RepoPython -m qlib_platform daily-signal-run --as-of <YYYY-MM-DD>
 ```
 
 Default sequence:
@@ -64,8 +64,8 @@ The daily runner does not automatically execute Artifact Contract v2 export or o
 Inspect the returned signal manifest and then query local ops state:
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-query --entity runs --business-date <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib ops-summary --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-query --entity runs --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-summary --business-date <YYYY-MM-DD>
 ```
 
 A `REJECTED` signal is evidence, not permission to loosen health gates. A `FAILED` run should be classified by phase (sync, inference, notification/delivery) before retry.

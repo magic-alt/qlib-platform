@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from tushare_qlib.research_timing import shared_research_calendar
-from tushare_qlib.settings import Paths, Settings
+from qlib_platform.research_timing import shared_research_calendar
+from qlib_platform.settings import Paths, Settings
 
 
 def test_platform_research_calendar_uses_release_instead_of_legacy_raw(tmp_path, monkeypatch):
@@ -32,8 +32,8 @@ def test_platform_research_calendar_uses_release_instead_of_legacy_raw(tmp_path,
         coverage={"start": "2024-01-02", "end": "2024-01-03"},
         files=lambda role: [release_calendar] if role == "trading_calendar" else [],
     )
-    monkeypatch.setattr("tushare_qlib.dataset_resolver.pin_dataset", lambda value: (value, None))
-    monkeypatch.setattr("tushare_qlib.platform_release.load_platform_release", lambda value: release)
+    monkeypatch.setattr("qlib_platform.dataset_resolver.pin_dataset", lambda value: (value, None))
+    monkeypatch.setattr("qlib_platform.platform_release.load_platform_release", lambda value: release)
 
     actual = shared_research_calendar(settings)
 

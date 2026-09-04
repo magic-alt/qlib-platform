@@ -76,7 +76,7 @@ def _platform_stage(
 
 
 def _qlib_settings(work_dir: Path, data_root: Path, release: dict[str, Any]):
-    from tushare_qlib.settings import Paths, Settings
+    from qlib_platform.settings import Paths, Settings
 
     release_id = str(release["dataReleaseId"])
     root = work_dir / "qlib" / release_id
@@ -114,19 +114,19 @@ def _run_qlib_research(
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
     from qlib.data.dataset.loader import StaticDataLoader
-    from tushare_qlib.institutional_artifacts import (
+    from qlib_platform.institutional_artifacts import (
         ResearchBundleContext,
         ResearchPromotionStatus,
         export_research_bundle,
     )
-    from tushare_qlib.model_runtime import (
+    from qlib_platform.model_runtime import (
         ModelProfile,
         build_model,
         resolved_model_parameters,
         resolve_runtime,
     )
-    from tushare_qlib.platform_release import materialize_platform_release
-    from tushare_qlib.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+    from qlib_platform.platform_release import materialize_platform_release
+    from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
 
     materialized = materialize_platform_release(settings)
     if materialized.data_release_id != release_id:

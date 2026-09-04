@@ -35,10 +35,10 @@ RepoPython=.venv/bin/python
 ## 1. 启动与健康检查
 
 ```powershell
-& $RepoPython -m tushare_qlib status
-& $RepoPython -m tushare_qlib health live
-& $RepoPython -m tushare_qlib health ready
-& $RepoPython -m tushare_qlib health dependencies
+& $RepoPython -m qlib_platform status
+& $RepoPython -m qlib_platform health live
+& $RepoPython -m qlib_platform health ready
+& $RepoPython -m qlib_platform health dependencies
 ```
 
 判读：
@@ -55,7 +55,7 @@ RepoPython=.venv/bin/python
 Integrated 示例：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml release verify `
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml release verify `
   <DATA_RELEASE_REF> --mode deep
 ```
 
@@ -64,7 +64,7 @@ DataRelease 是不可变上游事实 release。`release verify` 校验 manifest 
 常用只读入口：
 
 ```powershell
-& $RepoPython -m tushare_qlib release list
+& $RepoPython -m qlib_platform release list
 ```
 
 下列命令会改变本地发布状态，必须显式确认目标：
@@ -81,11 +81,11 @@ release promote <REF> --alias <ALIAS>
 研究/inference 使用 DatasetVersion ID/alias：
 
 ```powershell
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml dataset-resolve `
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml dataset-resolve `
   <DATASET_VERSION_REF>
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml dataset-show `
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml dataset-show `
   <DATASET_VERSION_REF>
-& $RepoPython -m tushare_qlib --config configs/pipeline.integrated.yaml dataset-verify `
+& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml dataset-verify `
   <DATASET_VERSION_REF> --mode deep
 ```
 
@@ -100,7 +100,7 @@ release promote <REF> --alias <ALIAS>
 本地模型状态：
 
 ```powershell
-& $RepoPython -m tushare_qlib model-status
+& $RepoPython -m qlib_platform model-status
 ```
 
 Refit / deployment：
@@ -120,7 +120,7 @@ model-rollback --to <DEPLOYMENT_ID> [--device cpu]
 推荐形式：
 
 ```powershell
-& $RepoPython -m tushare_qlib live-inference `
+& $RepoPython -m qlib_platform live-inference `
   --as-of <YYYY-MM-DD> `
   --dataset-ref <DATASET_VERSION_REF> `
   --deployment-id <LOCAL_DEPLOYMENT_ID>
@@ -141,7 +141,7 @@ model-rollback --to <DEPLOYMENT_ID> [--device cpu]
 ## 6. Daily signal runner
 
 ```powershell
-& $RepoPython -m tushare_qlib daily-signal-run --as-of <YYYY-MM-DD>
+& $RepoPython -m qlib_platform daily-signal-run --as-of <YYYY-MM-DD>
 ```
 
 默认行为是：
@@ -196,8 +196,8 @@ Export 成功会将 verified bundle 加入本地 durable outbox，但不会等�
 Delivery：
 
 ```powershell
-& $RepoPython -m tushare_qlib outbox drain --endpoint <PLATFORM_ENDPOINT>
-& $RepoPython -m tushare_qlib outbox worker --endpoint <PLATFORM_ENDPOINT> --once
+& $RepoPython -m qlib_platform outbox drain --endpoint <PLATFORM_ENDPOINT>
+& $RepoPython -m qlib_platform outbox worker --endpoint <PLATFORM_ENDPOINT> --once
 ```
 
 `PLATFORM_ARTIFACT_ENDPOINT` 可以替代 `--endpoint`。只有 2xx acknowledgement 才标记成功。重试同一个 immutable payload；禁止更改 DataRelease、parents、checksum、`externalRunId` 或 idempotency identity。
@@ -209,11 +209,11 @@ Delivery：
 当前 CLI 的准确语法是：
 
 ```powershell
-& $RepoPython -m tushare_qlib ops-query --entity runs --business-date <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib ops-query --entity deliveries --status <STATUS>
-& $RepoPython -m tushare_qlib ops-summary --business-date <YYYY-MM-DD>
-& $RepoPython -m tushare_qlib ops-retry-delivery <IDEMPOTENCY_KEY>
-& $RepoPython -m tushare_qlib ops-ack `
+& $RepoPython -m qlib_platform ops-query --entity runs --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-query --entity deliveries --status <STATUS>
+& $RepoPython -m qlib_platform ops-summary --business-date <YYYY-MM-DD>
+& $RepoPython -m qlib_platform ops-retry-delivery <IDEMPOTENCY_KEY>
+& $RepoPython -m qlib_platform ops-ack `
   --entity delivery --id <ID> --operator <OPERATOR> --reason <REASON>
 ```
 

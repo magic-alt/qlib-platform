@@ -280,7 +280,7 @@ def build_dataset(
         else [
             {
                 "class": "AshareUniverseFilter",
-                "module_path": "tushare_qlib.processors",
+                "module_path": "qlib_platform.processors",
                 "kwargs": {
                     "min_listed_days": int(str(universe.get("min_listed_days", 120))),
                     "min_circ_mv_yuan": float(str(universe.get("min_circ_mv_yuan", 2_000_000_000))),
@@ -298,7 +298,7 @@ def build_dataset(
         infer_processors.append(
             {
                 "class": "Phase2FeatureSetProcessor",
-                "module_path": "tushare_qlib.processors",
+                "module_path": "qlib_platform.processors",
                 "kwargs": {
                     "feature_set_id": feature_set_id,
                     "selected_technical": list(selected_technical),
@@ -306,22 +306,22 @@ def build_dataset(
             }
         )
         infer_processors.append(
-            {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}}
+            {"class": "ProcessInfSingleThread", "module_path": "qlib_platform.processors", "kwargs": {}}
         )
     elif alpha_pack.processor_recipe == "multifactor_cross_section_v1":
         infer_processors.append(
             {
                 "class": "CrossSectionalFactorProcessor",
-                "module_path": "tushare_qlib.processors",
+                "module_path": "qlib_platform.processors",
                 "kwargs": {"minimum_industry_members": 5},
             }
         )
         infer_processors.append(
-            {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}}
+            {"class": "ProcessInfSingleThread", "module_path": "qlib_platform.processors", "kwargs": {}}
         )
     else:
         infer_processors.append(
-            {"class": "ProcessInfSingleThread", "module_path": "tushare_qlib.processors", "kwargs": {}}
+            {"class": "ProcessInfSingleThread", "module_path": "qlib_platform.processors", "kwargs": {}}
         )
         infer_processors.append(
             {"class": "RobustZScoreNorm", "kwargs": {"fields_group": "feature", "clip_outlier": True}}

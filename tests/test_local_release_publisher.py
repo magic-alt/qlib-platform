@@ -7,19 +7,19 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tushare_qlib.dataset_registry import DatasetRegistry
-from tushare_qlib.releases import (
+from qlib_platform.dataset_registry import DatasetRegistry
+from qlib_platform.releases import (
     FileReleaseStore,
     LocalReleasePublisher,
     import_qlib_dataset,
     publish_local_market_release,
 )
-from tushare_qlib.releases.capabilities import (
+from qlib_platform.releases.capabilities import (
     ReleaseCapabilityError,
     assert_manifest_capability,
     assert_release_capability,
 )
-from tushare_qlib.settings import Settings
+from qlib_platform.settings import Settings
 
 
 def _provider(root: Path) -> Path:

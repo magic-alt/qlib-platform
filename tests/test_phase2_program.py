@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tushare_qlib.research.phase2_contract import write_phase2_contract_lock
-from tushare_qlib.research.phase2_program import (
+from qlib_platform.research.phase2_contract import write_phase2_contract_lock
+from qlib_platform.research.phase2_program import (
     write_incremental_acceptance,
     write_phase2_experiment_plan,
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tushare_qlib.ops_state import OPS_SCHEMA_VERSION, OpsState, RunStatus
+from qlib_platform.ops_state import OPS_SCHEMA_VERSION, OpsState, RunStatus
 
 
 def test_task_runs_persist_attempts_artifacts_and_failures(tmp_path):
