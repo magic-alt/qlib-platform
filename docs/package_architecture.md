@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: architecture
+applies_to_commit: df64d00844f63ecb1d3b6cc7169d5afab8cff829
+last_verified: 2026-09-04
+---
+
 # Python package architecture
 
 `qlib-platform` is a research and alpha-factory package. Its Python namespace is provider-neutral: the canonical package is `qlib_platform`, not a package named after any market-data vendor.
@@ -9,6 +16,8 @@ src/
 ├── qlib_platform/                 # canonical implementation namespace
 │   ├── data/
 │   │   ├── ingestion.py           # provider-neutral ingestion orchestration
+│   │   ├── fundamentals.py        # PIT fundamentals materialization
+│   │   ├── industry.py            # PIT industry classification
 │   │   └── sources/
 │   │       ├── base.py            # normalized client/result/retry contracts
 │   │       ├── registry.py        # source registry + factory resolution
