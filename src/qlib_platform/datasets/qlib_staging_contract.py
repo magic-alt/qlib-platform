@@ -34,8 +34,7 @@ def validate_qlib_staging_files(files: Iterable[Path], *, role: str = "qlib_stag
         missing = _REQUIRED_COLUMNS - schema_names
         if missing:
             raise QlibStagingContractError(
-                f"{role} file must contain date and symbol columns: {path.name}; "
-                f"missing={sorted(missing)}"
+                f"{role} file must contain date and symbol columns: {path.name}; missing={sorted(missing)}"
             )
     if not seen:
         raise QlibStagingContractError(f"{role} contains no Parquet files")
