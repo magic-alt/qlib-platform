@@ -298,7 +298,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH = ROOT / "src" / "qlib_platform" / "research"
 LEGACY_IMPORT = re.compile(r"qlib_platform\\.research\\.phase[123]_")
-LEGACY_COMMAND = re.compile(r"[\"']phase[123]-")
+LEGACY_COMMAND = re.compile(r"phase[123]-")
 
 
 def _text_files(root: Path):
