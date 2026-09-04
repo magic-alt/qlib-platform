@@ -23,12 +23,6 @@ jobs:
         run: |
           python scripts/pr_macos_local_research_fix.py
           python scripts/pr_macos_local_research_fix_followup.py
-      - name: Remove transient migration assets
-        run: >-
-          git rm
-          scripts/pr_macos_local_research_fix.py
-          scripts/pr_macos_local_research_fix_followup.py
-          .github/workflows/pr-macos-local-research-fix-once.yml
       - name: Install test dependencies
         run: python -m pip install -c constraints/ci.txt -e '.[dev]'
       - name: Format and lint
@@ -42,13 +36,15 @@ jobs:
           tests/test_bootstrap.py
           tests/test_research_quickstart.py
           tests/test_data_source_resolver.py
-      - name: Validate workflow YAML and diff
+      - name: Validate macOS matrix YAML and diff
         run: |
           python -c "from pathlib import Path; import yaml; p=yaml.safe_load(Path('.github/workflows/ci.yml').read_text()); assert isinstance(p, dict)"
           git diff --check
-      - name: Commit repaired tree
+      - name: Commit non-workflow repair
         shell: bash
         run: |
+          git checkout HEAD -- .github/workflows/ci.yml .github/workflows/pr-macos-local-research-fix-once.yml
+          git rm scripts/pr_macos_local_research_fix.py scripts/pr_macos_local_research_fix_followup.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
