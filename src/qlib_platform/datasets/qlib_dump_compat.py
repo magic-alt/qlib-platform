@@ -107,9 +107,9 @@ def _write_fields(
             with path.open("ab") as handle:
                 values.tofile(handle)
         else:
-            np.concatenate((np.asarray([start_index], dtype="<f4"), values)).astype(
-                "<f4", copy=False
-            ).tofile(path)
+            np.concatenate((np.asarray([start_index], dtype="<f4"), values)).astype("<f4", copy=False).tofile(
+                path
+            )
 
 
 def _write_calendar(qlib_dir: Path, calendar: list[pd.Timestamp]) -> None:
@@ -132,14 +132,11 @@ def _read_calendar(qlib_dir: Path) -> list[pd.Timestamp]:
     return values
 
 
-def _write_instruments(
-    qlib_dir: Path, instruments: dict[str, tuple[pd.Timestamp, pd.Timestamp]]
-) -> None:
+def _write_instruments(qlib_dir: Path, instruments: dict[str, tuple[pd.Timestamp, pd.Timestamp]]) -> None:
     path = qlib_dir / "instruments" / "all.txt"
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
-        f"{code}\t{start:%Y-%m-%d}\t{end:%Y-%m-%d}\n"
-        for code, (start, end) in sorted(instruments.items())
+        f"{code}\t{start:%Y-%m-%d}\t{end:%Y-%m-%d}\n" for code, (start, end) in sorted(instruments.items())
     ]
     path.write_text("".join(lines), encoding="utf-8")
 
