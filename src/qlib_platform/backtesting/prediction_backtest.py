@@ -73,8 +73,12 @@ def _market_data_view(settings: Settings, score: pd.Series, timings: StageTiming
         frame = raw.reset_index().rename(columns={"datetime": "trade_date"})
         frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.normalize()
         frame["paused"] = pd.to_numeric(frame["$close"], errors="coerce").isna().astype(float)
+        # Preserve Qlib's raw limit-expression values here.  MarketDataView is a
+        # transport boundary, not the owner of tradability semantics: the
+        # canonical `_normalise_quotes()` path evaluates `$is_limit_* > 0`.
+        # In particular, NaN is missing limit evidence, not an asserted limit.
         for column in ("is_limit_up", "is_limit_down"):
-            frame[column] = pd.to_numeric(frame[f"${column}"], errors="coerce").fillna(1.0)
+            frame[column] = pd.to_numeric(frame[f"${column}"], errors="coerce")
         quote = frame.loc[
             frame["trade_date"].isin(trade_dates),
             ["trade_date", "instrument", "paused", "is_limit_up", "is_limit_down"],
