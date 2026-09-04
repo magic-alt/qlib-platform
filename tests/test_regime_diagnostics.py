@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 
 from qlib_platform.lineage import sha256_json
-from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
-from qlib_platform.research.regime import RegimeSpec
-from qlib_platform.research.regime_diagnostics import (
+from qlib_platform.research.features.taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.diagnostics.regimes import RegimeSpec
+from qlib_platform.research.diagnostics.regime_analysis import (
     ModelComparisonSpec,
     benjamini_hochberg,
     build_oriented_composites,

@@ -10,7 +10,7 @@ import numpy as np
 from qlib_platform.alpha.registry import alpha_pack_from_settings, assert_alpha_pack_compatible
 
 from qlib_platform.canonical_config import CanonicalConfig
-from qlib_platform.research.feature_store import feature_store_enabled, prepare_feature_data
+from qlib_platform.research.features.store import feature_store_enabled, prepare_feature_data
 from qlib_platform.datasets.dataset_resolver import pin_dataset
 from qlib_platform.lineage import git_revision, resolve_qlib_repo, sha256_json
 from qlib_platform.models.model_bundle import create_model_bundle
@@ -22,7 +22,7 @@ from qlib_platform.models.model_runtime import (
     resolved_model_parameters,
 )
 from qlib_platform.models.registry import get_model_adapter
-from qlib_platform.research.research_timing import (
+from qlib_platform.research.workflow.timing import (
     effective_label_gap,
     label_spec_from_settings,
     label_timing_from_settings,
@@ -31,7 +31,11 @@ from qlib_platform.research.research_timing import (
 from qlib_platform.runtime.runtime_safety import resolve_qlib_parallel_runtime
 from qlib_platform.settings import Settings
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.train_select import _configure_mlflow_tracking, _dataset_id, build_dataset
+from qlib_platform.research.workflow.train_select import (
+    _configure_mlflow_tracking,
+    _dataset_id,
+    build_dataset,
+)
 
 
 @dataclass(frozen=True)

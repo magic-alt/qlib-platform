@@ -254,7 +254,7 @@ def main() -> None:
 
     if args.command == "research-gate":
         import yaml
-        from qlib_platform.research.research_gate import (
+        from qlib_platform.research.evaluation.gates import (
             ResearchThresholds,
             evaluate_research_metrics,
             write_gate_report,
@@ -434,9 +434,9 @@ def main() -> None:
                     "formal Phase 2 hypotheses must be executed as the frozen rolling-OOS folds; "
                     "generic walk-forward includes final holdout and is forbidden"
                 )
-            from qlib_platform.research.phase2_hypotheses import bind_phase2_hypothesis
+            from qlib_platform.research.hypotheses.catalog import bind_candidate_hypothesis
 
-            binding = bind_phase2_hypothesis(
+            binding = bind_candidate_hypothesis(
                 args.contract_lock,
                 args.hypothesis_id,
                 args.hypothesis_role,
@@ -845,7 +845,7 @@ def main() -> None:
         return
 
     if args.command == "alpha-diagnose":
-        from qlib_platform.research.study import run_alpha_diagnose
+        from qlib_platform.research.studies.alpha import run_alpha_diagnose
 
         manifest_path = run_alpha_diagnose(
             settings,
@@ -870,7 +870,7 @@ def main() -> None:
         return
 
     if args.command == "regime-diagnose":
-        from qlib_platform.research.regime_study import run_regime_diagnose
+        from qlib_platform.research.studies.regime import run_regime_diagnose
 
         manifest_path = run_regime_diagnose(
             settings,
@@ -899,7 +899,7 @@ def main() -> None:
         return
 
     if args.command == "attribution-diagnose":
-        from qlib_platform.research.attribution_study import run_attribution_diagnose
+        from qlib_platform.research.studies.attribution import run_attribution_diagnose
 
         manifest_path = run_attribution_diagnose(
             settings,
@@ -927,7 +927,7 @@ def main() -> None:
         return
 
     if args.command == "explanation-diagnose":
-        from qlib_platform.research.explanation_study import run_explanation_diagnose
+        from qlib_platform.research.studies.explanation import run_explanation_diagnose
 
         manifest_path = run_explanation_diagnose(
             settings,
@@ -959,10 +959,10 @@ def main() -> None:
         )
         return
 
-    if args.command == "phase1-synthesize":
-        from qlib_platform.research.synthesis_study import run_phase1_synthesis
+    if args.command == "research-synthesize":
+        from qlib_platform.research.studies.synthesis import run_research_synthesis
 
-        manifest_path = run_phase1_synthesis(
+        manifest_path = run_research_synthesis(
             settings,
             feature_study=args.feature_study,
             regime_study=args.regime_study,
@@ -986,21 +986,35 @@ def main() -> None:
         )
         return
 
-    if args.command.startswith("phase2-") or (
-        args.command.startswith("phase3-") and args.command != "phase3-portable-verify"
-    ):
+    candidate_commands = {
+        "candidate-validate",
+        "candidate-plan",
+        "candidate-data-accept",
+        "candidate-collect",
+        "candidate-accept",
+        "candidate-select",
+        "final-holdout-open",
+    }
+    stability_commands = {
+        "stability-validate",
+        "stability-plan",
+        "stability-diagnose",
+        "stability-portable-export",
+    }
+    if args.command in candidate_commands or args.command in stability_commands:
         from qlib_platform.releases.capabilities import require_release_capability
 
+        # Persisted capability identifiers are governance identities, not module boundaries.
         require_release_capability(
             settings,
-            "phase2" if args.command.startswith("phase2-") else "phase3",
+            "phase2" if args.command in candidate_commands else "phase3",
         )
 
-    if args.command == "phase2-validate":
-        from qlib_platform.research.phase2_contract import write_phase2_contract_lock
+    if args.command == "candidate-validate":
+        from qlib_platform.research.contracts.candidate_program import write_candidate_contract_lock
 
-        lock_path = write_phase2_contract_lock(
-            phase1_manifest=args.phase1_manifest,
+        lock_path = write_candidate_contract_lock(
+            synthesis_manifest=args.synthesis_manifest,
             contract_path=args.contract,
             output=args.output,
         )
@@ -1018,18 +1032,18 @@ def main() -> None:
         )
         return
 
-    if args.command == "phase2-plan":
-        from qlib_platform.research.phase2_program import write_phase2_experiment_plan
+    if args.command == "candidate-plan":
+        from qlib_platform.research.workflow.candidate_program import write_candidate_experiment_plan
 
-        path = write_phase2_experiment_plan(
+        path = write_candidate_experiment_plan(
             contract_lock=args.contract_lock,
             output=args.output,
         )
         print(path)
         return
 
-    if args.command == "phase2-data-accept":
-        from qlib_platform.research.phase2_data_acceptance import write_data_release_v2_acceptance
+    if args.command == "candidate-data-accept":
+        from qlib_platform.research.evidence.data_acceptance import write_data_release_v2_acceptance
 
         evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
         checks = evidence.get("checks") if isinstance(evidence, dict) else None
@@ -1039,10 +1053,10 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase2-collect":
-        from qlib_platform.research.phase2_collector import collect_phase2_evidence
+    if args.command == "candidate-collect":
+        from qlib_platform.research.evidence.collector import collect_candidate_evidence
 
-        path = collect_phase2_evidence(
+        path = collect_candidate_evidence(
             contract_lock=args.contract_lock,
             evidence_index=args.evidence,
             output=args.output,
@@ -1050,8 +1064,8 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase2-accept":
-        from qlib_platform.research.phase2_program import write_incremental_acceptance
+    if args.command == "candidate-accept":
+        from qlib_platform.research.workflow.candidate_program import write_incremental_acceptance
 
         path = write_incremental_acceptance(
             contract_lock=args.contract_lock,
@@ -1061,14 +1075,14 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase2-select":
-        from qlib_platform.research.phase2_selection import write_phase2_selection_lock
+    if args.command == "candidate-select":
+        from qlib_platform.research.evaluation.selection import write_candidate_selection_lock
 
         acceptance = json.loads(Path(args.acceptance).read_text(encoding="utf-8"))
         candidates = acceptance.get("candidates") if isinstance(acceptance, dict) else None
         if not isinstance(candidates, list):
             raise ValueError("Phase 2 acceptance artifact has no candidate list")
-        path = write_phase2_selection_lock(
+        path = write_candidate_selection_lock(
             contract_lock=args.contract_lock,
             candidates=[item for item in candidates if item.get("gatePass") is True],
             design_release_manifest=args.design_release,
@@ -1078,8 +1092,8 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase2-final-holdout-open":
-        from qlib_platform.research.phase2_selection import open_final_holdout
+    if args.command == "final-holdout-open":
+        from qlib_platform.research.evaluation.selection import open_final_holdout
 
         calendar_path = Path(args.calendar).expanduser().resolve()
         if calendar_path.suffix.lower() == ".json":
@@ -1100,13 +1114,13 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase3-validate":
-        from qlib_platform.research.phase3_contract import write_phase3_contract_lock
+    if args.command == "stability-validate":
+        from qlib_platform.research.contracts.stability_program import write_stability_contract_lock
 
-        path = write_phase3_contract_lock(
-            phase2_acceptance=args.phase2_acceptance,
-            phase2_evidence=args.phase2_evidence,
-            phase2_data_acceptance=args.phase2_data_acceptance,
+        path = write_stability_contract_lock(
+            candidate_acceptance=args.candidate_acceptance,
+            candidate_evidence=args.candidate_evidence,
+            candidate_data_acceptance=args.candidate_data_acceptance,
             contract_path=args.contract,
             output=args.output,
         )
@@ -1124,17 +1138,17 @@ def main() -> None:
         )
         return
 
-    if args.command == "phase3-plan":
-        from qlib_platform.research.phase3_program import write_phase3_experiment_plan
+    if args.command == "stability-plan":
+        from qlib_platform.research.workflow.stability_program import write_stability_experiment_plan
 
-        path = write_phase3_experiment_plan(contract_lock=args.contract_lock, output=args.output)
+        path = write_stability_experiment_plan(contract_lock=args.contract_lock, output=args.output)
         print(path)
         return
 
-    if args.command == "phase3-diagnose":
-        from qlib_platform.research.phase3_diagnostics import run_phase3_diagnose
+    if args.command == "stability-diagnose":
+        from qlib_platform.research.diagnostics.stability import run_stability_diagnostics
 
-        path = run_phase3_diagnose(
+        path = run_stability_diagnostics(
             settings,
             contract_lock=args.contract_lock,
             plan_path=args.plan,
@@ -1145,10 +1159,10 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase3-portable-export":
-        from qlib_platform.research.phase3_portability import export_phase3_portable_evidence
+    if args.command == "stability-portable-export":
+        from qlib_platform.research.diagnostics.portability import export_stability_portable_evidence
 
-        path = export_phase3_portable_evidence(
+        path = export_stability_portable_evidence(
             contract_lock=args.contract_lock,
             plan_path=args.plan,
             diagnosis=args.diagnosis,
@@ -1159,10 +1173,12 @@ def main() -> None:
         print(path)
         return
 
-    if args.command == "phase3-portable-verify":
-        from qlib_platform.research.phase3_portability import verify_phase3_portable_evidence
+    if args.command == "stability-portable-verify":
+        from qlib_platform.research.diagnostics.portability import verify_stability_portable_evidence
 
-        print(json.dumps(verify_phase3_portable_evidence(args.package), ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps(verify_stability_portable_evidence(args.package), ensure_ascii=False, sort_keys=True)
+        )
         return
     if args.command == "backtest-predictions":
         from qlib_platform.backtesting.prediction_backtest import backtest_predictions
@@ -1269,7 +1285,7 @@ def main() -> None:
         runtime = resolve_runtime(load_model_profile(settings, args.model_profile))
         print(json.dumps(runtime.to_manifest(), ensure_ascii=False))
     elif args.command == "feature-store":
-        from qlib_platform.research.feature_store import prepare_feature_data
+        from qlib_platform.research.features.store import prepare_feature_data
 
         _, feature_metadata = prepare_feature_data(
             settings,
@@ -1279,12 +1295,12 @@ def main() -> None:
         )
         print(json.dumps(feature_metadata, ensure_ascii=False))
     elif args.command in {"train-select", "research-run"}:
-        from qlib_platform.research.train_select import train_backtest_select
+        from qlib_platform.research.workflow.train_select import train_backtest_select
 
         if args.command == "research-run" and args.mode == "walk-forward":
             if args.stage != "release":
                 raise ValueError("walk-forward currently requires --stage release")
-            from qlib_platform.research.walk_forward import run_walk_forward
+            from qlib_platform.research.workflow.walk_forward import run_walk_forward
 
             walk_manifest_path = run_walk_forward(
                 settings,

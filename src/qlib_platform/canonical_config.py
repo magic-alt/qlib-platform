@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 from qlib_platform.models.model_runtime import ResolvedRuntime
 from qlib_platform.backtesting.portfolio import PortfolioPolicy
-from qlib_platform.research.research_gate import ResearchThresholds
+from qlib_platform.research.evaluation.gates import ResearchThresholds
 from qlib_platform.settings import Settings
 from qlib_platform.backtesting.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 

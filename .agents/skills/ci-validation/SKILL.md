@@ -16,7 +16,7 @@ Pure documentation, `.agents/`, or `.codex/` changes should validate governance 
 For a normal code change, run the relevant targeted tests first, for example:
 
 ```powershell
-& $RepoPython -m pytest tests/test_phase3_contract.py tests/test_phase3_diagnostics.py
+& $RepoPython -m pytest tests/test_stability_program_contract.py tests/test_stability_diagnostics.py
 ```
 
 Before a code/config/contract PR, run the local equivalents of the full quality gates:
@@ -33,4 +33,4 @@ Before a code/config/contract PR, run the local equivalents of the full quality 
 
 For governance configuration changes, also parse every `.codex/*.toml` and `.codex/agents/*.toml`, verify required custom-agent fields, validate Skill front matter/name alignment, and parse workflow YAML. When Codex CLI is available, validate changed `.rules` behavior with `codex execpolicy check` and its inline `match`/`not_match` cases.
 
-Do not use `backfill`, `stage-*`, `dump-*`, `daily-sync`, `release build-*`, `release promote`, `dataset-promote`, `model-refit`, `model-deploy`, `model-rollback`, `daily-signal-run`, outbox delivery, ops acknowledgements/retries, scheduled-task changes, or `phase3-diagnose` as validation without explicit user authorization. Report every command run, result, skipped gate, and reason.
+Do not use `backfill`, `stage-*`, `dump-*`, `daily-sync`, `release build-*`, `release promote`, `dataset-promote`, `model-refit`, `model-deploy`, `model-rollback`, `daily-signal-run`, outbox delivery, ops acknowledgements/retries, scheduled-task changes, or `stability-diagnose` as validation without explicit user authorization. Report every command run, result, skipped gate, and reason.

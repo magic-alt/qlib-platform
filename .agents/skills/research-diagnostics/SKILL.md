@@ -9,12 +9,12 @@ Use this skill when the requested outcome is diagnostic evidence about an existi
 
 Before acting, identify:
 
-- the governing program, phase, contract, configuration, and nearest `AGENTS.md`;
+- the governing program, contract, configuration, and nearest `AGENTS.md`;
 - the immutable input artifacts and their identities, lineage, checksums, and source revision;
 - the diagnostic definitions, comparison groups, windows, regime specification, and permitted outputs;
 - the allowed state transitions and whether final holdout, candidate creation, selection, retraining, or publishing is authorized.
 
-Read only the program-specific documentation, configuration, implementation, and tests needed for the task. If the task concerns the active A-share Phase 3-D program, also read [references/phase3-d.md](references/phase3-d.md) before interpreting, changing, running, or auditing it.
+Read only the program-specific documentation, configuration, implementation, and tests needed for the task. If the task concerns the active A-share stability-diagnostics program, also read [references/stability-diagnostics.md](references/stability-diagnostics.md) before interpreting, changing, running, or auditing it.
 
 ## Diagnostic boundary
 

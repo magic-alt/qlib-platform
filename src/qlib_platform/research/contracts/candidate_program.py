@@ -12,8 +12,8 @@ from qlib_platform.lineage import sha256_json
 from qlib_platform.data.store import sha256_file
 
 
-PHASE2_SCHEMA = "ashare_phase2_v1"
-PHASE1_SCHEMA = "alpha_phase1_synthesis_v1"
+CANDIDATE_CONTRACT_SCHEMA = "ashare_phase2_v1"
+SYNTHESIS_MANIFEST_SCHEMA = "alpha_phase1_synthesis_v1"
 ALLOWED_DIRECTIONS = {"positive", "negative"}
 ALLOWED_KINDS = {"feature", "composite", "interaction", "overlay", "portfolio"}
 ALLOWED_STATUSES = {"REJECTED", "RESEARCH_CANDIDATE", "SELECTED_FOR_FINAL_HOLDOUT"}
@@ -133,12 +133,12 @@ class Phase2Contract:
         return cast(dict[str, Any], json.loads(json.dumps(payload, ensure_ascii=False, sort_keys=True)))
 
 
-def load_phase2_contract(path: str | Path) -> Phase2Contract:
+def load_candidate_contract(path: str | Path) -> Phase2Contract:
     source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Phase 2 contract is missing: {source}")
     raw = _mapping(yaml.safe_load(source.read_text(encoding="utf-8")), "Phase 2 contract")
-    if raw.get("schema") != PHASE2_SCHEMA:
+    if raw.get("schema") != CANDIDATE_CONTRACT_SCHEMA:
         raise ValueError(f"unsupported Phase 2 schema: {raw.get('schema')}")
     identity = _mapping(raw.get("identity"), "identity")
     program_id = str(identity.get("programId") or "").strip()
@@ -223,7 +223,7 @@ def load_phase2_contract(path: str | Path) -> Phase2Contract:
     if holdout.policy != "FIRST_SESSION_AFTER_SELECTION_LOCK" or holdout.access_limit != 1:
         raise ValueError("Phase 2 final holdout must be future-dated and single access")
     semantic = {
-        "schema": PHASE2_SCHEMA,
+        "schema": CANDIDATE_CONTRACT_SCHEMA,
         "identity": dict(identity),
         "hypotheses": {str(key): dict(value) for key, value in hypotheses_raw.items()},
         "multipleTesting": dict(testing),
@@ -252,7 +252,7 @@ def load_phase1_switch(path: str | Path) -> dict[str, Any]:
     if not source.is_file():
         raise FileNotFoundError(f"Phase 1 synthesis manifest is required: {source}")
     manifest = json.loads(source.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != PHASE1_SCHEMA:
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != SYNTHESIS_MANIFEST_SCHEMA:
         raise ValueError("unsupported Phase 1 synthesis manifest")
     status = _mapping(manifest.get("status"), "Phase 1 status")
     if status.get("phase1Completion") not in {"COMPLETE", "COMPLETE_WITH_KNOWN_DATA_GAP"}:
@@ -289,7 +289,7 @@ def assert_workstream_allowed(lock: Mapping[str, Any], workstream: str) -> None:
         raise PermissionError(f"Phase 1 recommendation does not authorize workstream: {workstream}")
 
 
-def load_phase2_lock(path: str | Path) -> dict[str, Any]:
+def load_candidate_lock(path: str | Path) -> dict[str, Any]:
     source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Phase 2 contract lock is missing: {source}")
@@ -305,21 +305,21 @@ def load_phase2_lock(path: str | Path) -> dict[str, Any]:
     return lock
 
 
-def write_phase2_contract_lock(
+def write_candidate_contract_lock(
     *,
-    phase1_manifest: str | Path,
+    synthesis_manifest: str | Path,
     contract_path: str | Path,
     output: str | Path,
 ) -> Path:
-    phase1 = load_phase1_switch(phase1_manifest)
-    contract = load_phase2_contract(contract_path)
+    synthesis = load_phase1_switch(synthesis_manifest)
+    contract = load_candidate_contract(contract_path)
     payload: dict[str, Any] = {
         "schemaVersion": "phase2_contract_lock_v1",
         "programId": contract.program_id,
-        "phase1": phase1,
+        "phase1": synthesis,
         "recommendationRoute": {
-            "primaryRecommendation": phase1["primaryRecommendation"],
-            "allowedWorkstreams": phase1["allowedWorkstreams"],
+            "primaryRecommendation": synthesis["primaryRecommendation"],
+            "allowedWorkstreams": synthesis["allowedWorkstreams"],
         },
         "contract": contract.to_manifest(),
         "candidateStatuses": sorted(ALLOWED_STATUSES),

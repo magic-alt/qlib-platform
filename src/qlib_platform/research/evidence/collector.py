@@ -10,20 +10,23 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from qlib_platform.research.feature_store import FEATURE_STORE_SCHEMA
+from qlib_platform.research.features.store import FEATURE_STORE_SCHEMA
 from qlib_platform.lineage import sha256_json
 from qlib_platform.ops.platform_release import DATA_RELEASE_PROFILES, PROFILE_COMPONENT_SCHEMAS
 from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
-from qlib_platform.research.research_gate import derive_daily_signal_diagnostics
+from qlib_platform.research.evaluation.gates import derive_daily_signal_diagnostics
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.phase2_contract import (
+from qlib_platform.research.contracts.candidate_program import (
     MultipleTestingSpec,
     assert_workstream_allowed,
-    load_phase2_lock,
+    load_candidate_lock,
 )
-from qlib_platform.research.phase2_features import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
-from qlib_platform.research.phase2_hypotheses import hypothesis_definition_sha256, hypothesis_feature_set
-from qlib_platform.research.phase2_statistics import multiple_testing_table, nested_ridge_increment
+from qlib_platform.research.features.candidate_sets import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
+from qlib_platform.research.hypotheses.catalog import hypothesis_definition_sha256, hypothesis_feature_set
+from qlib_platform.research.evaluation.candidate_statistics import (
+    multiple_testing_table,
+    nested_ridge_increment,
+)
 
 
 EVIDENCE_INDEX_SCHEMA = "phase2_evidence_index_v1"
@@ -539,14 +542,14 @@ def _candidate_robustness(
     }
 
 
-def collect_phase2_evidence(
+def collect_candidate_evidence(
     *,
     contract_lock: str | Path,
     evidence_index: str | Path,
     output: str | Path,
 ) -> Path:
     lock_path = Path(contract_lock).expanduser().resolve()
-    lock = load_phase2_lock(lock_path)
+    lock = load_candidate_lock(lock_path)
     assert_workstream_allowed(lock, "INCREMENTAL_ACCEPTANCE")
     index_path = Path(evidence_index).expanduser().resolve()
     evidence = _load_json(index_path, "Phase 2 evidence index")
@@ -633,7 +636,7 @@ def collect_phase2_evidence(
             raise ValueError("candidate IDs must exactly match the frozen hypothesis family")
         candidate_ids.add(candidate_id)
         if str(item.get("regimeRule") or "") != "none":
-            raise ValueError("phase2-collect runs before regime overlays")
+            raise ValueError("candidate-collect runs before regime overlays")
         hypothesis = hypotheses[hypothesis_id]
         definition_sha256 = hypothesis_definition_sha256(hypothesis)
         candidate_spec = hypothesis_feature_set(hypothesis_id, "candidate")

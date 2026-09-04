@@ -11,32 +11,32 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from qlib_platform.research.feature_store import load_feature_store
+from qlib_platform.research.features.store import load_feature_store
 from qlib_platform.lineage import git_revision, sha256_json
 from qlib_platform.ops.platform_release import load_platform_release
 from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
 from qlib_platform.settings import Settings
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.feature_diagnostics import feature_columns
-from qlib_platform.research.regime import build_regime_labels, load_regime_spec
-from qlib_platform.research.regime_diagnostics import (
+from qlib_platform.research.diagnostics.features import feature_columns
+from qlib_platform.research.diagnostics.regimes import build_regime_labels, load_regime_spec
+from qlib_platform.research.diagnostics.regime_analysis import (
     ModelComparisonSpec,
     derive_model_regime_diagnostics,
 )
-from qlib_platform.research.regime_study import (
+from qlib_platform.research.studies.regime import (
     _history_start,
     _load_benchmark_close,
     _load_pit_industries,
     _load_stock_returns,
 )
-from qlib_platform.research.phase3_contract import load_phase3_lock
-from qlib_platform.research.phase3_decay import derive_model_age_decay
-from qlib_platform.research.phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
+from qlib_platform.research.contracts.stability_program import load_stability_lock
+from qlib_platform.research.diagnostics.decay import derive_model_age_decay
+from qlib_platform.research.workflow.stability_program import STABILITY_EXECUTION_ORDER, load_stability_plan
 
 
-PHASE3_DIAGNOSTICS_SCHEMA = "phase3_diagnostics_v1"
-PHASE3_EVIDENCE_INDEX_SCHEMA = "phase3_evidence_index_v1"
-PHASE3_MANIFEST_NAME = "phase3_evidence_index.json"
+STABILITY_DIAGNOSTICS_SCHEMA = "phase3_diagnostics_v1"
+STABILITY_EVIDENCE_INDEX_SCHEMA = "phase3_evidence_index_v1"
+STABILITY_MANIFEST_NAME = "phase3_evidence_index.json"
 
 
 def _mapping(value: object, name: str) -> Mapping[str, Any]:
@@ -594,7 +594,7 @@ def _validate_existing(
 ) -> Path:
     if not root.is_dir():
         raise ValueError("existing Phase 3 output is not a directory")
-    manifest_path = root / PHASE3_MANIFEST_NAME
+    manifest_path = root / STABILITY_MANIFEST_NAME
     manifest = _load_json(manifest_path, "existing Phase 3 evidence index")
     recorded_evidence_sha = str(manifest.get("evidenceSha256") or "")
     actual_evidence_sha = sha256_json(
@@ -603,7 +603,7 @@ def _validate_existing(
     if recorded_evidence_sha != actual_evidence_sha:
         raise ValueError("existing Phase 3 evidence-index checksum mismatch")
     if (
-        manifest.get("schemaVersion") != PHASE3_EVIDENCE_INDEX_SCHEMA
+        manifest.get("schemaVersion") != STABILITY_EVIDENCE_INDEX_SCHEMA
         or manifest.get("programId") != lock.get("programId")
         or manifest.get("contractLockSha256") != lock.get("lockSha256")
         or manifest.get("studyType") != "ALPHA_STABILITY_REGIME_RESEARCH_DIAGNOSIS_ONLY"
@@ -621,7 +621,7 @@ def _validate_existing(
         raise ValueError("existing Phase 3 diagnostic-plan binding mismatch")
     if (
         manifest.get("state") != "PHASE3_DIAGNOSIS_COMPLETE"
-        or tuple(manifest.get("completedWorkstreams", ())) != PHASE3_EXECUTION_ORDER
+        or tuple(manifest.get("completedWorkstreams", ())) != STABILITY_EXECUTION_ORDER
         or manifest.get("diagnosisOnly") is not True
         or manifest.get("formalCandidates") != []
         or manifest.get("formalCandidateCount") != 0
@@ -671,7 +671,7 @@ def _validate_existing(
             raise ValueError(f"existing Phase 3 artifact row-count mismatch: {target}")
     anchor_index = _load_json(root / "anchor_predictions_index.json", "anchor predictions index")
     if (
-        anchor_index.get("schemaVersion") != PHASE3_DIAGNOSTICS_SCHEMA
+        anchor_index.get("schemaVersion") != STABILITY_DIAGNOSTICS_SCHEMA
         or anchor_index.get("anchors") != locked_lineage.get("anchors")
         or anchor_index.get("finalHoldout") is not False
         or anchor_index.get("publishingAuthorized") is not False
@@ -683,7 +683,7 @@ def _validate_existing(
     return manifest_path
 
 
-def run_phase3_diagnose(
+def run_stability_diagnostics(
     settings: Settings,
     *,
     contract_lock: str | Path,
@@ -696,8 +696,8 @@ def run_phase3_diagnose(
     plan_source = Path(plan_path).expanduser().resolve()
     evidence_path = Path(evidence_index).expanduser().resolve()
     regime_source = Path(regime_path).expanduser().resolve()
-    lock = load_phase3_lock(lock_path)
-    plan = load_phase3_plan(plan_source, contract_lock_sha256=str(lock["lockSha256"]))
+    lock = load_stability_lock(lock_path)
+    plan = load_stability_plan(plan_source, contract_lock_sha256=str(lock["lockSha256"]))
     plan_lock = _mapping(plan.get("contractLock"), "diagnostic-plan contract lock")
     if plan.get("programId") != lock.get("programId") or plan_lock.get("sha256") != sha256_file(lock_path):
         raise ValueError("Phase 3 diagnostic plan does not bind the supplied design-lock file")
@@ -838,7 +838,7 @@ def run_phase3_diagnose(
         anchor_index_path.write_text(
             json.dumps(
                 {
-                    "schemaVersion": PHASE3_DIAGNOSTICS_SCHEMA,
+                    "schemaVersion": STABILITY_DIAGNOSTICS_SCHEMA,
                     "anchors": _mapping(_mapping(lock["lineage"], "lineage")["anchors"], "anchors"),
                     "foldCalendar": fold_calendar,
                     "finalHoldout": False,
@@ -860,7 +860,7 @@ def run_phase3_diagnose(
         _write_report(report_path, summary)
         artifacts.append(_artifact(report_path))
         manifest: dict[str, Any] = {
-            "schemaVersion": PHASE3_EVIDENCE_INDEX_SCHEMA,
+            "schemaVersion": STABILITY_EVIDENCE_INDEX_SCHEMA,
             "programId": lock["programId"],
             "studyType": "ALPHA_STABILITY_REGIME_RESEARCH_DIAGNOSIS_ONLY",
             "contractLock": {
@@ -897,7 +897,7 @@ def run_phase3_diagnose(
             "artifacts": sorted(artifacts, key=lambda item: str(item["name"])),
         }
         manifest["evidenceSha256"] = sha256_json(manifest)
-        manifest_path = building / PHASE3_MANIFEST_NAME
+        manifest_path = building / STABILITY_MANIFEST_NAME
         manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8"
         )
@@ -909,7 +909,7 @@ def run_phase3_diagnose(
                     output, lock=lock, lock_path=lock_path, plan=plan, plan_path=plan_source
                 )
             raise
-        return output / PHASE3_MANIFEST_NAME
+        return output / STABILITY_MANIFEST_NAME
     finally:
         if building.exists():
             shutil.rmtree(building, ignore_errors=True)

@@ -234,8 +234,8 @@ def _governance_findings(root: Path, markdown: list[Path]) -> list[Documentation
         text = path.read_text(encoding="utf-8")
         historical_link = re.compile(
             r"\((?:docs/)?(?:history/(?:research|qrun)/)?"
-            r"(?:alpha_research_phase_[12]|p0_research_baseline|"
-            r"local_alpha158_qrun_backtest)\.md"
+            r"(?:alpha_research_(?:phase_[12]|initial_synthesis|candidate_program)|"
+            r"p0_research_baseline|local_alpha158_qrun_backtest)\.md"
         )
         if historical_link.search(text):
             findings.append(

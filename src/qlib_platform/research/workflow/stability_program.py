@@ -6,20 +6,20 @@ from typing import Any
 
 from qlib_platform.lineage import sha256_json
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.artifact_io import write_immutable_json
-from qlib_platform.research.contracts.stability_program import load_phase3_lock
+from qlib_platform.research.artifacts.io import write_immutable_json
+from qlib_platform.research.contracts.stability_program import load_stability_lock
 
 
-PHASE3_PLAN_SCHEMA = "phase3_diagnostic_plan_v1"
-PHASE3_EXECUTION_ORDER = ("P3-D00", "P3-D01", "P3-D02", "P3-D03", "P3-D04")
+STABILITY_PLAN_SCHEMA = "phase3_diagnostic_plan_v1"
+STABILITY_EXECUTION_ORDER = ("P3-D00", "P3-D01", "P3-D02", "P3-D03", "P3-D04")
 
 
-def load_phase3_plan(path: str | Path, *, contract_lock_sha256: str | None = None) -> dict[str, Any]:
+def load_stability_plan(path: str | Path, *, contract_lock_sha256: str | None = None) -> dict[str, Any]:
     source = Path(path).expanduser().resolve()
     if not source.is_file():
         raise FileNotFoundError(f"Phase 3 diagnostic plan is missing: {source}")
     payload = json.loads(source.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or payload.get("schemaVersion") != PHASE3_PLAN_SCHEMA:
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != STABILITY_PLAN_SCHEMA:
         raise ValueError("unsupported Phase 3 diagnostic plan")
     recorded = str(payload.get("planSha256") or "")
     actual = sha256_json({key: value for key, value in payload.items() if key != "planSha256"})
@@ -30,14 +30,14 @@ def load_phase3_plan(path: str | Path, *, contract_lock_sha256: str | None = Non
         raise ValueError("Phase 3 diagnostic plan contract-lock binding is missing")
     if contract_lock_sha256 is not None and lock.get("lockSha256") != contract_lock_sha256:
         raise ValueError("Phase 3 diagnostic plan uses a different design lock")
-    if tuple(payload.get("executionOrder", ())) != PHASE3_EXECUTION_ORDER:
+    if tuple(payload.get("executionOrder", ())) != STABILITY_EXECUTION_ORDER:
         raise ValueError("Phase 3 diagnostic plan execution order drift")
     workstreams = payload.get("workstreams")
-    if not isinstance(workstreams, list) or len(workstreams) != len(PHASE3_EXECUTION_ORDER):
+    if not isinstance(workstreams, list) or len(workstreams) != len(STABILITY_EXECUTION_ORDER):
         raise ValueError("Phase 3 diagnostic plan workstream set drift")
     if (
         tuple(item.get("workstreamId") for item in workstreams if isinstance(item, dict))
-        != PHASE3_EXECUTION_ORDER
+        != STABILITY_EXECUTION_ORDER
     ):
         raise ValueError("Phase 3 diagnostic plan workstream set drift")
     if any(
@@ -58,9 +58,9 @@ def load_phase3_plan(path: str | Path, *, contract_lock_sha256: str | None = Non
     return payload
 
 
-def write_phase3_experiment_plan(*, contract_lock: str | Path, output: str | Path) -> Path:
+def write_stability_experiment_plan(*, contract_lock: str | Path, output: str | Path) -> Path:
     source = Path(contract_lock).expanduser().resolve()
-    lock = load_phase3_lock(source)
+    lock = load_stability_lock(source)
     contract = lock["contract"]
     diagnostics = contract["diagnostics"]
     workstreams: list[dict[str, object]] = [
@@ -101,7 +101,7 @@ def write_phase3_experiment_plan(*, contract_lock: str | Path, output: str | Pat
         },
     ]
     payload: dict[str, Any] = {
-        "schemaVersion": PHASE3_PLAN_SCHEMA,
+        "schemaVersion": STABILITY_PLAN_SCHEMA,
         "programId": lock["programId"],
         "contractLock": {
             "path": str(source),

@@ -7,9 +7,9 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
-from qlib_platform.research.feature_diagnostics import newey_west_t
-from qlib_platform.research.phase2_contract import MultipleTestingSpec, RobustnessSpec
-from qlib_platform.research.regime_diagnostics import benjamini_hochberg, two_sided_normal_p
+from qlib_platform.research.diagnostics.features import newey_west_t
+from qlib_platform.research.contracts.candidate_program import MultipleTestingSpec, RobustnessSpec
+from qlib_platform.research.diagnostics.regime_analysis import benjamini_hochberg, two_sided_normal_p
 
 
 def empirical_bayes_local_fdr(z_scores: pd.Series) -> pd.Series:

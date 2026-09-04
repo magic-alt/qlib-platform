@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from qlib_platform.lineage import sha256_json
-from qlib_platform.research.factor_taxonomy import FactorTaxonomy, FactorTaxonomyEntry
-from qlib_platform.research.feature_diagnostics import (
+from qlib_platform.research.features.taxonomy import FactorTaxonomy, FactorTaxonomyEntry
+from qlib_platform.research.diagnostics.features import (
     FeatureDiagnosticsSpec,
     align_oos_features,
     build_feature_diagnostics,

@@ -12,29 +12,29 @@ import pandas as pd
 from qlib_platform.lineage import git_revision, sha256_json
 from qlib_platform.artifacts.prediction_snapshot import _identity
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
-from qlib_platform.research.phase3_contract import (
-    PHASE2_EVIDENCE_SCHEMA,
+from qlib_platform.research.workflow.candidate_program import INCREMENTAL_CANDIDATE_FAMILY
+from qlib_platform.research.contracts.stability_program import (
+    CANDIDATE_EVIDENCE_SCHEMA,
     _contains_final_holdout,
     _mapping,
     _sequence,
-    _validate_phase2_acceptance,
+    _validate_candidate_acceptance,
     _validate_data_release_acceptance,
-    load_phase3_contract,
-    load_phase3_lock,
+    load_stability_contract,
+    load_stability_lock,
 )
-from qlib_platform.research.phase3_diagnostics import (
-    PHASE3_DIAGNOSTICS_SCHEMA,
-    PHASE3_EVIDENCE_INDEX_SCHEMA,
-    PHASE3_MANIFEST_NAME,
+from qlib_platform.research.diagnostics.stability import (
+    STABILITY_DIAGNOSTICS_SCHEMA,
+    STABILITY_EVIDENCE_INDEX_SCHEMA,
+    STABILITY_MANIFEST_NAME,
     _expected_artifact_names,
 )
-from qlib_platform.research.phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
-from qlib_platform.research.regime import load_regime_spec
+from qlib_platform.research.workflow.stability_program import STABILITY_EXECUTION_ORDER, load_stability_plan
+from qlib_platform.research.diagnostics.regimes import load_regime_spec
 
 
-PHASE3_PORTABLE_EVIDENCE_SCHEMA = "phase3_portable_evidence_v1"
-PHASE3_PORTABLE_EVIDENCE_MANIFEST = "phase3_portable_evidence.json"
+STABILITY_PORTABLE_EVIDENCE_SCHEMA = "phase3_portable_evidence_v1"
+STABILITY_PORTABLE_EVIDENCE_MANIFEST = "phase3_portable_evidence.json"
 
 
 def _load_json(path: Path, name: str) -> dict[str, Any]:
@@ -197,7 +197,7 @@ def _add_phase2_runs(
     references["predictionPayloads"] = snapshots
 
 
-def export_phase3_portable_evidence(
+def export_stability_portable_evidence(
     *,
     contract_lock: str | Path,
     plan_path: str | Path,
@@ -217,7 +217,7 @@ def export_phase3_portable_evidence(
     plan_source = _resolve_file(plan_path, "Phase 3 diagnostic plan")
     diagnosis_source = Path(diagnosis).expanduser().resolve()
     diagnosis_root = (
-        diagnosis_source.parent if diagnosis_source.name == PHASE3_MANIFEST_NAME else diagnosis_source
+        diagnosis_source.parent if diagnosis_source.name == STABILITY_MANIFEST_NAME else diagnosis_source
     )
     if not diagnosis_root.is_dir() or diagnosis_root.is_symlink():
         raise ValueError("Phase 3 diagnosis directory is missing or unsafe")
@@ -233,9 +233,9 @@ def export_phase3_portable_evidence(
     else:
         raise ValueError("portable evidence output must be outside the source repository")
 
-    lock = load_phase3_lock(lock_path)
-    plan = load_phase3_plan(plan_source, contract_lock_sha256=str(lock["lockSha256"]))
-    contract = load_phase3_contract(contract_source)
+    lock = load_stability_lock(lock_path)
+    plan = load_stability_plan(plan_source, contract_lock_sha256=str(lock["lockSha256"]))
+    contract = load_stability_contract(contract_source)
     locked_contract = _mapping(lock.get("contract"), "Phase 3 locked contract")
     if contract.file_sha256 != locked_contract.get(
         "file_sha256"
@@ -369,7 +369,7 @@ def export_phase3_portable_evidence(
             regime_path, logical_name="regimeSpec", files=files, logical=logical, building=building
         )
 
-        diagnosis_index = _resolve_file(diagnosis_root / PHASE3_MANIFEST_NAME, "Phase 3 evidence index")
+        diagnosis_index = _resolve_file(diagnosis_root / STABILITY_MANIFEST_NAME, "Phase 3 evidence index")
         _copy_inventory_file(
             diagnosis_index,
             logical_name="diagnosisEvidenceIndex",
@@ -395,7 +395,7 @@ def export_phase3_portable_evidence(
         references["diagnosisArtifacts"] = diagnosis_artifacts
 
         manifest: dict[str, Any] = {
-            "schemaVersion": PHASE3_PORTABLE_EVIDENCE_SCHEMA,
+            "schemaVersion": STABILITY_PORTABLE_EVIDENCE_SCHEMA,
             "programId": lock["programId"],
             "contractLockSha256": lock["lockSha256"],
             "planSha256": plan["planSha256"],
@@ -405,11 +405,11 @@ def export_phase3_portable_evidence(
             "files": sorted(files.values(), key=lambda item: str(item["sourcePath"])),
         }
         manifest["packageSha256"] = sha256_json(manifest)
-        (building / PHASE3_PORTABLE_EVIDENCE_MANIFEST).write_text(
+        (building / STABILITY_PORTABLE_EVIDENCE_MANIFEST).write_text(
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8"
         )
         os.replace(building, target)
-        return target / PHASE3_PORTABLE_EVIDENCE_MANIFEST
+        return target / STABILITY_PORTABLE_EVIDENCE_MANIFEST
     finally:
         if building.exists():
             shutil.rmtree(building, ignore_errors=True)
@@ -419,16 +419,16 @@ def _load_portable(package_root: str | Path) -> tuple[Path, dict[str, Any], dict
     root = Path(package_root).expanduser().resolve()
     if not root.is_dir() or root.is_symlink():
         raise ValueError("portable evidence package root is missing or unsafe")
-    manifest_path = root / PHASE3_PORTABLE_EVIDENCE_MANIFEST
+    manifest_path = root / STABILITY_PORTABLE_EVIDENCE_MANIFEST
     manifest = _load_json(manifest_path, "portable evidence package manifest")
-    if manifest.get("schemaVersion") != PHASE3_PORTABLE_EVIDENCE_SCHEMA:
+    if manifest.get("schemaVersion") != STABILITY_PORTABLE_EVIDENCE_SCHEMA:
         raise ValueError("unsupported portable evidence package schema")
     recorded = str(manifest.get("packageSha256") or "")
     if recorded != sha256_json({key: value for key, value in manifest.items() if key != "packageSha256"}):
         raise ValueError("portable evidence package checksum mismatch")
     entries = _sequence(manifest.get("files"), "portable evidence package files")
     payloads: dict[str, Path] = {}
-    expected_files = {PHASE3_PORTABLE_EVIDENCE_MANIFEST}
+    expected_files = {STABILITY_PORTABLE_EVIDENCE_MANIFEST}
     for raw in entries:
         entry = _mapping(raw, "portable evidence package file")
         source = str(entry.get("sourcePath") or "")
@@ -651,7 +651,7 @@ def _verify_diagnosis(
     ):
         raise ValueError("portable Phase 3 evidence-index checksum mismatch")
     if (
-        manifest.get("schemaVersion") != PHASE3_EVIDENCE_INDEX_SCHEMA
+        manifest.get("schemaVersion") != STABILITY_EVIDENCE_INDEX_SCHEMA
         or manifest.get("contractLockSha256") != lock.get("lockSha256")
         or manifest.get("programId") != lock.get("programId")
     ):
@@ -667,7 +667,7 @@ def _verify_diagnosis(
         raise ValueError("portable Phase 3 diagnosis lock or plan binding mismatch")
     if (
         manifest.get("state") != "PHASE3_DIAGNOSIS_COMPLETE"
-        or tuple(manifest.get("completedWorkstreams", ())) != PHASE3_EXECUTION_ORDER
+        or tuple(manifest.get("completedWorkstreams", ())) != STABILITY_EXECUTION_ORDER
         or manifest.get("diagnosisOnly") is not True
         or manifest.get("formalCandidates") != []
         or manifest.get("formalCandidateCount") != 0
@@ -704,7 +704,7 @@ def _verify_diagnosis(
         payloads[str(artifact_sources["anchor_predictions_index.json"])], "portable anchor predictions index"
     )
     if (
-        anchor_index.get("schemaVersion") != PHASE3_DIAGNOSTICS_SCHEMA
+        anchor_index.get("schemaVersion") != STABILITY_DIAGNOSTICS_SCHEMA
         or anchor_index.get("anchors") != _mapping(lock.get("lineage"), "lineage").get("anchors")
         or anchor_index.get("finalHoldout") is not False
         or anchor_index.get("publishingAuthorized") is not False
@@ -717,14 +717,14 @@ def _verify_diagnosis(
         raise ValueError("portable Phase 3 summary differs from evidence index")
 
 
-def verify_phase3_portable_evidence(package_root: str | Path) -> dict[str, Any]:
+def verify_stability_portable_evidence(package_root: str | Path) -> dict[str, Any]:
     """Verify a package without training, diagnosis execution, or holdout access."""
 
     _, manifest, payloads = _load_portable(package_root)
     lock_path = _package_input(manifest, payloads, "designLock")
     plan_path = _package_input(manifest, payloads, "diagnosticPlan")
-    lock = load_phase3_lock(lock_path)
-    plan = load_phase3_plan(plan_path, contract_lock_sha256=str(lock["lockSha256"]))
+    lock = load_stability_lock(lock_path)
+    plan = load_stability_plan(plan_path, contract_lock_sha256=str(lock["lockSha256"]))
     if manifest.get("contractLockSha256") != lock.get("lockSha256") or manifest.get("planSha256") != plan.get(
         "planSha256"
     ):
@@ -747,15 +747,19 @@ def verify_phase3_portable_evidence(package_root: str | Path) -> dict[str, Any]:
         raise ValueError(
             "portable verification requires the clean source-code commit frozen by the design lock"
         )
-    implementation_root = Path(__file__).resolve().parent
+    implementation_root = Path(__file__).resolve().parents[1]
     for name, expected in _mapping(
         lineage.get("implementationSha256"), "Phase 3 implementation hashes"
     ).items():
-        target = implementation_root / str(name)
-        if not target.is_file() or sha256_file(target) != expected:
+        relative = Path(str(name))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"portable verification implementation path is unsafe: {name}")
+        target = (implementation_root / relative).resolve()
+        _inside(implementation_root, target, f"Phase 3 implementation {name}")
+        if target.is_symlink() or not target.is_file() or sha256_file(target) != expected:
             raise ValueError(f"portable verification implementation drift: {name}")
 
-    contract = load_phase3_contract(_package_input(manifest, payloads, "phase3Contract"))
+    contract = load_stability_contract(_package_input(manifest, payloads, "phase3Contract"))
     locked_contract = _mapping(lock.get("contract"), "Phase 3 locked contract")
     if contract.file_sha256 != locked_contract.get(
         "file_sha256"
@@ -772,10 +776,13 @@ def verify_phase3_portable_evidence(package_root: str | Path) -> dict[str, Any]:
     evidence_path = _package_input(manifest, payloads, "phase2Evidence")
     collector_path = _package_input(manifest, payloads, "phase2CandidateMetrics")
     data_acceptance_path = _package_input(manifest, payloads, "dataReleaseAcceptance")
-    acceptance = _validate_phase2_acceptance(acceptance_path, str(lock.get("predecessorProgram") or ""))
+    acceptance = _validate_candidate_acceptance(acceptance_path, str(lock.get("predecessorProgram") or ""))
     evidence = _load_json(evidence_path, "portable Phase 2 evidence index")
     collector = _load_json(collector_path, "portable Phase 2 candidate metrics")
-    if evidence.get("schemaVersion") != PHASE2_EVIDENCE_SCHEMA or evidence.get("finalHoldout") is not False:
+    if (
+        evidence.get("schemaVersion") != CANDIDATE_EVIDENCE_SCHEMA
+        or evidence.get("finalHoldout") is not False
+    ):
         raise ValueError("portable Phase 2 evidence isolation state drift")
     if collector.get("collectorSha256") != sha256_json(
         {key: value for key, value in collector.items() if key != "collectorSha256"}
@@ -795,7 +802,7 @@ def verify_phase3_portable_evidence(package_root: str | Path) -> dict[str, Any]:
             for raw in _sequence(collector.get("candidates"), "collector candidates")
         )
     )
-    if collector_candidates != PHASE2_INCREMENTAL_CANDIDATE_FAMILY:
+    if collector_candidates != INCREMENTAL_CANDIDATE_FAMILY:
         raise ValueError("portable Phase 2 collector candidate family drift")
     release_path = _package_input(manifest, payloads, "dataReleaseManifest")
     release = _verify_release(release_path, references=references, payloads=payloads)
@@ -829,7 +836,7 @@ def verify_phase3_portable_evidence(package_root: str | Path) -> dict[str, Any]:
         payloads=payloads,
     )
     return {
-        "schemaVersion": PHASE3_PORTABLE_EVIDENCE_SCHEMA,
+        "schemaVersion": STABILITY_PORTABLE_EVIDENCE_SCHEMA,
         "programId": lock["programId"],
         "contractLockSha256": lock["lockSha256"],
         "planSha256": plan["planSha256"],

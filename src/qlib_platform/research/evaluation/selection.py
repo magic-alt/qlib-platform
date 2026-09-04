@@ -9,7 +9,7 @@ import pandas as pd
 
 from qlib_platform.lineage import sha256_json
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.phase2_contract import assert_workstream_allowed, load_phase2_lock
+from qlib_platform.research.contracts.candidate_program import assert_workstream_allowed, load_candidate_lock
 
 
 def _load_json(path: str | Path, name: str) -> tuple[Path, dict[str, Any]]:
@@ -24,10 +24,10 @@ def _load_json(path: str | Path, name: str) -> tuple[Path, dict[str, Any]]:
 
 def _verified_lock(path: str | Path) -> tuple[Path, dict[str, Any]]:
     source = Path(path).expanduser().resolve()
-    return source, load_phase2_lock(source)
+    return source, load_candidate_lock(source)
 
 
-def write_phase2_selection_lock(
+def write_candidate_selection_lock(
     *,
     contract_lock: str | Path,
     candidates: Sequence[Mapping[str, object]],
@@ -58,7 +58,7 @@ def write_phase2_selection_lock(
         raise ValueError("design DataRelease does not use the Phase 2 profile")
     date = str(pd.Timestamp(selection_date).normalize().date())
     payload: dict[str, Any] = {
-        "schemaVersion": "phase2_selection_lock_v1",
+        "schemaVersion": "candidate_selection_lock_v1",
         "programId": lock.get("programId"),
         "contractLock": {
             "path": str(contract_path),
@@ -133,7 +133,7 @@ def open_final_holdout(
     if pd.Timestamp(final_release.get("coverage", {}).get("end")) < labels_mature:
         raise ValueError("final-holdout DataRelease coverage ends before labels mature")
     receipt: dict[str, Any] = {
-        "schemaVersion": "phase2_holdout_open_receipt_v1",
+        "schemaVersion": "final_holdout_open_receipt_v1",
         "selectionLock": {
             "path": str(lock_path),
             "sha256": sha256_file(lock_path),

@@ -51,7 +51,7 @@ Preserve the original immutable artifact even if it is invalid. If a corrected a
 Do not:
 
 - open the final holdout to diagnose an infrastructure problem;
-- rerun `phase3-diagnose` without authorization of its evidence output;
+- rerun `stability-diagnose` without authorization of its evidence output;
 - create a formal candidate or change selection logic;
 - publish/deploy merely to test whether an incident disappears;
 - loosen Research Gate or signal-health thresholds as remediation.

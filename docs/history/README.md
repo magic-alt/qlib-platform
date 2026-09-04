@@ -7,11 +7,11 @@ last_verified: 2026-08-28
 
 # History Index
 
-These documents preserve completed phases or superseded protocols. They are not current runbooks or
+These documents preserve completed or superseded research protocols. They are not current runbooks or
 handoff contracts.
 
-- [Phase 1](research/alpha_research_phase_1.md) — completed historical research phase.
-- [Phase 2](research/alpha_research_phase_2.md) — completed/frozen predecessor of Phase 3-D.
+- [Initial synthesis](research/alpha_research_initial_synthesis.md) — completed historical research synthesis.
+- [Candidate program](research/alpha_research_candidate_program.md) — completed/frozen predecessor of the current stability diagnostics.
 - [P0 research baseline](research/p0_research_baseline.md) — historical research simulation/audit protocol.
 - [Old local qrun guide](qrun/local_alpha158_qrun_backtest.md) — superseded by the maintained
   [local example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest).

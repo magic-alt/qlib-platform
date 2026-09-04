@@ -221,7 +221,7 @@ $RepoPython examples/local_qlib_backtest/run_backtest.py --model custom_ridge
 本 qrun 教学目录不再复制所有模型 profile。仓库正式模型比较使用 `tq-research`：
 
 ```bash
-$RepoPython -m qlib_platform.research.research_quickstart matrix
+$RepoPython -m qlib_platform.research.workflow.quickstart matrix
 ```
 
 默认比较：
@@ -235,7 +235,7 @@ Alpha158 PIT    × Ridge / LightGBM / XGBoost
 显式加入 PyTorch：
 
 ```bash
-$RepoPython -m qlib_platform.research.research_quickstart matrix \
+$RepoPython -m qlib_platform.research.workflow.quickstart matrix \
   --model ridge --model lightgbm --model xgboost --model pytorch
 ```
 

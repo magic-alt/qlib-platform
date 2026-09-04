@@ -99,7 +99,7 @@ nav:
       - Portfolio Policy: portfolio_v2_rank_buffer.md
       - Windows LightGBM GPU: windows_lightgbm_gpu.md
   - Research & ML:
-      - Active Phase 3-D: alpha_research_phase_3.md
+      - Stability Diagnostics: alpha_research_stability.md
       - Model Lifecycle: model_lifecycle.md
       - Production Feedback: production_feedback.md
       - Production ML Phase 4: production_ml_phase4.md
@@ -123,8 +123,8 @@ nav:
   - History & Moved:
       - History Index: history/README.md
       - Historical Research:
-          - Phase 1: history/research/alpha_research_phase_1.md
-          - Phase 2: history/research/alpha_research_phase_2.md
+          - Initial Synthesis: history/research/alpha_research_initial_synthesis.md
+          - Candidate Program: history/research/alpha_research_candidate_program.md
           - P0 Research Baseline: history/research/p0_research_baseline.md
       - Deprecated qrun Guide: history/qrun/local_alpha158_qrun_backtest.md
       - QMT Gateway Pointer: qmt_gateway.md

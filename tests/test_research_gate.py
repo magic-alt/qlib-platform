@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from qlib_platform.research.research_gate import (
+from qlib_platform.research.evaluation.gates import (
     ResearchThresholds,
     derive_research_metrics,
     derive_signal_metrics,

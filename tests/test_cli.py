@@ -82,8 +82,8 @@ def test_status_is_ready_without_platform_and_reports_missing_data(tmp_path):
 @pytest.mark.parametrize(
     ("command", "arguments", "capability"),
     [
-        ("phase2-plan", ["--contract-lock", "lock.json", "--output", "plan.json"], "phase2"),
-        ("phase3-plan", ["--contract-lock", "lock.json", "--output", "plan.json"], "phase3"),
+        ("candidate-plan", ["--contract-lock", "lock.json", "--output", "plan.json"], "phase2"),
+        ("stability-plan", ["--contract-lock", "lock.json", "--output", "plan.json"], "phase3"),
     ],
 )
 def test_governed_phase_commands_require_current_release_capability(

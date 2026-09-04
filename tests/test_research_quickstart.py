@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.research.research_quickstart import (
+from qlib_platform.research.workflow.quickstart import (
     MATRIX_ALPHA_PACKS,
     MATRIX_MODELS,
     _last_json,

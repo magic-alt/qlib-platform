@@ -23,7 +23,7 @@ def _settings(tmp_path) -> Settings:
 
 def _patch_dataset_calendar(monkeypatch, *dates: pd.Timestamp) -> None:
     monkeypatch.setattr(
-        "qlib_platform.research.research_timing.shared_research_calendar",
+        "qlib_platform.research.workflow.timing.shared_research_calendar",
         lambda settings: pd.DatetimeIndex(dates),
     )
 

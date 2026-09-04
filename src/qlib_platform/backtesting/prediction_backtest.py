@@ -55,7 +55,7 @@ def _market_data_view(
 ) -> MarketDataView:
     from qlib.data import D
 
-    from qlib_platform.research.research_timing import shared_research_calendar
+    from qlib_platform.research.workflow.timing import shared_research_calendar
 
     # The Qlib Recorder is the source of truth for the audit timeline.  Do not
     # reconstruct trade dates from a second metadata calendar: that can silently
@@ -235,7 +235,7 @@ def backtest_predictions(
         write_backtest_report,
     )
     from qlib_platform.backtesting.strategy_audit import build_strategy_audit
-    from qlib_platform.research.train_select import (
+    from qlib_platform.research.workflow.train_select import (
         _configure_mlflow_tracking,
         _dataset_id,
         _resolve_benchmark,
@@ -438,7 +438,7 @@ def backtest_predictions(
         timings_path.write_text(json.dumps(timing_payload, indent=2), encoding="utf-8")
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         if artifact_level == "full":
-            from qlib_platform.research.p0_baseline import write_p0_artifacts
+            from qlib_platform.research.workflow.baseline import write_p0_artifacts
 
             write_p0_artifacts(output)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

@@ -16,7 +16,7 @@ from qlib_platform.ops.platform_release import (
     materialize_platform_release,
     platform_release_preflight,
 )
-from qlib_platform.research.phase2_data_acceptance import (
+from qlib_platform.research.evidence.data_acceptance import (
     REQUIRED_V2_ACCEPTANCE_CHECKS,
     write_data_release_v2_acceptance,
 )
@@ -236,7 +236,7 @@ def test_phase2_profile_accepts_only_expanded_component_schemas(tmp_path: Path):
         load_platform_release(settings)
 
 
-def test_phase2_data_acceptance_is_narrow_and_hash_bound(tmp_path: Path):
+def test_candidate_data_acceptance_is_narrow_and_hash_bound(tmp_path: Path):
     manifest, release_id = _write_release(tmp_path, profile=QLIB_RESEARCH_PROFILE_V2)
     settings = _settings(tmp_path, manifest, release_id)
     evidence = {
@@ -247,7 +247,7 @@ def test_phase2_data_acceptance_is_narrow_and_hash_bound(tmp_path: Path):
     path = write_data_release_v2_acceptance(
         settings,
         evidence=evidence,
-        output=tmp_path / "phase2-data-acceptance.json",
+        output=tmp_path / "candidate-data-acceptance.json",
     )
     payload = json.loads(path.read_text(encoding="utf-8"))
 

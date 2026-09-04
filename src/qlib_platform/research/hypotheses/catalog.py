@@ -6,8 +6,8 @@ from typing import Any, Mapping
 
 from qlib_platform.lineage import sha256_json
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.phase2_contract import load_phase2_lock
-from qlib_platform.research.phase2_features import HYPOTHESIS_FEATURE_SETS, HypothesisFeatureSetSpec
+from qlib_platform.research.contracts.candidate_program import load_candidate_lock
+from qlib_platform.research.features.candidate_sets import HYPOTHESIS_FEATURE_SETS, HypothesisFeatureSetSpec
 
 
 @dataclass(frozen=True)
@@ -51,13 +51,13 @@ def hypothesis_feature_set(hypothesis_id: str, role: str) -> HypothesisFeatureSe
         raise ValueError(f"unsupported Phase 2 hypothesis binding: {normalized_id}") from exc
 
 
-def bind_phase2_hypothesis(
+def bind_candidate_hypothesis(
     contract_lock: str | Path,
     hypothesis_id: str,
     role: str,
 ) -> HypothesisRunBinding:
     lock_path = Path(contract_lock).expanduser().resolve()
-    lock = load_phase2_lock(lock_path)
+    lock = load_candidate_lock(lock_path)
     normalized_id = str(hypothesis_id).strip().upper()
     hypotheses = {
         str(item["hypothesis_id"]): item

@@ -83,7 +83,7 @@ The project pin is `lightgbm==4.6.0`. The Windows OpenCL build must compile that
 
 ## Phase 3 command refuses a dirty checkout
 
-Expected. Phase 3 locks a clean source revision and implementation hashes. Do not weaken the check or alter governed windows. `phase3-diagnose` writes immutable evidence and is not a generic smoke test.
+Expected. Phase 3 locks a clean source revision and implementation hashes. Do not weaken the check or alter governed windows. `stability-diagnose` writes immutable evidence and is not a generic smoke test.
 
 ## Platform unavailable
 

@@ -55,7 +55,7 @@ Phase 3-D remains diagnosis-only:
 - no P2-R01 through P2-R03;
 - no candidate creation, model selection or automatic confirmatory hypothesis.
 
-Do not run `phase3-diagnose` merely to validate documentation. It writes an immutable evidence directory and requires explicit authorization of the exact output.
+Do not run `stability-diagnose` merely to validate documentation. It writes an immutable evidence directory and requires explicit authorization of the exact output.
 
 The presence of generic model/refit/export CLI commands does not override these active-program restrictions.
 
