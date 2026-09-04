@@ -34,9 +34,7 @@ def _provider(root: Path) -> Path:
     (root / "instruments").mkdir()
     (root / "features" / "sh600000").mkdir(parents=True)
     (root / "calendars" / "day.txt").write_text("2026-08-24\n", encoding="utf-8")
-    (root / "instruments" / "all.txt").write_text(
-        "SH600000\t2026-08-24\t2026-08-24\n", encoding="utf-8"
-    )
+    (root / "instruments" / "all.txt").write_text("SH600000\t2026-08-24\t2026-08-24\n", encoding="utf-8")
     (root / "features" / "sh600000" / "close.day.bin").write_bytes(b"close")
     return root
 
