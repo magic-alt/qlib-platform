@@ -254,12 +254,25 @@ def _selected(args: argparse.Namespace) -> tuple[tuple[str, ...], tuple[tuple[st
     return alphas, tuple(unique)
 
 
-def _overlay(base: Path, root: Path, alpha: str) -> Path:
+def _overlay(settings: Settings, root: Path, alpha: str) -> Path:
     path = root / "configs" / f"{alpha}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         yaml.safe_dump(
-            {"extends": str(base.resolve()), "experiment": {"alpha": {"pack": alpha}}},
+            {
+                "extends": str(settings.config_path.resolve()),
+                # Generated overlays live under data/output/quickstart.  Inherited relative
+                # paths would otherwise be re-based against that nested file location when
+                # the child CLI reloads the overlay.  Pin the already-resolved data anchors
+                # so the child process sees exactly the same DatasetVersion and registry.
+                "project_root": str(settings.paths.root.resolve()),
+                "storage": {"registry_path": str(settings.registry_path)},
+                "qlib": {
+                    "dataset_dir": str(settings.qlib_data_uri),
+                    "versions_root": str(settings.qlib_versions_root),
+                },
+                "experiment": {"alpha": {"pack": alpha}},
+            },
             sort_keys=False,
         ),
         encoding="utf-8",
@@ -415,7 +428,7 @@ def build_plan(settings: Settings, args: argparse.Namespace, root: Path) -> dict
     alphas, profiles = _selected(args)
     jobs = []
     for alpha in alphas:
-        config = _overlay(settings.config_path, root, alpha)
+        config = _overlay(settings, root, alpha)
         for model, profile in profiles:
             namespace = f"quickstart-{alpha}-{model}".replace("_", "-")
             command = build_research_command(
