@@ -56,18 +56,14 @@ def inspect_qlib_staging_inventory(release: DataRelease) -> StagingInventory:
         try:
             relative = path.resolve().relative_to(root)
         except ValueError as exc:
-            raise QlibStagingContractError(
-                f"{role} file escapes its component root: {path}"
-            ) from exc
+            raise QlibStagingContractError(f"{role} file escapes its component root: {path}") from exc
         if len(relative.parts) == 1:
             canonical.append(path)
             continue
         if relative.parts[0] in _TRANSIENT_STAGING_DIRS:
             transient.append(path)
             continue
-        raise QlibStagingContractError(
-            f"{role} contains unsupported nested parquet: {relative.as_posix()}"
-        )
+        raise QlibStagingContractError(f"{role} contains unsupported nested parquet: {relative.as_posix()}")
 
     validate_qlib_staging_files(canonical, role=role)
     return StagingInventory(tuple(canonical), tuple(transient))
@@ -113,9 +109,7 @@ def repair_transient_qlib_staging_release(
         sources: list[ComponentSource] = []
         for role, component in release.components.items():
             source_path = (
-                sanitized
-                if role == "qlib_staging"
-                else release.manifest_path.parent / "components" / role
+                sanitized if role == "qlib_staging" else release.manifest_path.parent / "components" / role
             )
             dataset_key = str(component.get("datasetKey") or "").strip() or None
             sources.append(
@@ -153,8 +147,5 @@ def repair_transient_qlib_staging_release(
         )
 
     root = release.manifest_path.parent / "components" / "qlib_staging"
-    ignored = tuple(
-        path.relative_to(root).as_posix()
-        for path in inventory.transient
-    )
+    ignored = tuple(path.relative_to(root).as_posix() for path in inventory.transient)
     return StagingRepairResult(repaired, ignored)
