@@ -185,9 +185,7 @@ PARSER_VARIABLE_REPLACEMENTS = {
     "phase3_verify": "stability_verify",
 }
 
-TEXT_SUFFIXES = {
-    ".py", ".md", ".yml", ".yaml", ".toml", ".json", ".ps1", ".sh", ".txt", ".ini", ".cfg"
-}
+TEXT_SUFFIXES = {".py", ".md", ".yml", ".yaml", ".toml", ".json", ".ps1", ".sh", ".txt", ".ini", ".cfg"}
 
 
 def move(relative_source: str, relative_target: str) -> None:
@@ -214,13 +212,13 @@ def replace_text(path: Path, replacements: dict[str, str]) -> None:
 
 
 def text_files() -> list[Path]:
-    files: list[Path] = []
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or ".git" in path.parts:
-            continue
-        if path.suffix.lower() in TEXT_SUFFIXES or path.name in {"Dockerfile", "Makefile"}:
-            files.append(path)
-    return files
+    return [
+        path
+        for path in ROOT.rglob("*")
+        if path.is_file()
+        and ".git" not in path.parts
+        and (path.suffix.lower() in TEXT_SUFFIXES or path.name in {"Dockerfile", "Makefile"})
+    ]
 
 
 def main() -> None:
@@ -255,7 +253,13 @@ def main() -> None:
 
     cli_main = ROOT / "src/qlib_platform/cli/main.py"
     text = cli_main.read_text(encoding="utf-8")
-    guard_start = text.index('    if args.command.startswith("candidate-")')
+    guard_markers = (
+        '    if args.command.startswith("phase2-")',
+        '    if args.command.startswith("candidate-")',
+    )
+    guard_start = next((text.index(marker) for marker in guard_markers if marker in text), None)
+    if guard_start is None:
+        raise RuntimeError("research capability guard was not found")
     dispatch_start = text.index('\n    if args.command == "candidate-validate":', guard_start)
     new_guard = '''    candidate_commands = {
         "candidate-validate",
@@ -275,7 +279,7 @@ def main() -> None:
     if args.command in candidate_commands or args.command in stability_commands:
         from qlib_platform.releases.capabilities import require_release_capability
 
-        # Capability identifiers are persisted governance identities and remain backward compatible.
+        # Persisted capability identifiers are governance identities, not module boundaries.
         require_release_capability(
             settings,
             "phase2" if args.command in candidate_commands else "phase3",
@@ -291,10 +295,9 @@ def main() -> None:
 import re
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH = ROOT / "src" / "qlib_platform" / "research"
-LEGACY_IMPORT = re.compile(r"qlib_platform\.research\.phase[123]_")
+LEGACY_IMPORT = re.compile(r"qlib_platform\\.research\\.phase[123]_")
 LEGACY_COMMAND = re.compile(r"[\"']phase[123]-")
 
 
@@ -366,12 +369,12 @@ Historical stage identifiers may remain inside immutable artifact schema values 
             )
             agents.write_text(text, encoding="utf-8")
 
-    legacy_paths: list[str] = []
     legacy_import_re = re.compile(r"qlib_platform\.research\.phase[123]_")
-    for path in text_files():
-        text = path.read_text(encoding="utf-8")
-        if legacy_import_re.search(text):
-            legacy_paths.append(path.relative_to(ROOT).as_posix())
+    legacy_paths = [
+        path.relative_to(ROOT).as_posix()
+        for path in text_files()
+        if legacy_import_re.search(path.read_text(encoding="utf-8"))
+    ]
     if legacy_paths:
         raise RuntimeError(f"legacy phase research imports remain: {legacy_paths}")
 
