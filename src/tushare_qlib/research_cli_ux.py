@@ -121,7 +121,7 @@ def summarize_result(output_root: Path, result: Mapping[str, Any] | None) -> dic
     return {key: value for key, value in summary.items() if value not in (None, {}, "")}
 
 
-def _fmt(value: object, digits: int = 4) -> str:
+def _fmt(value: Any, digits: int = 4) -> str:
     try:
         return f"{float(value):.{digits}f}"
     except (TypeError, ValueError):
