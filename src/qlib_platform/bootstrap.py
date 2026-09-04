@@ -13,6 +13,10 @@ from qlib_platform.datasets.data_source_resolver import (
     resolve_local_raw_source,
     resolve_source,
 )
+from qlib_platform.datasets.qlib_staging_contract import (
+    QlibStagingContractError,
+    validate_qlib_staging_files,
+)
 from qlib_platform.releases import (
     FileReleaseStore,
     import_qlib_dataset,
@@ -159,6 +163,11 @@ def _materialize_selected_release(settings: Settings, release_id: str) -> dict[s
             },
         )
 
+    # Validate the structural contract before replacing staging. Numeric chunk names
+    # are valid; only the actual qlib-staging-v2 schema matters.
+    if "qlib_staging" in release.components:
+        validate_qlib_staging_files(release.files("qlib_staging"))
+
     bound = _release_bound_settings(settings, release_id)
     materialized = materialize_data_release(bound)
     path = dump_full(
@@ -213,6 +222,64 @@ def _ready_from_resolution(settings: Settings, resolved) -> dict[str, Any]:
     )
 
 
+def _recover_incompatible_staging(
+    settings: Settings,
+    error: QlibStagingContractError,
+    *,
+    start: str | None,
+    end: str | None,
+) -> dict[str, Any]:
+    """Rebuild a clean standalone release from certified local raw inputs.
+
+    The incompatible immutable release is never edited or partially consumed. A fresh
+    dataset-build recreates canonical staging with force-clean semantics, publishes a
+    new DataRelease/DatasetVersion, and atomically moves the standalone aliases.
+    """
+
+    raw = resolve_local_raw_source(settings)
+    if raw.status != "BUILD_REQUIRED" or raw.profile != "ashare_qlib_research_v2":
+        return {
+            "status": "DATA_INCOMPATIBLE",
+            "source": "data_release",
+            "reference": settings.qlib_dataset_ref,
+            "error": str(error),
+            "action": "rebuild canonical qlib staging from certified local raw data",
+            "missingComponents": list(raw.missing_components),
+            "recommendedCommand": (
+                "Complete the missing local research inputs or set TUSHARE_TOKEN in .env, then rerun "
+                "tq-research run"
+            ),
+        }
+
+    selected_start = start or str(settings.data.get("start_date") or "")
+    selected_end = end or str(settings.data.get("end_date") or "")
+    if not selected_start or not selected_end:
+        return {
+            "status": "DATA_INCOMPATIBLE",
+            "source": "data_release",
+            "reference": settings.qlib_dataset_ref,
+            "error": str(error),
+            "action": "configure start_date/end_date for canonical raw rebuild",
+            "missingComponents": [],
+            "recommendedCommand": "Set start_date/end_date in the standalone profile and rerun tq-research run",
+        }
+
+    _run_cli(
+        settings,
+        "dataset-build",
+        "--start",
+        selected_start,
+        "--end",
+        selected_end,
+    )
+    after = resolve_source(settings)
+    result = _ready_from_resolution(settings, after)
+    if result["status"] == "READY":
+        result["recoveredFromIncompatibleRelease"] = True
+        result["recoveryReason"] = "qlib_staging_contract"
+    return result
+
+
 def bootstrap(
     settings: Settings,
     *,
@@ -239,7 +306,12 @@ def bootstrap(
             recovered = _recover_selected_dataset_alias(settings, resolved.reference)
             if recovered is not None:
                 return recovered
-            return _materialize_selected_release(settings, resolved.reference)
+            try:
+                return _materialize_selected_release(settings, resolved.reference)
+            except QlibStagingContractError as exc:
+                if settings.mode != "standalone":
+                    raise
+                return _recover_incompatible_staging(settings, exc, start=start, end=end)
         if resolved.status == "IMPORT_REQUIRED":
             release, dataset = import_qlib_dataset(settings, resolved.path or settings.qlib_data_uri)
             return _with_archive_count(
