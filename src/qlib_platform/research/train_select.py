@@ -1002,7 +1002,11 @@ def train_backtest_select(
         timings_path = artifact_dir / "timings.json"
         gate_path = artifact_dir / "research_gate.json"
         manifest_path = artifact_dir / "manifest.json"
-        from qlib_platform.backtesting.backtest_report import ReportArtifacts, export_holding_snapshots, write_backtest_report
+        from qlib_platform.backtesting.backtest_report import (
+            ReportArtifacts,
+            export_holding_snapshots,
+            write_backtest_report,
+        )
         from qlib_platform.backtesting.strategy_audit import build_strategy_audit
 
         with timings.measure("artifact_export_seconds"):

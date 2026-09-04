@@ -15,7 +15,12 @@ from qlib_platform.datasets.dataset_resolver import pin_dataset
 from qlib_platform.lineage import git_revision, resolve_qlib_repo, sha256_json
 from qlib_platform.models.model_bundle import create_model_bundle
 from qlib_platform.models.model_registry import ModelRegistry
-from qlib_platform.models.model_runtime import build_model, load_model_profile, resolve_runtime, resolved_model_parameters
+from qlib_platform.models.model_runtime import (
+    build_model,
+    load_model_profile,
+    resolve_runtime,
+    resolved_model_parameters,
+)
 from qlib_platform.models.registry import get_model_adapter
 from qlib_platform.research.research_timing import (
     effective_label_gap,

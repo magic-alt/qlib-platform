@@ -297,9 +297,13 @@ def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_
     )
     profile = ModelProfile("test", "lightgbm", "cpu", 0, {}, "test")
     runtime = ResolvedRuntime(profile, "cpu", None, {"lightgbm": "test"})
-    monkeypatch.setattr("qlib_platform.research.walk_forward.load_model_profile", lambda *args, **kwargs: profile)
+    monkeypatch.setattr(
+        "qlib_platform.research.walk_forward.load_model_profile", lambda *args, **kwargs: profile
+    )
     monkeypatch.setattr("qlib_platform.research.walk_forward.resolve_runtime", lambda value: runtime)
-    monkeypatch.setattr("qlib_platform.research.walk_forward.shared_research_calendar", lambda value: calendar)
+    monkeypatch.setattr(
+        "qlib_platform.research.walk_forward.shared_research_calendar", lambda value: calendar
+    )
     monkeypatch.setattr(
         "qlib_platform.research.walk_forward.git_revision",
         lambda value: {"commit": "test-commit", "dirty": False},

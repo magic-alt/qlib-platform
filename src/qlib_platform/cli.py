@@ -595,7 +595,10 @@ def main() -> None:
         return
 
     if args.command == "research-audit":
-        from qlib_platform.backtesting.backtest_audit import audit_mlflow_run, write_audit as write_backtest_audit
+        from qlib_platform.backtesting.backtest_audit import (
+            audit_mlflow_run,
+            write_audit as write_backtest_audit,
+        )
 
         report = audit_mlflow_run(args.run_dir)
         path = write_backtest_audit(report, args.output)
@@ -619,7 +622,10 @@ def main() -> None:
 
     if args.command == "artifact-v2-export":
         from qlib_platform.releases.capabilities import require_release_capability
-        from qlib_platform.artifacts.research_bundle_export import export_manifest_as_v2_bundle, resolve_data_release_id
+        from qlib_platform.artifacts.research_bundle_export import (
+            export_manifest_as_v2_bundle,
+            resolve_data_release_id,
+        )
 
         export_settings = Settings.load(args.config, create_dirs=False)
         source_manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
@@ -674,7 +680,11 @@ def main() -> None:
 
     if args.command == "research-gate":
         import yaml
-        from qlib_platform.research.research_gate import ResearchThresholds, evaluate_research_metrics, write_gate_report
+        from qlib_platform.research.research_gate import (
+            ResearchThresholds,
+            evaluate_research_metrics,
+            write_gate_report,
+        )
 
         metrics = json.loads(Path(args.metrics_json).read_text(encoding="utf-8"))
         cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8")) or {}

@@ -23,9 +23,18 @@ from qlib_platform.research.research_gate import (
     write_gate_report,
 )
 from qlib_platform.data.store import sha256_file
-from qlib_platform.lineage import dirty_research_override_enabled, git_revision, resolve_qlib_repo, sha256_json
+from qlib_platform.lineage import (
+    dirty_research_override_enabled,
+    git_revision,
+    resolve_qlib_repo,
+    sha256_json,
+)
 from qlib_platform.data.universe import membership_fingerprint
-from qlib_platform.research.research_timing import effective_label_gap, label_timing_from_settings, shared_research_calendar
+from qlib_platform.research.research_timing import (
+    effective_label_gap,
+    label_timing_from_settings,
+    shared_research_calendar,
+)
 from qlib_platform.research.train_select import _research_label_horizon_days, train_backtest_select
 from qlib_platform.canonical_config import StrategySpec
 from qlib_platform.research.feature_store import feature_store_enabled, prepare_feature_data

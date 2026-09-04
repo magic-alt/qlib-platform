@@ -19,7 +19,12 @@ from qlib_platform.settings import Settings
 from qlib_platform.data.store import sha256_file
 from qlib_platform.research.factor_taxonomy import FactorTaxonomy, load_factor_taxonomy
 from qlib_platform.research.feature_diagnostics import feature_columns
-from qlib_platform.research.regime import REQUIRED_DIMENSIONS, RegimeSpec, build_regime_labels, load_regime_spec
+from qlib_platform.research.regime import (
+    REQUIRED_DIMENSIONS,
+    RegimeSpec,
+    build_regime_labels,
+    load_regime_spec,
+)
 from qlib_platform.research.regime_diagnostics import RegimeDiagnosticArtifacts, build_regime_diagnostics
 from qlib_platform.research.study import (
     _fold_assignments,

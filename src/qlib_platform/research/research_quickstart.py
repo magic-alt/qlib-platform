@@ -17,7 +17,11 @@ from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired
 from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest
 from qlib_platform.datasets.dataset_resolver import resolve_dataset
 from qlib_platform.models.model_runtime import load_model_profile, resolve_runtime
-from qlib_platform.research.research_cli_ux import filter_known_child_noise, render_terminal_summary, summarize_result
+from qlib_platform.research.research_cli_ux import (
+    filter_known_child_noise,
+    render_terminal_summary,
+    summarize_result,
+)
 from qlib_platform.runtime.runtime_resources import resource_argument, resource_path
 from qlib_platform.settings import Settings
 

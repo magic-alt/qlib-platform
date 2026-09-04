@@ -119,7 +119,9 @@ def test_label_values_match_with_feature_store_on_and_off(tmp_path, monkeypatch)
         qlib_repo=None,
         qlib_data_uri=qlib_data,
     )
-    monkeypatch.setattr("qlib_platform.research.train_select.handler_class", lambda pack: _MiniResearchHandler)
+    monkeypatch.setattr(
+        "qlib_platform.research.train_select.handler_class", lambda pack: _MiniResearchHandler
+    )
 
     import qlib
     from qlib.constant import REG_CN

@@ -16,7 +16,11 @@ from qlib_platform.ops.platform_release import DATA_RELEASE_PROFILES, PROFILE_CO
 from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
 from qlib_platform.research.research_gate import derive_daily_signal_diagnostics
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.phase2_contract import MultipleTestingSpec, assert_workstream_allowed, load_phase2_lock
+from qlib_platform.research.phase2_contract import (
+    MultipleTestingSpec,
+    assert_workstream_allowed,
+    load_phase2_lock,
+)
 from qlib_platform.research.phase2_features import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
 from qlib_platform.research.phase2_hypotheses import hypothesis_definition_sha256, hypothesis_feature_set
 from qlib_platform.research.phase2_statistics import multiple_testing_table, nested_ridge_increment

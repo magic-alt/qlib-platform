@@ -131,8 +131,12 @@ def test_raw_features_uses_feature_only_loader(tmp_path, monkeypatch):
             observed["load"] = (instruments, start_time, end_time)
             return expected
 
-    monkeypatch.setattr("qlib_platform.research.feature_store.alpha_pack_from_settings", lambda settings: object())
-    monkeypatch.setattr("qlib_platform.research.feature_store.assert_alpha_pack_compatible", lambda *args: None)
+    monkeypatch.setattr(
+        "qlib_platform.research.feature_store.alpha_pack_from_settings", lambda settings: object()
+    )
+    monkeypatch.setattr(
+        "qlib_platform.research.feature_store.assert_alpha_pack_compatible", lambda *args: None
+    )
     monkeypatch.setattr("qlib_platform.research.feature_store.handler_class", lambda pack: FakeHandler)
     monkeypatch.setattr("qlib.data.dataset.loader.QlibDataLoader", FakeLoader)
 

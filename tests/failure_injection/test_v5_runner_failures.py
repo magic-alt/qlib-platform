@@ -45,7 +45,9 @@ def test_close_failures_do_not_release_signal_and_emit_domain_alert(
 ):
     settings = _settings(tmp_path)
     notifier = _Notifier()
-    monkeypatch.setattr("qlib_platform.runtime.daily_signal_runner.feishu_notifier_from_environment", lambda: notifier)
+    monkeypatch.setattr(
+        "qlib_platform.runtime.daily_signal_runner.feishu_notifier_from_environment", lambda: notifier
+    )
     monkeypatch.setattr(
         "qlib_platform.runtime.daily_signal_runner.run_live_inference",
         lambda *args, **kwargs: (_ for _ in ()).throw(error),

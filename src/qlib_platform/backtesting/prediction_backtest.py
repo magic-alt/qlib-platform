@@ -198,9 +198,17 @@ def backtest_predictions(
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise RuntimeError("Qlib is required for predictions-only backtests") from exc
 
-    from qlib_platform.backtesting.backtest_report import ReportArtifacts, export_holding_snapshots, write_backtest_report
+    from qlib_platform.backtesting.backtest_report import (
+        ReportArtifacts,
+        export_holding_snapshots,
+        write_backtest_report,
+    )
     from qlib_platform.backtesting.strategy_audit import build_strategy_audit
-    from qlib_platform.research.train_select import _configure_mlflow_tracking, _dataset_id, _resolve_benchmark
+    from qlib_platform.research.train_select import (
+        _configure_mlflow_tracking,
+        _dataset_id,
+        _resolve_benchmark,
+    )
 
     class PredictionsPortAnaRecord(PortAnaRecord):
         # Qlib's PortAnaRecord declares SignalRecord as its dependency, whose

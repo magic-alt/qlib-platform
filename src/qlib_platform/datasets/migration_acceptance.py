@@ -12,7 +12,11 @@ from typing import Any, Mapping
 import pandas as pd
 import pyarrow.parquet as pq
 
-from qlib_platform.datasets.data_release import QLIB_RESEARCH_PROFILE_V2, materialize_data_release, verify_data_release
+from qlib_platform.datasets.data_release import (
+    QLIB_RESEARCH_PROFILE_V2,
+    materialize_data_release,
+    verify_data_release,
+)
 from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest
 from qlib_platform.datasets.dataset_registry import DatasetRegistry
 from qlib_platform.lineage import git_revision, resolve_qlib_repo
