@@ -175,12 +175,12 @@ class Settings:
             raise RuntimeError("TUSHARE_TOKEN is not set. Copy .env.example to .env and fill the token.")
 
         qlib_cfg = data["qlib"]
-        repo_raw = str(qlib_cfg.get("repo_path", "")).strip()
+        repo_raw = str(qlib_cfg.get("repo_path") or os.getenv("QLIB_REPO", "")).strip()
         qlib_repo = Path(repo_raw).expanduser().resolve() if repo_raw else None
         if require_qlib_repo and (qlib_repo is None or not qlib_repo.exists()):
             raise RuntimeError("QLIB_REPO is not configured or does not exist")
 
-        dataset_raw = str(qlib_cfg.get("dataset_dir", "")).strip()
+        dataset_raw = str(qlib_cfg.get("dataset_dir") or os.getenv("QLIB_DATA_URI", "")).strip()
         if dataset_raw:
             qlib_data_uri = Path(dataset_raw).expanduser()
             if not qlib_data_uri.is_absolute():
