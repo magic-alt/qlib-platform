@@ -67,9 +67,7 @@ def test_prepare_feature_data_reports_materialization_and_reuse(tmp_path, monkey
         [(pd.Timestamp("2024-01-02"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    source = pd.DataFrame(
-        [[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
-    )
+    source = pd.DataFrame([[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
@@ -115,9 +113,7 @@ def test_raw_features_uses_feature_only_loader(tmp_path, monkeypatch):
         [(pd.Timestamp("2024-01-02"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    expected = pd.DataFrame(
-        [[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
-    )
+    expected = pd.DataFrame([[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     observed: dict[str, object] = {}
 
     class FakeHandler:
@@ -293,9 +289,7 @@ def test_feature_store_rebinds_direct_parent_when_changes_are_after_requested_ra
         [(pd.Timestamp("2026-01-02"), "SH600000"), (pd.Timestamp("2026-01-03"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    source = pd.DataFrame(
-        [[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
-    )
+    source = pd.DataFrame([[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
@@ -345,12 +339,8 @@ def test_cross_version_cache_without_direct_parent_fails_closed(tmp_path, monkey
         [(pd.Timestamp("2026-01-02"), "SH600000"), (pd.Timestamp("2026-01-03"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    old = pd.DataFrame(
-        [[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
-    )
-    new = pd.DataFrame(
-        [[10.0], [20.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
-    )
+    old = pd.DataFrame([[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
+    new = pd.DataFrame([[10.0], [20.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
     frames = [old, new]
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
