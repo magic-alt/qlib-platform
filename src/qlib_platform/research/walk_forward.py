@@ -81,7 +81,7 @@ def _write_research_selection_lock(
     experiment = reference.get("researchExperiment")
     if not isinstance(experiment, dict):
         raise ValueError("rolling fold is missing its research experiment contract")
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[3]
     code_revision = git_revision(project_root)
     payload: dict[str, object] = {
         "schemaVersion": "research_selection_lock_v1",
@@ -436,17 +436,17 @@ def _training_checkpoint_fingerprint(
     runtime_fingerprint: str,
 ) -> str:
     dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
-    package_root = Path(__file__).resolve().parent
+    package_root = Path(__file__).resolve().parents[1]
     source_files = [
         Path(__file__),
-        package_root / "custom_handler.py",
-        package_root / "processors.py",
-        package_root / "research_timing.py",
-        package_root / "model_runtime.py",
-        package_root / "processor_state.py",
-        package_root / "train_select.py",
-        package_root / "prediction_snapshot.py",
-        package_root / "walk_forward_acceptance.py",
+        package_root / "data" / "custom_handler.py",
+        package_root / "data" / "processors.py",
+        package_root / "research" / "research_timing.py",
+        package_root / "models" / "model_runtime.py",
+        package_root / "data" / "processor_state.py",
+        package_root / "research" / "train_select.py",
+        package_root / "artifacts" / "prediction_snapshot.py",
+        package_root / "research" / "walk_forward_acceptance.py",
     ]
     research = settings.data.get("research", {})
     research = research if isinstance(research, dict) else {}
@@ -504,7 +504,7 @@ def _portfolio_checkpoint_fingerprint(
             )
         },
         "portfolioImplementationSha256": sha256_file(
-            Path(__file__).resolve().parent / "prediction_backtest.py"
+            Path(__file__).resolve().parents[1] / "backtesting" / "prediction_backtest.py"
         ),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()

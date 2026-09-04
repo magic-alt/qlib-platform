@@ -57,7 +57,7 @@ def _dataset_snapshot(settings: Settings) -> dict[str, object]:
 
 def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, object]:
     del start_time, end_time
-    package_root = Path(__file__).resolve().parent
+    package_root = Path(__file__).resolve().parents[1]
     snapshot = _dataset_snapshot(settings)
     pack = alpha_pack_from_settings(settings)
     # Only feature-defining implementation belongs in the raw-feature recipe.
@@ -65,7 +65,7 @@ def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, o
     # checkout path, so editable installs and built wheels bind the same logical
     # implementation after the provider-neutral namespace migration.
     implementation = [
-        package_root / "custom_handler.py",
+        package_root / "data" / "custom_handler.py",
         package_root / "data" / "fundamentals.py",
         package_root / "alpha" / "registry.py",
     ]

@@ -1,23 +1,6 @@
-"""Data ingestion, storage contracts, and provider adapters."""
+"""Provider-neutral ingestion, market-data contracts, and storage primitives.
 
-from qlib_platform.data.ingestion import Extractor
-from qlib_platform.data.sources import (
-    DataSourceBinding,
-    DataSourceClient,
-    FetchResult,
-    RetryPolicy,
-    available_data_sources,
-    create_data_source,
-    register_data_source,
-)
-
-__all__ = [
-    "DataSourceBinding",
-    "DataSourceClient",
-    "Extractor",
-    "FetchResult",
-    "RetryPolicy",
-    "available_data_sources",
-    "create_data_source",
-    "register_data_source",
-]
+Import concrete services from their domain modules. Keeping package import
+lightweight prevents unrelated storage/symbol imports from initializing the
+ingestion provider stack.
+"""
