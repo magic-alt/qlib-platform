@@ -53,6 +53,7 @@ class ResolvedRuntime:
     resolved_device: str
     fallback_reason: str | None
     versions: dict[str, str]
+    device_name: str | None = None
 
     @property
     def fingerprint(self) -> str:
@@ -70,6 +71,7 @@ class ResolvedRuntime:
             "modelFamily": self.profile.family,
             "requestedDevice": self.profile.device,
             "resolvedDevice": self.resolved_device,
+            "deviceName": self.device_name,
             "deviceIndex": device_index,
             "gpuPlatformId": self.profile.gpu_platform_id if accelerated else None,
             "fallbackReason": self.fallback_reason,
@@ -224,6 +226,7 @@ def resolve_runtime(profile: ModelProfile) -> ResolvedRuntime:
         resolution.resolved_device,
         resolution.fallback_reason,
         resolution.versions,
+        resolution.device_name,
     )
 
 
