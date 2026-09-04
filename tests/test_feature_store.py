@@ -67,7 +67,9 @@ def test_prepare_feature_data_reports_materialization_and_reuse(tmp_path, monkey
         [(pd.Timestamp("2024-01-02"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    source = pd.DataFrame([[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
+    source = pd.DataFrame(
+        [[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
+    )
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
@@ -113,7 +115,9 @@ def test_raw_features_uses_feature_only_loader(tmp_path, monkeypatch):
         [(pd.Timestamp("2024-01-02"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    expected = pd.DataFrame([[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
+    expected = pd.DataFrame(
+        [[1.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
+    )
     observed: dict[str, object] = {}
 
     class FakeHandler:
@@ -185,6 +189,7 @@ def test_feature_store_extends_same_dataset_without_full_recompute(tmp_path, mon
             "lastDate": "2026-01-04",
             "datasetId": "test",
             "fields": ["close"],
+            "parents": [],
         },
     )
 
@@ -201,7 +206,7 @@ def test_feature_store_extends_same_dataset_without_full_recompute(tmp_path, mon
     assert loaded.loc[(pd.Timestamp("2026-01-04"), "SH600000")].iloc[0] == 3.0
 
 
-def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatch):
+def test_feature_store_incrementally_refreshes_changed_tail_from_direct_parent(tmp_path, monkeypatch):
     settings = _settings(tmp_path, feature_store={"append_lookback_trading_days": 60})
     columns = pd.MultiIndex.from_tuples([("feature", "A"), ("label", "LABEL0")])
     original_index = pd.MultiIndex.from_tuples(
@@ -245,6 +250,7 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
                 "lastDate": "2026-01-03",
                 "datasetId": "test",
                 "fields": ["close"],
+                "parents": [],
             }
         return {
             "sha256": "new",
@@ -258,6 +264,7 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
             "lastDate": "2026-01-04",
             "datasetId": "test",
             "fields": ["close"],
+            "parents": [{"version_id": "old", "relation": "updated_from"}],
         }
 
     monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
@@ -272,6 +279,7 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
     assert calls[1][1:3] == ("2026-01-03", "2026-01-04")
     assert evidence["cacheStatus"] == "INCREMENTAL"
     assert evidence["rawMaterializationCalls"] == 1
+    assert evidence["sourceDatasetVersionId"] == "old"
     assert evidence["recomputeStartTime"] == "2026-01-03"
     original = load_feature_store(store, "2026-01-02", "2026-01-03")
     assert original.loc[(pd.Timestamp("2026-01-03"), "SH600000")].iloc[0] == 2.0
@@ -279,13 +287,15 @@ def test_feature_store_incrementally_refreshes_changed_tail(tmp_path, monkeypatc
     assert loaded.loc[(pd.Timestamp("2026-01-04"), "SH600000")].iloc[0] == 3.0
 
 
-def test_feature_store_rebinds_when_dataset_changes_only_after_requested_range(tmp_path, monkeypatch):
+def test_feature_store_rebinds_direct_parent_when_changes_are_after_requested_range(tmp_path, monkeypatch):
     settings = _settings(tmp_path)
     index = pd.MultiIndex.from_tuples(
         [(pd.Timestamp("2026-01-02"), "SH600000"), (pd.Timestamp("2026-01-03"), "SH600000")],
         names=["datetime", "instrument"],
     )
-    source = pd.DataFrame([[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")]))
+    source = pd.DataFrame(
+        [[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
+    )
     calls: list[tuple[object, ...]] = []
     monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
     monkeypatch.setattr(
@@ -303,6 +313,7 @@ def test_feature_store_rebinds_when_dataset_changes_only_after_requested_range(t
                 "syncContext": None,
                 "datasetId": "test",
                 "fields": ["close"],
+                "parents": [],
             }
         return {
             "sha256": "new",
@@ -311,6 +322,7 @@ def test_feature_store_rebinds_when_dataset_changes_only_after_requested_range(t
             "syncContext": {"changed_trade_dates": ["2026-01-10"], "revised_symbols": []},
             "datasetId": "test",
             "fields": ["close"],
+            "parents": [{"version_id": "old", "relation": "updated_from"}],
         }
 
     monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
@@ -322,8 +334,63 @@ def test_feature_store_rebinds_when_dataset_changes_only_after_requested_range(t
     assert len(calls) == 1
     assert evidence["cacheStatus"] == "REBOUND"
     assert evidence["rawMaterializationCalls"] == 0
+    assert evidence["sourceDatasetVersionId"] == "old"
     assert evidence["sourceFeatureSnapshotId"] == old_path.name
     assert Path(str(evidence["path"])) != old_path
+
+
+def test_cross_version_cache_without_direct_parent_fails_closed(tmp_path, monkeypatch):
+    settings = _settings(tmp_path)
+    index = pd.MultiIndex.from_tuples(
+        [(pd.Timestamp("2026-01-02"), "SH600000"), (pd.Timestamp("2026-01-03"), "SH600000")],
+        names=["datetime", "instrument"],
+    )
+    old = pd.DataFrame(
+        [[1.0], [2.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
+    )
+    new = pd.DataFrame(
+        [[10.0], [20.0]], index=index, columns=pd.MultiIndex.from_tuples([("feature", "A")])
+    )
+    frames = [old, new]
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr("tushare_qlib.feature_store._initialize_qlib", lambda settings: None)
+    monkeypatch.setattr(
+        "tushare_qlib.feature_store._raw_features",
+        lambda *args: calls.append(args) or frames[len(calls) - 1],
+    )
+    state = {"snapshot": "old"}
+
+    def snapshot(_settings):
+        if state["snapshot"] == "old":
+            return {
+                "sha256": "old",
+                "versionId": "old",
+                "manifestSha256": "manifest-old",
+                "syncContext": None,
+                "datasetId": "test",
+                "fields": ["close"],
+                "parents": [],
+            }
+        return {
+            "sha256": "new",
+            "versionId": "new",
+            "manifestSha256": "manifest-new",
+            "syncContext": {"changed_trade_dates": ["2026-01-10"], "revised_symbols": []},
+            "datasetId": "test",
+            "fields": ["close"],
+            "parents": [],
+        }
+
+    monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
+    materialize_feature_store(settings, "2026-01-02", "2026-01-03")
+    state["snapshot"] = "new"
+
+    loaded, evidence = prepare_feature_data(settings, "2026-01-02", "2026-01-03")
+
+    assert len(calls) == 2
+    assert evidence["cacheStatus"] == "MATERIALIZED"
+    assert evidence["rawMaterializationCalls"] == 1
+    assert loaded.loc[(pd.Timestamp("2026-01-02"), "SH600000")].iloc[0] == 10.0
 
 
 def test_feature_store_revised_symbols_fail_closed_to_full_materialization(tmp_path, monkeypatch):
@@ -362,6 +429,7 @@ def test_feature_store_revised_symbols_fail_closed_to_full_materialization(tmp_p
                 "syncContext": None,
                 "datasetId": "test",
                 "fields": ["close"],
+                "parents": [],
             }
         return {
             "sha256": "new",
@@ -373,6 +441,7 @@ def test_feature_store_revised_symbols_fail_closed_to_full_materialization(tmp_p
             },
             "datasetId": "test",
             "fields": ["close"],
+            "parents": [{"version_id": "old", "relation": "updated_from"}],
         }
 
     monkeypatch.setattr("tushare_qlib.feature_store._dataset_snapshot", snapshot)
