@@ -151,9 +151,7 @@ def test_resolve_qlib_repo_rejects_enclosing_application_repo_for_wheel_install(
     assert resolve_qlib_repo(None) is None
 
 
-def test_resolve_qlib_repo_rejects_stale_configured_checkout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_resolve_qlib_repo_rejects_stale_configured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     configured = tmp_path / "stale-qlib"
     (configured / ".git").mkdir(parents=True)
     stale_package = configured / "qlib"
