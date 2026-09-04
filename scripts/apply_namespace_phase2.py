@@ -21,10 +21,13 @@ TEXT_SUFFIXES = {
 }
 TEXT_NAMES = {"Makefile", "tq"}
 SKIP_DIRS = {".git", ".venv", "data", "mlruns", "dist", "build"}
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
 
 
 def eligible(path: Path) -> bool:
     if path.resolve() == SELF:
+        return False
+    if WORKFLOW_DIR in path.parents:
         return False
     if any(part in SKIP_DIRS for part in path.parts):
         return False
