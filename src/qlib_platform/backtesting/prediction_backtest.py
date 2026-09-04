@@ -72,8 +72,7 @@ def _market_data_view(
     if not outside_calendar.empty:
         preview = ", ".join(str(value.date()) for value in outside_calendar[:5])
         raise RuntimeError(
-            "strategy audit Qlib trade dates fall outside the pinned DatasetVersion calendar: "
-            f"{preview}"
+            f"strategy audit Qlib trade dates fall outside the pinned DatasetVersion calendar: {preview}"
         )
 
     instruments = sorted(score.index.get_level_values("instrument").astype(str).unique())
