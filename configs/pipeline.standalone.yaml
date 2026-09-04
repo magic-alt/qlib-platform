@@ -29,9 +29,12 @@ release_store:
   active_keep: 1
 
 qlib:
-  # Optional QLIB_REPO / QLIB_DATA_URI values are read from .env by Settings.
+  # Optional .env overrides are explicitly scoped to this standalone profile, so
+  # process-global CI/user variables cannot silently alter unrelated custom configs.
   repo_path: ""
+  repo_path_env: QLIB_REPO
   dataset_dir: ""
+  dataset_dir_env: QLIB_DATA_URI
   versions_root: ""
   dataset_name: cn_standalone
   dataset_version: local
