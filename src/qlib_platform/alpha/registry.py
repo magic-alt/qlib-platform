@@ -164,6 +164,6 @@ def assert_alpha_pack_compatible(settings: Settings, pack: AlphaPackSpec) -> Non
 
 
 def handler_class(pack: AlphaPackSpec):
-    from .. import custom_handler
+    from qlib_platform.data import custom_handler
 
     return getattr(custom_handler, pack.handler_class)
