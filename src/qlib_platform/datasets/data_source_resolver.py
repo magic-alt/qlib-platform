@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from qlib_platform.datasets.data_release import DATA_RELEASE_PROFILES
 from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest
 from qlib_platform.datasets.dataset_registry import DatasetRegistry, DatasetVersion
 from qlib_platform.datasets.dataset_resolver import current_manifest_dataset, dataset_reference_candidates
@@ -37,6 +38,11 @@ def _provider_ready(path: Path) -> bool:
         and (path / "instruments").is_dir()
         and (path / "features").is_dir()
     )
+
+
+def _release_materializable(profile: str | None) -> bool:
+    roles = DATA_RELEASE_PROFILES.get(str(profile or ""), frozenset())
+    return "qlib_staging" in roles or "qlib_dataset" in roles
 
 
 def _verify_dataset_source_probe(manifest_path: Path) -> None:
@@ -162,6 +168,15 @@ def resolve_source(
         if dataset is not None and dataset.data_release_id == release.data_release_id:
             _verify_dataset_source_probe(dataset.manifest_path)
             return SourceResolution("READY", "data_release", release.data_release_id, dataset.data_path)
+        if settings.mode == "standalone" and not _release_materializable(release.profile):
+            if (settings.paths.raw / "daily").is_dir():
+                return resolve_local_raw_source(settings)
+            return SourceResolution(
+                "DATA_INCOMPATIBLE",
+                "data_release",
+                profile=release.profile,
+                action="provide a release with qlib_staging or an existing Qlib provider",
+            )
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
             "data_release",
@@ -194,11 +209,27 @@ def resolve_source(
             raise ReleaseSelectionRequired(
                 "RELEASE_SELECTION_REQUIRED: multiple DataReleases exist without an active alias"
             )
-        # Standalone is deliberately zero-config: the newest published local release
-        # becomes the candidate snapshot. bootstrap() performs the mutating activation
-        # only after it verifies/materializes the matching DatasetVersion.
-        record = store.latest() if len(records) > 1 else records[0]
-        assert record is not None
+        if settings.mode == "standalone":
+            compatible = [item for item in records if _release_materializable(item.profile)]
+            if compatible:
+                record = store.latest(compatible)
+                assert record is not None
+                return SourceResolution(
+                    "MATERIALIZE_REQUIRED",
+                    "data_release",
+                    record.data_release_id,
+                    record.manifest_path,
+                    "dataset-materialize",
+                    record.profile,
+                )
+            if (settings.paths.raw / "daily").is_dir():
+                return resolve_local_raw_source(settings)
+            return SourceResolution(
+                "DATA_INCOMPATIBLE",
+                "data_release",
+                action="no local DataRelease contains qlib_staging or qlib_dataset",
+            )
+        record = records[0]
         return SourceResolution(
             "MATERIALIZE_REQUIRED",
             "data_release",
