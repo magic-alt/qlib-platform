@@ -1,0 +1,32 @@
+name: Phase 3 Data Source Contract Fix
+
+on:
+  push:
+    branches:
+      - refactor/phase3-transitional-architecture
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Restore canonical data_source binding surface
+        run: |
+          python scripts/fix_phase3_data_source_attr.py
+          python -m compileall -q src/qlib_platform/data/ingestion.py
+      - name: Remove one-shot fixer and commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/fix_phase3_data_source_attr.py .github/workflows/phase3-data-source-fix.yml
+          git add src/qlib_platform/data/ingestion.py
+          git commit -m 'fix(data): preserve canonical data-source binding surface'
+          git push origin HEAD:refactor/phase3-transitional-architecture
