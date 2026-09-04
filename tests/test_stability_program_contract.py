@@ -27,7 +27,9 @@ def test_repository_phase3_contract_freezes_diagnosis_only_program():
 
 
 def test_phase3_contract_requires_cross_section_for_both_topk_legs(tmp_path: Path):
-    payload = yaml.safe_load(Path("configs/research/ashare_stability_diagnostics_v1.yaml").read_text(encoding="utf-8"))
+    payload = yaml.safe_load(
+        Path("configs/research/ashare_stability_diagnostics_v1.yaml").read_text(encoding="utf-8")
+    )
     payload["diagnostics"]["minimumCrossSection"] = 59
     contract_path = tmp_path / "phase3.yaml"
     contract_path.write_text(yaml.safe_dump(payload), encoding="utf-8")

@@ -29,7 +29,9 @@ def _existing_bundle(tmp_path: Path) -> tuple[Path, Path, dict[str, object], Pat
         contract_path="configs/research/ashare_stability_diagnostics_v1.yaml",
         output=tmp_path / "phase3-lock.json",
     )
-    plan_path = write_stability_experiment_plan(contract_lock=lock_path, output=tmp_path / "stability-plan.json")
+    plan_path = write_stability_experiment_plan(
+        contract_lock=lock_path, output=tmp_path / "stability-plan.json"
+    )
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     output = (tmp_path / "diagnosis").resolve()

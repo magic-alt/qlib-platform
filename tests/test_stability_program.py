@@ -5,7 +5,10 @@ from pathlib import Path
 
 from qlib_platform.research.contracts.stability_program import write_stability_contract_lock
 from qlib_platform.lineage import sha256_json
-from qlib_platform.research.workflow.stability_program import load_stability_plan, write_stability_experiment_plan
+from qlib_platform.research.workflow.stability_program import (
+    load_stability_plan,
+    write_stability_experiment_plan,
+)
 
 from tests._stability_helpers import phase3_entry_fixture
 

@@ -309,7 +309,9 @@ def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_
         lambda value: {"commit": "test-commit", "dirty": False},
     )
     monkeypatch.setattr(backtest_report, "write_backtest_report", lambda *args, **kwargs: None)
-    monkeypatch.setattr("qlib_platform.research.workflow.walk_forward.feature_store_enabled", lambda value: True)
+    monkeypatch.setattr(
+        "qlib_platform.research.workflow.walk_forward.feature_store_enabled", lambda value: True
+    )
     monkeypatch.setattr(
         "qlib_platform.research.workflow.walk_forward.prepare_feature_data",
         lambda *args, **kwargs: (
@@ -493,7 +495,9 @@ def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         return manifest_path
 
-    monkeypatch.setattr("qlib_platform.research.workflow.walk_forward.backtest_predictions", fake_continuous_backtest)
+    monkeypatch.setattr(
+        "qlib_platform.research.workflow.walk_forward.backtest_predictions", fake_continuous_backtest
+    )
 
     with pytest.raises(RuntimeError, match="interrupted after fold rolling_02"):
         run_walk_forward(

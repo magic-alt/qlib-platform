@@ -31,7 +31,11 @@ from qlib_platform.research.workflow.timing import (
 from qlib_platform.runtime.runtime_safety import resolve_qlib_parallel_runtime
 from qlib_platform.settings import Settings
 from qlib_platform.data.store import sha256_file
-from qlib_platform.research.workflow.train_select import _configure_mlflow_tracking, _dataset_id, build_dataset
+from qlib_platform.research.workflow.train_select import (
+    _configure_mlflow_tracking,
+    _dataset_id,
+    build_dataset,
+)
 
 
 @dataclass(frozen=True)

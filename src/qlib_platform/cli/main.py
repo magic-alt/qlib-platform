@@ -1176,7 +1176,9 @@ def main() -> None:
     if args.command == "stability-portable-verify":
         from qlib_platform.research.diagnostics.portability import verify_stability_portable_evidence
 
-        print(json.dumps(verify_stability_portable_evidence(args.package), ensure_ascii=False, sort_keys=True))
+        print(
+            json.dumps(verify_stability_portable_evidence(args.package), ensure_ascii=False, sort_keys=True)
+        )
         return
     if args.command == "backtest-predictions":
         from qlib_platform.backtesting.prediction_backtest import backtest_predictions

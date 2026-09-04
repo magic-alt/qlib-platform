@@ -25,7 +25,10 @@ from qlib_platform.research.diagnostics.regimes import (
     build_regime_labels,
     load_regime_spec,
 )
-from qlib_platform.research.diagnostics.regime_analysis import RegimeDiagnosticArtifacts, build_regime_diagnostics
+from qlib_platform.research.diagnostics.regime_analysis import (
+    RegimeDiagnosticArtifacts,
+    build_regime_diagnostics,
+)
 from qlib_platform.research.studies.alpha import (
     _fold_assignments,
     _load_bound_features,

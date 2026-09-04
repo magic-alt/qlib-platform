@@ -23,7 +23,10 @@ from qlib_platform.research.contracts.candidate_program import (
 )
 from qlib_platform.research.features.candidate_sets import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
 from qlib_platform.research.hypotheses.catalog import hypothesis_definition_sha256, hypothesis_feature_set
-from qlib_platform.research.evaluation.candidate_statistics import multiple_testing_table, nested_ridge_increment
+from qlib_platform.research.evaluation.candidate_statistics import (
+    multiple_testing_table,
+    nested_ridge_increment,
+)
 
 
 EVIDENCE_INDEX_SCHEMA = "phase2_evidence_index_v1"

@@ -128,7 +128,9 @@ def register(sub) -> None:
     candidate_collect.add_argument("--output", required=True)
     candidate_accept = sub.add_parser("candidate-accept")
     candidate_accept.add_argument("--contract-lock", required=True)
-    candidate_accept.add_argument("--candidate-metrics", "--candidates", dest="candidate_metrics", required=True)
+    candidate_accept.add_argument(
+        "--candidate-metrics", "--candidates", dest="candidate_metrics", required=True
+    )
     candidate_accept.add_argument("--output", required=True)
     candidate_select = sub.add_parser("candidate-select")
     candidate_select.add_argument("--contract-lock", required=True)
