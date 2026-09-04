@@ -99,6 +99,7 @@ class Extractor:
         self.settings = settings
         self.store = PartitionStore(settings.paths.raw)
         self.binding = binding
+        self.data_source = binding
         self.client: DataSourceClient = binding.client
         self.source_is_mysql = "mysql" in binding.capabilities
 
