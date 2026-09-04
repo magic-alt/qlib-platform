@@ -63,8 +63,10 @@ class DatasetSpec:
         # DatasetVersions may legitimately have no DataRelease lineage; in that case
         # bind research identity to the immutable manifest version_id rather than a
         # mutable/profile-level label such as qlib.dataset_version="local".
-        dataset_id = materialized_release or materialized_version or (
-            platform_release.get("id") if source == "platform_release" else None
+        dataset_id = (
+            materialized_release
+            or materialized_version
+            or (platform_release.get("id") if source == "platform_release" else None)
         )
         name = str(universe.get("label") or configured or "all")
         membership_type = "point_in_time" if configured and str(configured).lower() != "all" else "filtered"
