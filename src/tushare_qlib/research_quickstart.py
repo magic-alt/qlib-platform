@@ -30,8 +30,8 @@ MATRIX_ALPHA_PACKS = ("alpha158_market_v1", "alpha158_daily_v1", "alpha158_pit_v
 MATRIX_MODELS = ("ridge", "lightgbm", "xgboost")
 
 
-def _verification_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--verify-mode", choices=["manifest", "sampled", "deep"], default="deep")
+def _verification_args(p: argparse.ArgumentParser, *, default_mode: str = "deep") -> None:
+    p.add_argument("--verify-mode", choices=["manifest", "sampled", "deep"], default=default_mode)
     p.add_argument("--sample-size", type=int, default=64)
     p.add_argument("--workers", type=int, default=4)
 
@@ -77,7 +77,7 @@ def parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="inspect data, DatasetVersion, AlphaPacks and runtimes")
     doctor.add_argument("--dataset-ref")
-    _verification_args(doctor)
+    _verification_args(doctor, default_mode="sampled")
 
     prepare = sub.add_parser("prepare", help="auto import/build/bootstrap local research data")
     prepare.add_argument("--source", choices=["auto", "qlib", "raw", "tushare"], default="auto")
@@ -85,7 +85,7 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--start")
     prepare.add_argument("--end")
     prepare.add_argument("--dataset-ref")
-    _verification_args(prepare)
+    _verification_args(prepare, default_mode="sampled")
 
     catalog = sub.add_parser("catalog", help="list AlphaPacks and model presets")
     catalog.add_argument("--json", action="store_true", dest="as_json")
