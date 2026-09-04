@@ -4,10 +4,11 @@ import hashlib
 import json
 import os
 import re
+import stat
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, cast
 
 from .lineage import sha256_json
@@ -22,6 +23,7 @@ from .verification import (
 
 DATASET_MANIFEST_SCHEMA = "3.0"
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+_VERIFICATION_BATCH_PER_WORKER = 32
 
 
 def _integer(value: object) -> int:
@@ -157,6 +159,32 @@ def _partition_path(data_path: Path, raw: object, *, resolve_containment: bool =
     return target
 
 
+def _validate_partition_parent_directories(
+    data_path: Path,
+    resolved_data_path: Path,
+    partitions: Iterable[Mapping[str, object]],
+) -> int:
+    """Resolve unique parent directories once instead of resolving every partition path."""
+
+    parent_values: set[str] = set()
+    for partition in partitions:
+        value = _partition_value(partition["path"])
+        parts = PurePosixPath(value).parts[:-1]
+        for depth in range(1, len(parts) + 1):
+            parent_values.add("/".join(parts[:depth]))
+
+    for parent_value in sorted(parent_values, key=lambda value: (value.count("/"), value)):
+        parent_path = data_path.joinpath(*PurePosixPath(parent_value).parts)
+        try:
+            resolved_parent = parent_path.resolve(strict=True)
+            resolved_parent.relative_to(resolved_data_path)
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"dataset partition parent escapes or is missing: {parent_path}") from exc
+        if not resolved_parent.is_dir():
+            raise ValueError(f"dataset partition parent is not a directory: {parent_path}")
+    return len(parent_values)
+
+
 def verify_dataset_manifest(
     path: str | Path,
     *,
@@ -187,6 +215,7 @@ def verify_dataset_manifest(
     data_path = Path(str(payload["data_path"]))
     if data_path.is_symlink() or not data_path.is_dir():
         raise FileNotFoundError(f"dataset data path is missing: {data_path}")
+    resolved_data_path = data_path.resolve()
     raw_partitions = payload.get("partitions", [])
     if not isinstance(raw_partitions, list):
         raise ValueError("dataset partitions must be a list")
@@ -249,7 +278,7 @@ def verify_dataset_manifest(
         created_ns = _timestamp_ns(payload.get("created_at_utc"))
         build_id = str(payload.get("build_id") or "").strip()
         try:
-            collocated = manifest_path.parent.resolve() == data_path.resolve()
+            collocated = manifest_path.parent.resolve() == resolved_data_path
         except OSError:
             collocated = False
         if build_id and created_ns is not None and collocated and status in {"VALIDATED", "PUBLISHED"}:
@@ -283,16 +312,24 @@ def verify_dataset_manifest(
         verification_targets = partitions
         hash_paths = {str(partition["path"]) for partition in partitions}
 
+    inventory_directory_count = _validate_partition_parent_directories(
+        data_path,
+        resolved_data_path,
+        verification_targets,
+    )
     resolved_cas = Path(cas_root).expanduser().resolve() if cas_root is not None else None
 
     def verify_partition(partition: Mapping[str, object]) -> tuple[bool, bool]:
-        file_path = _partition_path(data_path, partition["path"], resolve_containment=True)
-        if file_path.is_symlink() or not file_path.is_file():
+        file_path = _partition_path(data_path, partition["path"])
+        try:
+            file_stat = os.stat(file_path, follow_symlinks=False)
+        except OSError as exc:
+            raise ValueError(f"dataset partition checksum mismatch: {file_path}") from exc
+        if not stat.S_ISREG(file_stat.st_mode):
             raise ValueError(f"dataset partition checksum mismatch: {file_path}")
-        stat = file_path.stat()
-        if stat.st_size != _integer(partition.get("bytes")):
+        if file_stat.st_size != _integer(partition.get("bytes")):
             raise ValueError(f"dataset partition checksum mismatch (size drift): {file_path}")
-        proof_fresh = proof_cutoff_ns is None or stat.st_mtime_ns <= proof_cutoff_ns
+        proof_fresh = proof_cutoff_ns is None or file_stat.st_mtime_ns <= proof_cutoff_ns
         partition_path = str(partition["path"])
         if partition_path not in hash_paths:
             return False, proof_fresh
@@ -316,8 +353,13 @@ def verify_dataset_manifest(
     def execute_verification() -> list[tuple[bool, bool]]:
         if workers == 1 or len(verification_targets) < 2:
             return [verify_partition(partition) for partition in verification_targets]
+        batch_size = max(workers * _VERIFICATION_BATCH_PER_WORKER, workers)
+        results: list[tuple[bool, bool]] = []
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dataset-verify") as executor:
-            return list(executor.map(verify_partition, verification_targets))
+            for offset in range(0, len(verification_targets), batch_size):
+                batch = verification_targets[offset : offset + batch_size]
+                results.extend(executor.map(verify_partition, batch))
+        return results
 
     results = execute_verification()
     if proof_source is not None and any(not proof_fresh for _, proof_fresh in results):
@@ -357,6 +399,7 @@ def verify_dataset_manifest(
                 "fileCount": len(partitions),
                 "verifiedFileCount": len(selected),
                 "hashedFileCount": len(hash_paths),
+                "inventoryDirectoryCount": inventory_directory_count,
                 "verifiedViaCasCount": verified_via_cas,
                 "workers": workers,
                 "totalBytes": total_bytes,
