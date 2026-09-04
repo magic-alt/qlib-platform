@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: operations
+applies_to_commit: f702bc80d27a92ab526dca630b168c99a15c95a5
 last_verified: 2026-09-04
 ---
 
@@ -40,6 +41,8 @@ Do not manually point Qlib at an unverified mutable directory to bypass the fail
 
 For standalone mode this is normally an internal transition. A compatible DataRelease is materialized from its frozen `qlib_staging`/PIT components (or imported `qlib_dataset`) so the resulting DatasetVersion remains bound to that exact release.
 
+If `QLIB_REPO` is blank, the supported `pyqlib==0.9.7` package is sufficient: qlib-platform uses its packaged day-frequency dump compatibility path and records the wheel identity in lineage.
+
 If this state is returned to the user after the current quickstart, treat it as a defect or unsupported release profile rather than a request to hand-edit aliases.
 
 ## Multiple `ds_*` releases
@@ -50,7 +53,7 @@ Standalone mode keeps one active release by default. After successful activation
 data/releases/archive/
 ```
 
-They are still exact-ID addressable for audit/replay.
+They are still exact-ID addressable for audit/replay, and the registry manifest path is refreshed when a release moves into the archive.
 
 The resolver selects the newest release that can actually materialize a Qlib research dataset. It does not blindly choose a newer legacy profile that lacks `qlib_staging`/`qlib_dataset`.
 
