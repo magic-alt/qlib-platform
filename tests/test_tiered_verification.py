@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -144,9 +145,9 @@ def test_tampered_receipt_is_rejected(tmp_path: Path):
     evidence: dict[str, object] = {}
     verify_dataset_manifest(manifest, receipt_dir=receipts, evidence=evidence)
     receipt = Path(str(evidence["receipt"]))
-    payload = __import__("json").loads(receipt.read_text(encoding="utf-8"))
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
     payload["fileCount"] = 999
-    receipt.write_text(__import__("json").dumps(payload), encoding="utf-8")
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="receipt checksum mismatch"):
         verify_dataset_manifest(manifest, receipt_dir=receipts, reuse_receipt=True)
