@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence, cast
 
 import numpy as np
 import pandas as pd
@@ -17,61 +19,42 @@ from qlib_platform.artifacts.artifact_resolver import ArtifactResolver, sha256_p
 from qlib_platform.models.registry import get_model_adapter
 from qlib_platform.settings import Settings
 
+
 MODEL_BUNDLE_SCHEMA_VERSION = "1.0"
 
 
-@dataclass(frozen=True)
-class LoadedModelBundle:
-    root: Path
-    manifest: dict[str, Any]
-    model: Any
-    feature_columns: tuple[str, ...]
-    preprocessing: dict[str, Any]
-    mean: np.ndarray
-    scale: np.ndarray
-
-    def predict(self, features: pd.DataFrame) -> pd.Series:
-        missing = [column for column in self.feature_columns if column not in features]
-        if missing:
-            raise ValueError(f"live features are missing required model columns: {missing[:10]}")
-        frame = features.loc[:, list(self.feature_columns)].copy()
-        values = frame.to_numpy(dtype=float)
-        values = (values - self.mean) / self.scale
-        values = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-        adapter = get_model_adapter(str(self.manifest["modelFamily"]))
-        score = adapter.predict_serialized(self.model, values)
-        return pd.Series(np.asarray(score, dtype=float).reshape(-1), index=frame.index, name="score")
-
-
-def _canonical_sha256(payload: Mapping[str, Any]) -> str:
-    import hashlib
-
+def _canonical_sha256(value: object) -> str:
     encoded = json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-    ).encode("utf-8")
+        value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
+    ).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _normalization_state(dataset: Any, feature_columns: list[str]) -> tuple[np.ndarray, np.ndarray]:
-    handler = getattr(dataset, "handler", None)
-    processors = list(getattr(handler, "infer_processors", []) or [])
-    for processor in processors:
-        mean = getattr(processor, "mean_train", None)
-        scale = getattr(processor, "std_train", None)
-        if mean is not None and scale is not None:
-            mean_array = np.asarray(mean, dtype=float).reshape(-1)
-            scale_array = np.asarray(scale, dtype=float).reshape(-1)
-            if len(mean_array) == len(feature_columns) and len(scale_array) == len(feature_columns):
-                scale_array = np.where(scale_array == 0.0, 1.0, scale_array)
-                return mean_array, scale_array
-    return np.zeros(len(feature_columns), dtype=float), np.ones(len(feature_columns), dtype=float)
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _parity_sample(dataset: Any, feature_columns: list[str], limit: int = 512) -> pd.DataFrame:
-    frame = dataset.prepare("test", col_set="feature", data_key="infer")
-    if isinstance(frame.columns, pd.MultiIndex):
-        frame.columns = frame.columns.get_level_values(-1)
-    return frame.loc[:, feature_columns].sort_index().head(limit)
+def deployment_root(settings: Settings) -> Path:
+    return settings.paths.models / "deployments"
+
+
+def _normalizer_state(dataset: Any, feature_columns: Sequence[str]) -> tuple[np.ndarray, np.ndarray]:
+    for processor in dataset.handler.infer_processors:
+        if processor.__class__.__name__ == "RobustZScoreNorm":
+            means = np.asarray(processor.mean_train, dtype=np.float64)
+            scales = np.asarray(processor.std_train, dtype=np.float64)
+            if len(means) != len(feature_columns) or len(scales) != len(feature_columns):
+                raise ValueError("fitted normalizer width does not match feature schema")
+            return means, scales
+    raise ValueError("approved processor recipe has no fitted RobustZScoreNorm")
+
+
+def _save_model(model: Any, family: str, root: Path) -> str:
+    return get_model_adapter(family).save(model, root)
+
+
+def _model_scores(model: Any, family: str, features: pd.DataFrame) -> np.ndarray:
+    return get_model_adapter(family).scores(model, features)
 
 
 def create_model_bundle(
@@ -94,26 +77,25 @@ def create_model_bundle(
     runtime: Mapping[str, Any] | None = None,
     refit_metadata: Mapping[str, Any] | None = None,
 ) -> Path:
-    output_root = settings.paths.models / "production"
-    output_root.mkdir(parents=True, exist_ok=True)
-    building = Path(tempfile.mkdtemp(prefix=".building.", dir=output_root))
+    """Write an immutable, checksummed and cross-machine model bundle."""
+
+    feature_columns = [str(column) for column in dataset.handler.get_cols(col_set="feature")]
+    means, scales = _normalizer_state(dataset, feature_columns)
+    from qlib.data.dataset.handler import DataHandlerLP
+
+    parity_features = dataset.prepare("test", col_set="feature", data_key=DataHandlerLP.DK_I)
+    if parity_features.empty:
+        raise ValueError("production refit produced no parity inference rows")
+    parity_features = parity_features.loc[:, feature_columns].sort_index()
+    parity_scores = pd.DataFrame(
+        {"score": _model_scores(model, family, parity_features)}, index=parity_features.index
+    )
+
+    roots = deployment_root(settings)
+    roots.mkdir(parents=True, exist_ok=True)
+    building = Path(tempfile.mkdtemp(prefix=".bundle-building-", dir=roots))
     try:
-        feature_columns = [str(value) for value in dataset.handler.get_cols(col_set="feature")]
-        means, scales = _normalization_state(dataset, feature_columns)
-        parity_features = _parity_sample(dataset, feature_columns)
-        parity_values = parity_features.to_numpy(dtype=float)
-        parity_values = (parity_values - means) / scales
-        parity_values = np.nan_to_num(parity_values, nan=0.0, posinf=0.0, neginf=0.0)
-        adapter = get_model_adapter(family)
-        model_name = adapter.serialize(model, building)
-        parity_scores = pd.Series(
-            np.asarray(
-                adapter.predict_serialized(adapter.load_serialized(building / model_name), parity_values),
-                dtype=float,
-            ).reshape(-1),
-            index=parity_features.index,
-            name="score",
-        )
+        model_name = _save_model(model, family, building)
         (building / "feature_schema.json").write_text(
             json.dumps({"columns": feature_columns}, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -145,9 +127,11 @@ def create_model_bundle(
         payload_files = sorted(path.name for path in building.iterdir() if path.is_file())
         payload_checksums = {name: sha256_path(building / name) for name in payload_files}
         runtime_manifest = dict(runtime or {})
+        adapter = get_model_adapter(family)
         adapter_module = sys.modules[adapter.__class__.__module__]
         adapter_source = Path(str(adapter_module.__file__)).resolve()
         package_root = Path(__file__).resolve().parents[1]
+        adapter_relative = adapter_source.relative_to(package_root).as_posix()
         implementation_sources = (
             package_root / "data" / "custom_handler.py",
             package_root / "data" / "processors.py",
@@ -156,7 +140,6 @@ def create_model_bundle(
             source.relative_to(package_root).as_posix(): sha256_path(source)
             for source in implementation_sources
         }
-        adapter_relative = adapter_source.relative_to(package_root).as_posix()
         implementation_checksums[adapter_relative] = sha256_path(adapter_source)
         identity = {
             "researchRunId": research_run_id,
@@ -184,80 +167,129 @@ def create_model_bundle(
             "validEndDate": valid_window[1],
             "datasetId": dataset_id,
             "datasetSha256": dataset_sha256,
+            "featureSchemaSha256": payload_checksums["feature_schema.json"],
+            "preprocessingSha256": payload_checksums["preprocessing.npz"],
+            "canonicalConfigSha256": payload_checksums["canonical_config.yaml"],
+            "modelBinarySha256": payload_checksums[model_name],
             "featureStore": dict(feature_store or {}),
-            "featureSchemaFile": "feature_schema.json",
-            "preprocessingFile": "preprocessing.json",
-            "canonicalConfigFile": "canonical_config.yaml",
-            "parityFeaturesFile": "parity_features.parquet",
-            "parityScoresFile": "parity_scores.parquet",
-            "runtime": runtime_manifest,
-            "refit": dict(refit_metadata or {}),
             "lineage": dict(lineage),
-            "seed": int(seed),
-            "payloadChecksums": payload_checksums,
+            "runtime": runtime_manifest,
             "implementationSha256": implementation_checksums,
-            "identitySha256": _canonical_sha256(identity),
+            "randomSeed": seed,
+            "referenceCrossSectionCount": int(parity_features.index.get_level_values("instrument").nunique()),
+            "referenceScoreMean": float(parity_scores["score"].mean()),
+            "referenceScoreStd": float(parity_scores["score"].std(ddof=0)),
+            "referenceScoreQuantiles": [
+                float(value) for value in parity_scores["score"].quantile(np.linspace(0.0, 1.0, 11)).tolist()
+            ],
+            "createdAtUtc": _utc_now(),
         }
-        (building / "manifest.json").write_text(
-            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8"
+        (building / "model_manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
-        target = output_root / deployment_id
+        checksums = {
+            path.name: sha256_path(path)
+            for path in sorted(building.iterdir())
+            if path.is_file() and path.name != "checksums.json"
+        }
+        (building / "checksums.json").write_text(
+            json.dumps(checksums, sort_keys=True, indent=2), encoding="utf-8"
+        )
+        target = roots / deployment_id
         if target.exists():
             verify_model_bundle(target)
-            shutil.rmtree(building)
-            return target / "manifest.json"
+            existing = json.loads((target / "model_manifest.json").read_text(encoding="utf-8"))
+            comparable_existing = {key: value for key, value in existing.items() if key != "createdAtUtc"}
+            comparable_new = {key: value for key, value in manifest.items() if key != "createdAtUtc"}
+            if comparable_existing != comparable_new:
+                raise ValueError("deterministic deployment id already exists with different metadata")
+            return target / "model_manifest.json"
         os.replace(building, target)
-        verify_model_bundle(target)
-        return target / "manifest.json"
+        return target / "model_manifest.json"
     finally:
         if building.exists():
             shutil.rmtree(building, ignore_errors=True)
 
 
 def verify_model_bundle(root: str | Path) -> dict[str, Any]:
-    bundle = Path(root).expanduser().resolve()
-    manifest_path = bundle / "manifest.json"
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"model bundle manifest is missing: {manifest_path}")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    checksums = manifest.get("payloadChecksums")
-    if not isinstance(checksums, Mapping):
-        raise ValueError("model bundle manifest is missing payloadChecksums")
+    bundle = Path(root)
+    manifest_path = bundle / "model_manifest.json"
+    checksums_path = bundle / "checksums.json"
+    if not manifest_path.is_file() or not checksums_path.is_file():
+        raise ValueError(f"incomplete model bundle: {bundle}")
+    checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
     for name, expected in checksums.items():
         path = bundle / str(name)
-        if not path.is_file():
-            raise FileNotFoundError(f"model bundle payload is missing: {path}")
-        actual = sha256_path(path)
-        if actual != expected:
+        if not path.is_file() or sha256_path(path) != expected:
             raise ValueError(f"model bundle checksum mismatch: {name}")
-    return manifest
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("model bundle manifest must be an object")
+    if manifest.get("schemaVersion") != MODEL_BUNDLE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported model bundle schema: {manifest.get('schemaVersion')}")
+    if bundle.name != manifest.get("deploymentId"):
+        raise ValueError("model bundle directory does not match deployment id")
+    implementation = manifest.get("implementationSha256")
+    if not isinstance(implementation, Mapping):
+        raise ValueError("model bundle implementation checksums are missing")
+    package_root = Path(__file__).resolve().parents[1]
+    for name, expected in implementation.items():
+        source = package_root / str(name)
+        if not source.is_file() or sha256_path(source) != expected:
+            raise ValueError(f"model bundle implementation mismatch: {name}")
+    return cast(dict[str, Any], manifest)
+
+
+@dataclass
+class LoadedModelBundle:
+    root: Path
+    manifest: dict[str, Any]
+    feature_columns: list[str]
+    mean: np.ndarray
+    scale: np.ndarray
+    model: Any
+
+    def predict(self, features: pd.DataFrame) -> pd.Series:
+        missing = set(self.feature_columns) - set(features.columns)
+        extra = set(features.columns) - set(self.feature_columns)
+        if missing or extra:
+            raise ValueError(
+                f"live feature schema mismatch; missing={sorted(missing)}, extra={sorted(extra)}"
+            )
+        ordered = features.loc[:, self.feature_columns]
+        family = str(self.manifest["modelFamily"])
+        values = get_model_adapter(family).predict_loaded(self.model, ordered)
+        return pd.Series(np.asarray(values).reshape(-1), index=ordered.index, name="score")
 
 
 def load_model_bundle(
-    root: str | Path,
-    *,
-    resolver: ArtifactResolver | None = None,
+    root: str | Path, *, device: str = "cpu", verify_parity: bool = True
 ) -> LoadedModelBundle:
-    bundle = Path(root).expanduser().resolve()
+    bundle = Path(root)
     manifest = verify_model_bundle(bundle)
-    if resolver is not None:
-        resolver.resolve(bundle / "manifest.json")
+    schema = json.loads((bundle / "feature_schema.json").read_text(encoding="utf-8"))
+    preprocessing = np.load(bundle / "preprocessing.npz")
     family = str(manifest["modelFamily"])
+    parameters = json.loads((bundle / "model_parameters.json").read_text(encoding="utf-8"))
     adapter = get_model_adapter(family)
-    model = adapter.load_serialized(bundle / str(manifest["modelFile"]))
-    feature_schema = json.loads((bundle / str(manifest["featureSchemaFile"])).read_text(encoding="utf-8"))
-    preprocessing = json.loads((bundle / str(manifest["preprocessingFile"])).read_text(encoding="utf-8"))
-    state = np.load(bundle / str(preprocessing["stateFile"]))
-    return LoadedModelBundle(
+    model = adapter.load(bundle, manifest, parameters, device=device)
+    loaded = LoadedModelBundle(
         root=bundle,
         manifest=manifest,
+        feature_columns=[str(value) for value in schema["columns"]],
+        mean=np.asarray(preprocessing["mean"], dtype=float),
+        scale=np.asarray(preprocessing["scale"], dtype=float),
         model=model,
-        feature_columns=tuple(str(value) for value in feature_schema["columns"]),
-        preprocessing=preprocessing,
-        mean=np.asarray(state["mean"], dtype=float),
-        scale=np.asarray(state["scale"], dtype=float),
     )
+    if verify_parity:
+        features = pd.read_parquet(bundle / "parity_features.parquet")
+        expected = pd.read_parquet(bundle / "parity_scores.parquet")["score"]
+        actual = loaded.predict(features)
+        tolerance = adapter.parity_tolerance
+        if not np.allclose(actual.to_numpy(), expected.to_numpy(), rtol=tolerance, atol=tolerance):
+            raise ValueError("model bundle parity validation failed")
+    return loaded
 
 
-def bundle_uri(settings: Settings, deployment_id: str) -> Path:
-    return settings.paths.models / "production" / deployment_id
+def bundle_uri(manifest: Mapping[str, Any]) -> str:
+    return ArtifactResolver.deployment_uri(str(manifest["deploymentId"]))
