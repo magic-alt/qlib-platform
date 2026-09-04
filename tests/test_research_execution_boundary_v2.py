@@ -7,13 +7,13 @@ from qlib_platform.artifacts.institutional_artifacts import ResearchArtifactType
 
 ROOT = Path(__file__).resolve().parents[1]
 RESEARCH_OWNED = (
-    "platform_release.py",
-    "institutional_artifacts.py",
-    "feature_store.py",
-    "train_select.py",
-    "walk_forward.py",
-    "research_gate.py",
-    "lean_bridge.py",
+    "ops/platform_release.py",
+    "artifacts/institutional_artifacts.py",
+    "research/feature_store.py",
+    "research/train_select.py",
+    "research/walk_forward.py",
+    "research/research_gate.py",
+    "ops/lean_bridge.py",
 )
 
 
