@@ -1,39 +1,54 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: df64d00844f63ecb1d3b6cc7169d5afab8cff829
+applies_to_commit: 8fb5c2708c562501e2c542cbfef2d4914eb86072
 last_verified: 2026-09-04
 ---
 
 # Python package architecture
 
-`qlib-platform` is a research and alpha-factory package. Its Python namespace is provider-neutral: the canonical package is `qlib_platform`, not a package named after any market-data vendor.
+`qlib-platform` is a research and alpha-factory package. Its canonical Python namespace is provider-neutral: `qlib_platform`. Market-data vendors are adapters, not package or domain identities.
 
 ## Canonical package layout
 
 ```text
-src/
-├── qlib_platform/                 # canonical implementation namespace
-│   ├── data/
-│   │   ├── ingestion.py           # provider-neutral ingestion orchestration
-│   │   ├── fundamentals.py        # PIT fundamentals materialization
-│   │   ├── industry.py            # PIT industry classification
-│   │   └── sources/
-│   │       ├── base.py            # normalized client/result/retry contracts
-│   │       ├── registry.py        # source registry + factory resolution
-│   │       ├── tushare.py         # Tushare Pro adapter
-│   │       └── mysql.py           # MySQL / Lean canonical adapter
-│   ├── alpha/                     # alpha contracts and registry
-│   ├── models/                    # model interfaces and adapters
-│   ├── research/                  # research diagnostics and governed workflows
-│   ├── releases/                  # immutable release contracts and stores
-│   ├── platform_adapter/          # cross-repository artifact handoff
-│   ├── feedback/                  # realized-label / evaluation feedback
-│   └── ...                        # existing modules retained during staged migration
-└── qlib_platform/                  # deprecated compatibility namespace only
+src/qlib_platform/
+├── cli.py, settings.py, lineage.py       # cross-domain composition/core
+├── bootstrap.py, canonical_config.py
+├── workflow_contract.py, project_audit.py
+├── data/                                  # ingestion + normalized market-data plane
+│   ├── ingestion.py
+│   ├── fundamentals.py
+│   ├── industry.py
+│   ├── normalize.py, quality.py, store.py
+│   └── sources/
+│       ├── base.py                        # DataSourceClient/FetchResult/RetryPolicy
+│       ├── registry.py                    # provider registry and factory
+│       ├── tushare.py                     # Tushare Pro adapter
+│       └── mysql.py                       # MySQL / Lean canonical adapter
+├── datasets/                              # DatasetVersion and data lifecycle
+│   ├── dataset_manifest.py
+│   ├── dataset_registry.py
+│   ├── dataset_resolver.py
+│   ├── data_release.py
+│   ├── qlib_export.py
+│   └── layout_migration.py
+├── backtesting/                           # portfolio, strategy, audit, backtest/reporting
+├── artifacts/                             # artifact contracts and research/live artifacts
+├── research/                              # feature/train/walk-forward/diagnostics/governance
+├── models/                                # model adapters/runtime/bundles/registry/refit
+├── runtime/                               # live inference, health, monitoring, schedulers
+├── ops/                                   # operational state and platform/LEAN integration
+├── releases/                              # immutable release stores and publication
+├── platform_adapter/                      # cross-repository artifact handoff
+├── feedback/                              # realized labels and production feedback
+├── auth/
+└── notifier/
 ```
 
-The remaining root-level modules under `qlib_platform` are compatibility-preserving implementation surfaces from the original flat package. New functionality should be placed in a domain package rather than adding another root-level module. Subsequent refactors can migrate those modules domain-by-domain without another package-name migration.
+The package root is intentionally small. It is a composition boundary for CLI/configuration/lineage and other genuinely cross-domain surfaces; implementation modules belong in the domain that owns them.
+
+The historical `src/tushare_qlib` compatibility namespace has been removed. New code must import the canonical domain path directly. Do not reintroduce a vendor-named package or a dynamic import hook to emulate the deleted namespace.
 
 ## Data-source boundary
 
@@ -41,10 +56,10 @@ The ingestion plane depends on the `DataSourceClient` protocol rather than on Tu
 
 `Extractor` resolves its provider through `data.sources.create_data_source()`. Built-in factories currently provide:
 
-- `tushare` — Tushare Pro HTTP/SDK adapter;
+- `tushare` — Tushare Pro adapter;
 - `mysql`, including the `lean_mysql`, `lean-platform`, and `lean_platform` aliases — read-only MySQL / Lean canonical adapter.
 
-`data_source.kind: auto` preserves the previous behavior: use the configured MySQL source when one is present, otherwise fall back to Tushare.
+`data_source.kind: auto` preserves the current source-selection behavior: use configured MySQL when available, otherwise fall back to Tushare.
 
 ### Adding another provider
 
@@ -56,7 +71,7 @@ A new provider should:
 4. keep credentials and transport-specific retry/rate-limit behavior inside the adapter;
 5. add deterministic tests that do not require a live vendor connection.
 
-No new `if provider == ...` branch should be added to the ingestion orchestrator. Provider-specific optimizations should be represented as adapter capabilities or endpoint overrides.
+Do not add `if provider == ...` branches to the ingestion orchestrator. Provider-specific optimizations belong in adapter capabilities or endpoint overrides.
 
 ## Configuration direction
 
@@ -77,14 +92,35 @@ data_source:
     calls_per_minute: 180
 ```
 
-Existing top-level `tushare:` settings remain accepted as a compatibility fallback during migration. New configuration should use the provider-neutral `data_source` hierarchy.
+Existing top-level `tushare:` settings remain accepted as a configuration migration fallback. New configuration should use the provider-neutral `data_source` hierarchy.
+
+## Provider-neutral storage layout
+
+The canonical mutable market-data working view is now:
+
+```text
+data/bronze/market/current/
+```
+
+The directory identifies the semantic layer (`market`) rather than the API vendor used to populate it. Provider provenance remains in manifests/configuration and adapter metadata where it belongs.
+
+Existing installations may still contain either of these historical layouts:
+
+```text
+data/bronze/tushare/   # immediate pre-migration layout
+data/raw/              # older pre-layered layout
+```
+
+`migrate-qlib-layout` handles these paths explicitly. The migration copies or hard-links into the provider-neutral target, verifies the complete file set, sizes and bytes/checksums, atomically publishes the target, journals the operation, and leaves the source untouched. If both historical market-data layouts are present, migration fails closed rather than merging potentially different histories.
+
+This is deliberately a storage-layout migration, not a DatasetVersion rewrite. Existing manifests, immutable DatasetVersion identities, PIT semantics, parent relationships, and legacy source paths are not mutated merely because the canonical working-view directory changed.
 
 ## Compatibility policy
 
-- New code and documentation use `qlib_platform`.
+- `qlib_platform` is the only Python package namespace.
 - `python -m qlib_platform` and the `qlib-platform` console script are canonical entry points.
-- Existing `tq`, `tq-research`, `tq-research-summary`, and `tq-render-scheduler` entry points remain available.
-- `qlib_platform` is retained only as an import compatibility namespace so downstream users do not need a flag-day migration.
-- The compatibility namespace should not receive new implementation modules.
+- Existing `tq`, `tq-research`, `tq-research-summary`, and `tq-render-scheduler` console entry points remain available and resolve canonical `qlib_platform` modules.
+- Provider-specific identifiers may remain where they represent actual provenance or an explicitly supported provider, but they must not define core package/domain/storage identity.
+- Existing DatasetVersion names or IDs that contain historical provenance are not mechanically renamed; identity changes require their own governed migration.
 
-This migration deliberately does not change point-in-time semantics, DatasetVersion identities, feature/model logic, strategy rules, backtest behavior, promotion gates, or the research/execution repository boundary.
+This refactor does **not** intentionally change point-in-time causality, DatasetVersion identities, feature/model logic, strategy rules, backtest behavior, promotion gates, final-holdout policy, or the research/execution repository boundary.
