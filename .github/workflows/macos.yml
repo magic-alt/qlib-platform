@@ -52,6 +52,5 @@ jobs:
           tests/test_bootstrap.py
           tests/test_research_quickstart.py
           tests/test_data_source_resolver.py
-          tests/test_dataset_resolver.py
       - name: Run full macOS test suite
         run: python -m pytest
