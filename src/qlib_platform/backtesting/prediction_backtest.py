@@ -51,6 +51,7 @@ def _market_data_view(
     timings: StageTimings,
     *,
     trade_dates: pd.DatetimeIndex,
+    audit_instruments: list[str] | None = None,
 ) -> MarketDataView:
     from qlib.data import D
 
@@ -75,7 +76,11 @@ def _market_data_view(
             f"strategy audit Qlib trade dates fall outside the pinned DatasetVersion calendar: {preview}"
         )
 
-    instruments = sorted(score.index.get_level_values("instrument").astype(str).unique())
+    score_instruments = {
+        str(value).upper().strip() for value in score.index.get_level_values("instrument").unique()
+    }
+    held_instruments = {str(value).upper().strip() for value in (audit_instruments or [])}
+    instruments = sorted(score_instruments | held_instruments)
     with timings.measure("audit_quote_query_seconds"):
         raw = D.features(
             instruments,
@@ -333,11 +338,17 @@ def backtest_predictions(
             holdings = export_holding_snapshots(positions)
             holdings.to_parquet(holdings_path, index=False)
         position_dates = pd.DatetimeIndex(sorted(pd.Timestamp(date).normalize() for date in positions))
+        held_instruments = (
+            holdings["instrument"].astype(str).drop_duplicates().tolist()
+            if not holdings.empty
+            else []
+        )
         market_data = _market_data_view(
             settings,
             pred["score"],
             timings,
             trade_dates=position_dates[1:],
+            audit_instruments=held_instruments,
         )
         with timings.measure("audit_build_seconds"):
             audit = build_strategy_audit(
