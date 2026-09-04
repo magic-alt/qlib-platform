@@ -57,17 +57,17 @@ def _dataset_snapshot(settings: Settings) -> dict[str, object]:
 
 def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, object]:
     del start_time, end_time
-    project_root = Path(__file__).resolve().parents[2]
+    package_root = Path(__file__).resolve().parent
     snapshot = _dataset_snapshot(settings)
     pack = alpha_pack_from_settings(settings)
     # Only feature-defining implementation belongs in the raw-feature recipe.
-    # Cache orchestration and fitted processor implementations are intentionally
-    # excluded so model/processor/cache-infrastructure changes do not invalidate
-    # an otherwise identical immutable raw FeatureSnapshot.
+    # Resolve files from the installed canonical package rather than a repository
+    # checkout path, so editable installs and built wheels bind the same logical
+    # implementation after the provider-neutral namespace migration.
     implementation = [
-        project_root / "src" / "tushare_qlib" / "custom_handler.py",
-        project_root / "src" / "tushare_qlib" / "fundamentals.py",
-        project_root / "src" / "tushare_qlib" / "alpha" / "registry.py",
+        package_root / "custom_handler.py",
+        package_root / "data" / "fundamentals.py",
+        package_root / "alpha" / "registry.py",
     ]
     return {
         "schema": FEATURE_STORE_SCHEMA,

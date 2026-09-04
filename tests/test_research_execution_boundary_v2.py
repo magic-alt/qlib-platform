@@ -34,7 +34,7 @@ def test_new_research_boundary_does_not_import_legacy_execution_domains():
         "from .holdings_ledger import",
         "from .qmt_gateway",
     )
-    package = ROOT / "src" / "tushare_qlib"
+    package = ROOT / "src" / "qlib_platform"
     for name in RESEARCH_OWNED:
         source = (package / name).read_text(encoding="utf-8")
         assert not any(token in source for token in forbidden), name

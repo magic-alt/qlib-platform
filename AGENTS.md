@@ -1,7 +1,9 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/tushare_qlib/`: Python package (main pipeline, CLI, data processing, model workflow).
+- `src/qlib_platform/`: canonical Python package for the research platform. New implementation code belongs here.
+- `src/qlib_platform/data/`: provider-neutral ingestion and data contracts; concrete vendor/transport adapters belong under `data/sources/`.
+- `src/tushare_qlib/`: deprecated import-compatibility namespace only. Do not add implementation modules here.
 - `tests/`: pytest test suites (`test_*.py`).
 - `scripts/`: utility entry scripts.
 - `configs/`: pipeline and workflow YAML files.
@@ -13,10 +15,10 @@
 
 ## Build, Test, and Development Commands
 - Run commands from the repository root and use only the repository-local interpreter: Windows PowerShell `.\.venv\Scripts\python.exe`; macOS/Linux `.venv/bin/python`. Do not use system `python`, `py`, globally installed Python, or bare `tq`/`qrun` commands. If this interpreter is absent, stop and recreate the local environment before proceeding.
-- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m tushare_qlib --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile.
+- In PowerShell, define `$RepoPython = '.\.venv\Scripts\python.exe'`; in macOS/Linux shells, define `RepoPython=.venv/bin/python`. Invoke pipeline commands as `<repo-python> -m qlib_platform --config configs/pipeline.standalone.yaml <command>` unless a governed workflow names another profile. `python -m tushare_qlib` remains a compatibility entry point only.
 - Install core development dependencies: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev]"`.
-- Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[all,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
-- Pipeline example: `<repo-python> -m tushare_qlib --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.
+- Install operational data dependencies when needed: `<repo-python> -m pip install -e ".[data]"`; the `data` extra currently contains the supported Tushare Pro and MySQL adapter dependencies. Install all operational dependencies with `<repo-python> -m pip install -e ".[all,dev]"`; PyTorch model work: `<repo-python> -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"`.
+- Pipeline example: `<repo-python> -m qlib_platform --config configs/pipeline.yaml init-metadata`; use explicit, validated `--start YYYYMMDD --end YYYYMMDD` windows for backfills.
 - Qlib workflow run: use the venv-local `qrun` launcher (`.\.venv\Scripts\qrun.exe` on Windows; `.venv/bin/qrun` on macOS/Linux) with `configs/workflow_lightgbm.yaml` (requires `QLIB_DATA_URI`).
 - Tests: `<repo-python> -m pytest` (discovers `tests/test_*.py`).
 - Lint/type check: `<repo-python> -m ruff check src tests`, `<repo-python> -m ruff format --check src tests`, and `<repo-python> -m mypy src`.
@@ -28,13 +30,16 @@
 - Naming: `snake_case` for functions/modules, `PascalCase` for classes, `UPPER_SNAKE_CASE` for constants.
 - Prefer small, composable functions for extraction/normalize/stage steps.
 - Store credentials in environment variables, never in code.
+- Do not encode a market-data vendor in core package or domain names. Provider SDKs, credentials, rate limits, endpoint translations, and transport-specific behavior belong behind `qlib_platform.data.sources` adapters.
+- Do not add new flat implementation modules at `src/qlib_platform/` when a domain package exists. Continue the staged migration toward domain packages; compatibility shims may remain at the root when required by downstream imports.
 
 ## Testing Guidelines
 - Test framework: `pytest` (declared in optional dev dependencies; invoke it through the repository-local interpreter).
-- Keep tests deterministic and lightweight; avoid live Tushare calls in tests.
+- Keep tests deterministic and lightweight; avoid live vendor/API calls in tests.
 - Add/extend tests under `tests/` with file names like `test_<feature>.py`.
+- Data-source adapters require contract/registry tests and must be testable without live credentials.
 - Run targeted tests with `<repo-python> -m pytest tests/test_normalize.py` before broad runs.
-- Before a PR, run the local equivalents of CI quality gates: ruff, mypy, `validate-qrun-contract`, `pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60`, and `project-audit --root . --output <temporary-path>`.
+- Before a PR, run the local equivalents of CI quality gates: ruff, mypy, `validate-qrun-contract`, `pytest --cov=src/qlib_platform --cov-report=term-missing --cov-fail-under=60`, and `project-audit --root . --output <temporary-path>`.
 - For execution-boundary updates, update `docs/architecture_boundary.md`, `docs/qmt_gateway.md`, and boundary tests together.
 
 ## Git Workflow: Trunk-Based Development
@@ -77,4 +82,3 @@
 - Preserve point-in-time causality, immutable artifact identities, per-fold fitted-state isolation, ordered non-overlapping OOS stitching, deterministic lineage/hashes, final-holdout isolation, and fail-closed validation.
 - The certified infrastructure baseline is the default explanation for weak research results. Do not alter certified infrastructure behavior merely because a model, alpha, or portfolio result is weak; see `docs/research_infrastructure_certification.md`.
 - The active governed program is Phase 3-D. It is diagnostics only: formal candidates, model selection, P2-R01 through P2-R03, final-holdout access, and publishing remain disallowed. Use the `research-diagnostics` Skill and its Phase 3-D profile before Phase 3 work.
-

@@ -1,39 +1,20 @@
 from __future__ import annotations
 
 import random
-import time
 import threading
+import time
 from collections import deque
-from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 from loguru import logger
 
+from .base import FetchResult, RetryPolicy
+
 try:
     import tushare as ts
 except ImportError:  # pragma: no cover - exercised only in minimal/core installations.
     ts = None  # type: ignore[assignment]
-
-
-@dataclass(frozen=True)
-class RetryPolicy:
-    max_attempts: int = 6
-    base_sleep_seconds: float = 2.0
-    max_sleep_seconds: float = 60.0
-    jitter_ratio: float = 0.15
-
-
-@dataclass(frozen=True)
-class FetchResult:
-    data: pd.DataFrame
-    status: str
-    attempts: int
-    error: str | None = None
-
-    @property
-    def succeeded(self) -> bool:
-        return self.status in {"success", "empty"}
 
 
 class MinuteRateLimiter:
@@ -58,11 +39,11 @@ class MinuteRateLimiter:
 
 
 class TushareClient:
-    """Tushare wrapper with rate limiting and explicit failure semantics."""
+    """Tushare Pro adapter implementing the provider-neutral client contract."""
 
     def __init__(
         self,
-        token: str,
+        token: str | None,
         calls_per_minute: int = 180,
         retry_policy: RetryPolicy | None = None,
     ) -> None:
@@ -136,5 +117,4 @@ class TushareClient:
         required: bool = True,
         **params: Any,
     ) -> pd.DataFrame:
-        """Backward-compatible DataFrame API. Prefer ``fetch`` in ingestion code."""
         return self.fetch(api_name, fields=fields, required=required, **params).data
