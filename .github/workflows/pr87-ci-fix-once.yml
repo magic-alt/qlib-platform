@@ -1,0 +1,237 @@
+name: PR 87 CI fix (one-shot)
+
+on:
+  push:
+    branches:
+      - refactor/remove-phase-research-legacy
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Repair responsibility-oriented research migration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          ROOT = Path('.')
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_required(path: str, old: str, new: str, *, count: int = -1) -> None:
+              text = read(path)
+              if old not in text:
+                  raise SystemExit(f'missing expected text in {path}: {old[:120]!r}')
+              text = text.replace(old, new, count)
+              write(path, text)
+
+          # Stage-neutral Python identifiers; persisted schema/state string values stay unchanged.
+          token_renames = {
+              'PHASE1_SCHEMA': 'SYNTHESIS_MANIFEST_SCHEMA',
+              'PHASE2_SCHEMA': 'CANDIDATE_CONTRACT_SCHEMA',
+              'PHASE2_ACCEPTANCE_SCHEMA': 'CANDIDATE_ACCEPTANCE_SCHEMA',
+              'PHASE2_EVIDENCE_SCHEMA': 'CANDIDATE_EVIDENCE_SCHEMA',
+              'PHASE3_SCHEMA': 'STABILITY_CONTRACT_SCHEMA',
+              'PHASE3_LOCK_SCHEMA': 'STABILITY_LOCK_SCHEMA',
+              'PHASE3_PLAN_SCHEMA': 'STABILITY_PLAN_SCHEMA',
+          }
+          for path in [*Path('src').rglob('*.py'), *Path('tests').rglob('*.py')]:
+              text = path.read_text(encoding='utf-8')
+              updated = text
+              for old, new in token_renames.items():
+                  updated = re.sub(rf'\b{re.escape(old)}\b', new, updated)
+              updated = re.sub(r'\bphase1_manifest\b', 'synthesis_manifest', updated)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          candidate = 'src/qlib_platform/research/contracts/candidate_program.py'
+          replace_required(candidate, '    phase1 = load_phase1_switch(synthesis_manifest)\n', '    synthesis = load_phase1_switch(synthesis_manifest)\n')
+          replace_required(candidate, '        "phase1": phase1,\n', '        "phase1": synthesis,\n')
+          replace_required(candidate, '            "primaryRecommendation": phase1["primaryRecommendation"],\n', '            "primaryRecommendation": synthesis["primaryRecommendation"],\n')
+          replace_required(candidate, '            "allowedWorkstreams": phase1["allowedWorkstreams"],\n', '            "allowedWorkstreams": synthesis["allowedWorkstreams"],\n')
+
+          stability = 'src/qlib_platform/research/contracts/stability_program.py'
+          replace_required(stability, '    phase2_evidence: str | Path,\n', '    candidate_evidence: str | Path,\n')
+          replace_required(stability, '    evidence_path = Path(phase2_evidence).expanduser().resolve()\n', '    evidence_path = Path(candidate_evidence).expanduser().resolve()\n')
+          for path in [*Path('src').rglob('*.py'), *Path('tests').rglob('*.py')]:
+              text = path.read_text(encoding='utf-8')
+              updated = text.replace('phase2_evidence=', 'candidate_evidence=')
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          # Canonical implementation-hash paths after moving modules into responsibility packages.
+          replace_required(
+              'src/qlib_platform/research/features/store.py',
+              '    package_root = Path(__file__).resolve().parents[1]\n',
+              '    package_root = Path(__file__).resolve().parents[2]\n',
+              count=1,
+          )
+
+          replace_required(
+              'src/qlib_platform/research/studies/attribution.py',
+              '''def _implementation_hashes() -> dict[str, str]:\n    root = Path(__file__).resolve().parent\n    names = (\n        "failure_attribution.py",\n        "portfolio_attribution.py",\n        "turnover_attribution.py",\n        "attribution_study.py",\n    )\n    return {name: sha256_file(root / name) for name in names}\n''',
+              '''def _implementation_hashes() -> dict[str, str]:\n    research_root = Path(__file__).resolve().parents[1]\n    files = {\n        "diagnostics/failure_attribution.py": research_root / "diagnostics" / "failure_attribution.py",\n        "diagnostics/portfolio_attribution.py": research_root / "diagnostics" / "portfolio_attribution.py",\n        "diagnostics/turnover_attribution.py": research_root / "diagnostics" / "turnover_attribution.py",\n        "studies/attribution.py": Path(__file__).resolve(),\n    }\n    return {name: sha256_file(path) for name, path in files.items()}\n''',
+          )
+
+          replace_required(
+              'src/qlib_platform/research/studies/alpha.py',
+              '''def _implementation_hashes() -> dict[str, str]:\n    root = Path(__file__).resolve().parent\n    names = (\n        "study.py",\n        "feature_diagnostics.py",\n        "factor_taxonomy.py",\n        "factor_clusters.py",\n    )\n    return {name: sha256_file(root / name) for name in names}\n''',
+              '''def _implementation_hashes() -> dict[str, str]:\n    research_root = Path(__file__).resolve().parents[1]\n    files = {\n        "studies/alpha.py": Path(__file__).resolve(),\n        "diagnostics/features.py": research_root / "diagnostics" / "features.py",\n        "features/taxonomy.py": research_root / "features" / "taxonomy.py",\n        "features/clusters.py": research_root / "features" / "clusters.py",\n    }\n    return {name: sha256_file(path) for name, path in files.items()}\n''',
+          )
+
+          synthesis = 'src/qlib_platform/research/studies/synthesis.py'
+          replace_required(
+              synthesis,
+              '    revision = git_revision(Path(__file__).resolve().parents[3])\n    contract = {\n',
+              '    revision = git_revision(Path(__file__).resolve().parents[3])\n    research_root = Path(__file__).resolve().parents[1]\n    contract = {\n',
+          )
+          replace_required(
+              synthesis,
+              '''        "studyImplementationSha256": {\n            name: sha256_file(Path(__file__).resolve().parent / name)\n            for name in ("phase1_synthesis.py", "synthesis_study.py")\n        },\n''',
+              '''        "studyImplementationSha256": {\n            "reporting/synthesis.py": sha256_file(research_root / "reporting" / "synthesis.py"),\n            "studies/synthesis.py": sha256_file(Path(__file__).resolve()),\n        },\n''',
+          )
+
+          # Stability lock must bind the canonical implementation set, never deleted shim paths.
+          replace_required(
+              stability,
+              '''    implementation_files = (\n        "phase3_contract.py",\n        "phase3_program.py",\n        "phase3_diagnostics.py",\n        "phase3_decay.py",\n        "regime.py",\n        "regime_diagnostics.py",\n    )\n    implementation_root = Path(__file__).resolve().parent\n    implementation = {\n        name: sha256_file(implementation_root / name)\n        for name in implementation_files\n        if (implementation_root / name).is_file()\n    }\n''',
+              '''    research_root = Path(__file__).resolve().parents[1]\n    implementation_files = {\n        "contracts/stability_program.py": Path(__file__).resolve(),\n        "workflow/stability_program.py": research_root / "workflow" / "stability_program.py",\n        "diagnostics/stability.py": research_root / "diagnostics" / "stability.py",\n        "diagnostics/decay.py": research_root / "diagnostics" / "decay.py",\n        "diagnostics/regimes.py": research_root / "diagnostics" / "regimes.py",\n        "diagnostics/regime_analysis.py": research_root / "diagnostics" / "regime_analysis.py",\n    }\n    implementation = {name: sha256_file(path) for name, path in implementation_files.items()}\n''',
+          )
+
+          walk = 'src/qlib_platform/research/workflow/walk_forward.py'
+          replace_required(
+              walk,
+              '    package_root = Path(__file__).resolve().parents[1]\n    source_files = [\n        Path(__file__),\n        package_root / "data" / "custom_handler.py",\n        package_root / "data" / "processors.py",\n        package_root / "research" / "research_timing.py",\n        package_root / "models" / "model_runtime.py",\n        package_root / "data" / "processor_state.py",\n        package_root / "research" / "train_select.py",\n        package_root / "artifacts" / "prediction_snapshot.py",\n        package_root / "research" / "walk_forward_acceptance.py",\n    ]\n',
+              '    package_root = Path(__file__).resolve().parents[2]\n    source_files = {\n        "research/workflow/walk_forward.py": Path(__file__).resolve(),\n        "data/custom_handler.py": package_root / "data" / "custom_handler.py",\n        "data/processors.py": package_root / "data" / "processors.py",\n        "research/workflow/timing.py": package_root / "research" / "workflow" / "timing.py",\n        "models/model_runtime.py": package_root / "models" / "model_runtime.py",\n        "data/processor_state.py": package_root / "data" / "processor_state.py",\n        "research/workflow/train_select.py": package_root / "research" / "workflow" / "train_select.py",\n        "artifacts/prediction_snapshot.py": package_root / "artifacts" / "prediction_snapshot.py",\n        "research/evaluation/walk_forward.py": package_root / "research" / "evaluation" / "walk_forward.py",\n    }\n',
+          )
+          replace_required(
+              walk,
+              '        "featureImplementationSha256": {\n            path.name: sha256_file(path) for path in source_files if path.is_file()\n        },\n',
+              '        "featureImplementationSha256": {\n            name: sha256_file(path) for name, path in source_files.items() if path.is_file()\n        },\n',
+          )
+          replace_required(
+              walk,
+              '            Path(__file__).resolve().parents[1] / "backtesting" / "prediction_backtest.py"\n',
+              '            Path(__file__).resolve().parents[2] / "backtesting" / "prediction_backtest.py"\n',
+          )
+
+          # Tests must follow the canonical paths instead of testing files that were intentionally removed.
+          replace_required(
+              'tests/test_docs_check.py',
+              '    target = tmp_path / "docs" / "history" / "research" / "alpha_research_phase_1.md"\n',
+              '    target = tmp_path / "docs" / "history" / "research" / "alpha_research_initial_synthesis.md"\n',
+          )
+          boundary = 'tests/test_research_execution_boundary_v2.py'
+          replacements = {
+              '"research/feature_store.py"': '"research/features/store.py"',
+              '"research/train_select.py"': '"research/workflow/train_select.py"',
+              '"research/walk_forward.py"': '"research/workflow/walk_forward.py"',
+              '"research/research_gate.py"': '"research/evaluation/gates.py"',
+          }
+          text = read(boundary)
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'missing expected boundary path: {old}')
+              text = text.replace(old, new)
+          write(boundary, text)
+
+          # Remove documentation pointers to source files that no longer exist.
+          skill = '.agents/skills/research-diagnostics/references/stability-diagnostics.md'
+          text = read(skill)
+          for old, new in {
+              'src/qlib_platform/research/phase3_contract.py': 'src/qlib_platform/research/contracts/stability_program.py',
+              'src/qlib_platform/research/phase3_program.py': 'src/qlib_platform/research/workflow/stability_program.py',
+              'src/qlib_platform/research/phase3_diagnostics.py': 'src/qlib_platform/research/diagnostics/stability.py',
+              'src/qlib_platform/research/phase3_portability.py': 'src/qlib_platform/research/diagnostics/portability.py',
+              'tests/test_phase3_*.py': 'tests/test_stability_*.py',
+          }.items():
+              if old not in text:
+                  raise SystemExit(f'missing expected skill reference: {old}')
+              text = text.replace(old, new)
+          write(skill, text)
+
+          # Strengthen the architecture regression test to prohibit deleted module-file references.
+          arch = 'tests/research/test_module_architecture.py'
+          text = read(arch)
+          marker = 'LEGACY_IDENTIFIER = re.compile(r"^phase[123](?:_|$)", re.IGNORECASE)\n'
+          if marker not in text:
+              raise SystemExit('architecture marker not found')
+          text = text.replace(
+              marker,
+              marker + 'LEGACY_MODULE_FILE = re.compile(r"(?:src/)?qlib_platform/research/phase[123]_[A-Za-z0-9_.-]*\\.py")\n',
+          )
+          insertion = '''\n\ndef test_repository_has_no_deleted_phase_module_file_references() -> None:\n    offenders = []\n    for path in _text_files(ROOT):\n        text = path.read_text(encoding="utf-8")\n        if LEGACY_MODULE_FILE.search(text):\n            offenders.append(path.relative_to(ROOT).as_posix())\n    assert offenders == []\n'''
+          anchor = '\n\ndef test_research_python_identifiers_are_stage_neutral() -> None:\n'
+          if anchor not in text:
+              raise SystemExit('architecture insertion anchor not found')
+          text = text.replace(anchor, insertion + anchor)
+          write(arch, text)
+
+          # Fail before committing if stage-numbered Python identifiers remain in runtime code.
+          import ast
+          legacy_identifier = re.compile(r'^phase[123](?:_|$)', re.IGNORECASE)
+          offenders = {}
+          for path in Path('src/qlib_platform/research').rglob('*.py'):
+              tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path))
+              names = set()
+              for node in ast.walk(tree):
+                  candidates = []
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                      candidates.append(node.name)
+                  elif isinstance(node, ast.Name):
+                      candidates.append(node.id)
+                  elif isinstance(node, ast.arg):
+                      candidates.append(node.arg)
+                  elif isinstance(node, ast.Attribute):
+                      candidates.append(node.attr)
+                  elif isinstance(node, ast.alias):
+                      candidates.extend(part for part in (node.name.rsplit('.', 1)[-1], node.asname) if part)
+                  names.update(name for name in candidates if legacy_identifier.match(name))
+              if names:
+                  offenders[str(path)] = sorted(names)
+          if offenders:
+              raise SystemExit(f'legacy runtime identifiers remain: {offenders}')
+          PY
+      - name: Install test dependencies
+        run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Run previously failing tests
+        run: >-
+          python -m pytest -q
+          tests/research/test_module_architecture.py
+          tests/test_docs_check.py
+          tests/test_failure_attribution.py
+          tests/test_feature_store.py
+          tests/test_research_execution_boundary_v2.py
+          tests/test_research_study.py
+          tests/test_research_synthesis.py
+          tests/test_walk_forward.py
+      - name: Validate formatting and diff
+        run: |
+          python -m ruff check src tests
+          python -m ruff format --check src tests
+          git diff --check
+      - name: Commit repair and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/pr87-ci-fix-once.yml
+          git add -A
+          git commit -m 'fix: complete research responsibility migration'
+          git push origin HEAD:refactor/remove-phase-research-legacy
