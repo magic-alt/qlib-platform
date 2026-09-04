@@ -91,9 +91,7 @@ def test_deep_receipt_reuse_hashes_only_the_guard_sample(tmp_path: Path, monkeyp
     assert len(hashed) == 1
 
 
-def test_collocated_manifest_build_proof_avoids_rehashing_every_partition(
-    tmp_path: Path, monkeypatch
-):
+def test_collocated_manifest_build_proof_avoids_rehashing_every_partition(tmp_path: Path, monkeypatch):
     manifest = _dataset(tmp_path)
     original = dataset_manifest_module.sha256_file
     hashed: list[Path] = []
