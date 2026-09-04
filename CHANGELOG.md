@@ -22,6 +22,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Changed
 
+- Generated `tq-research` AlphaPack overlays now pin the already-resolved project root, registry, Qlib provider path, and DatasetVersion root before spawning child CLI processes, preventing nested quickstart output directories from rebasing inherited relative paths and losing `standalone-current`.
 - Deep DatasetVersion proof reuse now performs the full inventory guard with bounded worker batches, resolves only unique partition parent directories, and uses one non-following stat per file instead of resolving every partition path; this keeps the same existence/size/mtime fail-closed checks while removing the Windows startup bottleneck on large providers.
 - Deep DatasetVersion verification can now reuse manifest-bound prior deep evidence for immutable payloads: all partition existence/size/mtime guards remain fail-closed while only a deterministic content sample is rehashed; stale evidence automatically falls back to a fresh full deep pass.
 - Automatic local-research source discovery and `doctor`/`prepare` now use bounded sampled verification by default instead of unconditional deep scans; `run`/`matrix` and explicit `--verify-mode deep` retain authoritative full verification before research execution.
