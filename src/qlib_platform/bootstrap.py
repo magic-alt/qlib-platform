@@ -38,7 +38,24 @@ def _archive_standalone_history(settings: Settings, release_id: str | None) -> i
         # Integrated/history-heavy workflows remain opt-in. Standalone supports the
         # zero-config one-active-snapshot policy requested by the quickstart contract.
         return 0
-    return len(FileReleaseStore(release_store_root(settings)).archive_except(release_id))
+    from qlib_platform.datasets.dataset_registry import DatasetRegistry
+
+    store = FileReleaseStore(release_store_root(settings))
+    archived = store.archive_except(release_id)
+    if archived:
+        registry = DatasetRegistry(settings.registry_path)
+        for archived_id in archived:
+            release = store.resolve(archived_id, mode="manifest")
+            policies = release.manifest.get("policies", {})
+            governance = (
+                str(policies.get("governanceLevel") or "research")
+                if isinstance(policies, dict)
+                else "research"
+            )
+            # register_release updates manifest_path/hash on conflict, so historical
+            # registry rows remain replayable after the physical move to archive/.
+            registry.register_release(release, governance_level=governance)
+    return len(archived)
 
 
 def _with_archive_count(settings: Settings, payload: dict[str, Any]) -> dict[str, Any]:
