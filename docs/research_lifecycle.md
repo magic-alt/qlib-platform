@@ -46,6 +46,7 @@ It preserves evidence but does not publish an execution candidate.
 
 ## Active program
 
-Phase 3-D performs only stability and causal-regime diagnostics over frozen rejected Phase 2 anchors.
-It creates no formal candidate, performs no model selection, opens no final holdout and authorizes no
-publishing. See [Alpha Research Phase 3](alpha_research_phase_3.md).
+The stability-diagnostics program performs only temporal-stability and causal-regime diagnostics over
+frozen rejected candidate-program anchors. It creates no formal candidate, performs no model selection,
+opens no final holdout and authorizes no publishing. See
+[Alpha Research Stability Diagnostics](alpha_research_stability.md).
