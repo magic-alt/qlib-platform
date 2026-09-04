@@ -24,6 +24,19 @@ calendar_end_date: "20261231"
 data_source:
   # Use `tushare` for API pulls or `lean_mysql` to read from lean-platform MySQL.
   kind: tushare
+  tushare:
+    token_env: TUSHARE_TOKEN
+    calls_per_minute: 180
+  runtime:
+    max_attempts: 6
+    base_sleep_seconds: 2.0
+    max_sleep_seconds: 60.0
+    jitter_ratio: 0.15
+  optional_endpoints:
+    moneyflow: true
+    stock_st: true
+    suspend_d: true
+    stk_limit: true
   mysql:
     # `lean_canonical_v1` reads lean-platform's governed canonical tables.
     schema: lean_canonical_v1
@@ -45,19 +58,6 @@ data_source:
     # Optional per-endpoint SQL override, used when table/column naming differs.
     # Query placeholders are `%(trade_date)s`, `%(exchange)s`, `%(list_status)s`, etc.
     endpoints: {}
-
-tushare:
-  calls_per_minute: 180
-  max_attempts: 6
-  base_sleep_seconds: 2.0
-  max_sleep_seconds: 60.0
-  jitter_ratio: 0.15
-  extended_max_workers: 8
-  optional_endpoints:
-    moneyflow: true
-    stock_st: true
-    suspend_d: true
-    stk_limit: true
 
 qlib:
   repo_path: ${QLIB_REPO}
@@ -226,7 +226,6 @@ portfolio:
   max_turnover: 0.30
   min_position: 0.002
   volatility_floor: 0.01
-
 
 risk:
   max_gross_exposure: 0.95
