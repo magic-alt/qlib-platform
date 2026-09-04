@@ -1,59 +1,109 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 85bac85356d8092adfe98cd82ee59f81a242cf53
-last_verified: 2026-09-02
+last_verified: 2026-09-04
 ---
 
 # Configuration Profiles
 
-The CLI default is `configs/pipeline.standalone.yaml`. A workflow that consumes a Platform-produced DataRelease must select the integrated profile explicitly.
+The default local-research profile is `configs/pipeline.standalone.yaml`.
+
+For normal standalone use the configuration contract is:
+
+> **Copy `.env.example` to `.env`. Do not edit YAML, DataRelease IDs, DatasetVersion IDs, or aliases.**
+
+YAML profiles remain available as advanced overrides for integrated, governed, migration, or specialized workflows.
+
+## Standalone zero-config contract
+
+From the repository root:
+
+```bash
+cp .env.example .env
+```
+
+Windows:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+The copied file is valid without editing:
+
+```dotenv
+QLIB_DATA_ROOT=./data
+TUSHARE_CALLS_PER_MINUTE=180
+TUSHARE_TOKEN=
+QLIB_REPO=
+QLIB_DATA_URI=
+```
+
+The default quickstart uses stable aliases internally:
+
+```text
+research-release-current
+standalone-current
+```
+
+These are runtime lifecycle state, not environment configuration. Content-addressed `ds_*` and DatasetVersion IDs remain audit identities and should not be pasted into `.env` for standalone use.
 
 ## Profile matrix
 
-| Profile | Purpose | Platform required to load | TuShare required to load | Governed Phase 2/3 | Status |
+| Profile | Purpose | Platform required | TuShare required | Normal user edits YAML? | Status |
 | --- | --- | ---: | ---: | ---: | --- |
-| `pipeline.standalone.yaml` | autonomous local research | no | no | capability dependent | DEFAULT |
-| `pipeline.integrated.yaml` | Platform-produced DataRelease | no remote call merely to parse config; external release paths required for use | no | yes | ACTIVE |
-| `pipeline.yaml` | integrated canonical/base config | external release paths required for use | no | yes | INTERNAL/COMPAT |
-| `pipeline_phase2.yaml` | frozen Phase 2/3 governed profile | depends on bound release | no | yes | FROZEN |
-| `pipeline_tushare_dev.yaml` | TuShare development/data download | no | credential only for API calls | no | DEV |
-| `pipeline_lean_mysql.yaml` | legacy migration compatibility | legacy external source | no | no | DEPRECATED |
+| `pipeline.standalone.yaml` | autonomous local research | no | only for download/refresh | no | **DEFAULT** |
+| `pipeline.integrated.yaml` | external immutable DataRelease | external release paths required for use | no | advanced | ACTIVE |
+| `pipeline.yaml` | integrated canonical/base config | external release paths required | no | internal | INTERNAL/COMPAT |
+| `pipeline_candidate_research.yaml` | governed candidate workflow | depends on bound release | no | protocol-owned | FROZEN |
+| `pipeline_tushare_dev.yaml` | TuShare development | no | credential for API calls | advanced | DEV |
+| `pipeline_lean_mysql.yaml` | migration compatibility | legacy source | no | advanced | DEPRECATED |
 
-`pipeline.standalone.yaml` extends the TuShare-development base but overrides the mode, roots and release behavior so that simply loading the standalone application does not require `TUSHARE_TOKEN`.
-
-`pipeline.integrated.yaml` extends `pipeline.yaml`; it is the explicit public profile for Platform-produced immutable releases.
-
-## Selection rules
-
-- Omit `--config` only when the standalone default is intended.
-- Use `configs/pipeline.integrated.yaml` for external Platform DataRelease verification/materialization.
-- Use `configs/pipeline_candidate_research.yaml` only where the frozen Phase 2/3 protocol explicitly requires it.
-- Do not present `configs/pipeline.yaml` as the universal default.
-- After DataRelease materialization, pin a DatasetVersion ID/alias for research and inference. Do not pass a DataRelease ID to `--dataset-ref`.
-- A config change that alters governed data/model/portfolio semantics creates a new research identity; it does not rewrite prior evidence.
+`pipeline.standalone.yaml` extends the TuShare-development base only to reuse canonical research defaults. It clears inherited release binding, uses `data_source.kind=auto`, and does not require a TuShare credential merely to load or research existing local data.
 
 ## Environment variables
 
-The repository example environment file documents the supported roots/overrides. Important variables are:
+| Variable | Required? | Scope | Purpose |
+| --- | ---: | --- | --- |
+| `QLIB_DATA_ROOT` | default supplied | standalone | root for local releases, DatasetVersions, state and outputs |
+| `TUSHARE_TOKEN` | no | standalone/data | only for TuShare API download/refresh |
+| `TUSHARE_CALLS_PER_MINUTE` | default supplied | data | TuShare rate limit |
+| `QLIB_REPO` | no | Qlib export | optional Qlib source-checkout override |
+| `QLIB_DATA_URI` | no | standalone/qrun | optional existing Qlib provider override |
+| `QUANT_DATA_ROOT` | integrated only | integrated | external Platform data root |
+| `DATASET_RELEASE_ID` | integrated only | integrated | explicit immutable DataRelease |
 
-| Variable | Scope | Purpose |
-| --- | --- | --- |
-| `QLIB_DATA_ROOT` | standalone | root for local releases, datasets, state, auth and outputs |
-| `TUSHARE_TOKEN` | optional | needed only on machines that call TuShare APIs |
-| `TUSHARE_CALLS_PER_MINUTE` | optional | TuShare client rate limit |
-| `QLIB_REPO` | optional | source-checkout override used when Qlib source identity is required |
-| `QLIB_DATA_URI` | optional/local qrun | explicit immutable Qlib provider path for supported local workflows |
-| `QUANT_DATA_ROOT` | integrated | root containing the external Platform release and derived data |
-| `DATASET_RELEASE_ID` | integrated | immutable DataRelease selected by the integrated profile |
+`QLIB_REPO` and `QLIB_DATA_URI` are read by `Settings` when their YAML values are blank. This keeps the standalone YAML valid even when those optional variables are absent.
 
-`LEAN_MYSQL_*` / `LEAN_MYSQL_DSN` variables remain compatibility inputs for the deprecated migration profile; they are not the normal Research Plane architecture.
+`LEAN_MYSQL_*` / `LEAN_MYSQL_DSN` remain migration compatibility inputs; they are not part of the normal standalone path.
 
-Never commit a populated `.env`, token, password or webhook secret. Documentation and logs may name an environment variable but must not expose its value.
+Never commit populated secrets. Documentation/logs may name variables but must not print token/password values.
+
+## Standalone lifecycle policy
+
+The default release store uses:
+
+```yaml
+release_store:
+  active_keep: 1
+```
+
+This does **not** delete immutable history. After successful standalone activation, older release directories are moved below `data/releases/archive/`, while the active release remains at the top-level release store. Exact archived IDs remain resolvable for audit/replay.
+
+When more than one active release exists, standalone resolution chooses the newest **materializable** release rather than blindly choosing the lexicographically latest hash. A materializable release must contain either the frozen `qlib_staging` component or an imported `qlib_dataset` provider.
+
+Integrated mode deliberately keeps explicit multi-release selection fail-closed.
+
+## Selection rules
+
+- Omit `--config` when standalone is intended.
+- Do not pass `ds_*` to `--dataset-ref`; that option accepts DatasetVersion IDs/aliases.
+- Do not configure `research-release-current` or `standalone-current` in `.env`.
+- Let the default quickstart self-prepare `standalone-current` when it is missing.
+- Use `configs/pipeline.integrated.yaml` only for external immutable release workflows.
+- Use candidate/governance profiles only when the protocol explicitly requires them.
+- A semantic config change creates a new research identity; it does not rewrite prior evidence.
 
 ## Installation extras
-
-The base package contains the platform/core data-manifest dependencies. Optional extras are:
 
 | Extra | Adds |
 | --- | --- |
@@ -61,49 +111,47 @@ The base package contains the platform/core data-manifest dependencies. Optional
 | `qlib` | `pyqlib==0.9.7` and `lightgbm==4.6.0` |
 | `pytorch` | PyTorch runtime |
 | `xgboost` | XGBoost runtime |
-| `all` | data + Qlib/LightGBM + XGBoost; **does not include PyTorch** |
-| `dev` | Qlib/LightGBM/XGBoost plus pytest, coverage, Ruff, mypy and type stubs |
-| `docs` | MkDocs Material documentation-site tooling (`mkdocs-material==9.7.7`) |
+| `all` | data + Qlib/LightGBM + XGBoost; no PyTorch |
+| `dev` | pytest, coverage, Ruff, mypy and research dependencies |
+| `docs` | MkDocs Material tooling |
 
-Examples:
+Full local research environment:
 
-```powershell
-$RepoPython = '.\.venv\Scripts\python.exe'
-& $RepoPython -m pip install -c constraints/ci.txt -e ".[dev]"
-& $RepoPython -m pip install -c constraints/ci.txt -e ".[all,dev]"
-& $RepoPython -m pip install -c constraints/ci.txt -e ".[dev,pytorch]"
-& $RepoPython -m pip install -e ".[docs]"
+```bash
+.venv/bin/python -m pip install -c constraints/ci.txt -e '.[all,dev]'
 ```
 
-The project pins `pyqlib==0.9.7` and `lightgbm==4.6.0`. A Windows OpenCL build must compile the same LightGBM version; it is not a separate dependency version profile.
+Optional PyTorch:
 
-The documentation dependency is deliberately separated from `dev` so ordinary research/development environments do not need the site generator. Build the site with:
-
-```powershell
-& $RepoPython -m mkdocs build --strict
+```bash
+.venv/bin/python -m pip install -c constraints/ci.txt -e '.[dev,pytorch]'
 ```
 
-## Safe profile smoke checks
+## Safe checks
 
-Standalone:
+Standalone diagnostics:
 
-```powershell
-& $RepoPython -m qlib_platform status
-& $RepoPython -m qlib_platform health ready
-& $RepoPython -m qlib_platform health dependencies
+```bash
+bash scripts/run_local_research.sh doctor
+.venv/bin/python -m qlib_platform status
+.venv/bin/python -m qlib_platform health ready
 ```
 
-Integrated:
+The normal first research action does not require those checks:
 
-```powershell
-& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml status
-& $RepoPython -m qlib_platform --config configs/pipeline.integrated.yaml release verify <DATA_RELEASE_REF>
+```bash
+bash scripts/run_local_research.sh run --alpha-pack alpha158_market_v1 --model lightgbm
 ```
 
-A missing optional remote dependency may produce a degraded dependency result; an identity/checksum/configuration failure must not be relabeled as mere degradation.
+Integrated diagnostics remain explicit:
+
+```bash
+.venv/bin/python -m qlib_platform --config configs/pipeline.integrated.yaml status
+.venv/bin/python -m qlib_platform --config configs/pipeline.integrated.yaml release verify <DATA_RELEASE_REF>
+```
 
 ## Runtime identity
 
-Governed evidence records the selected DataRelease, DatasetVersion, FeatureSnapshot, AlphaPack, LabelSpec, SplitSpec, model profile, portfolio/research-backtest policy, code revision and relevant implementation hashes. Changing a profile to improve results creates a new research identity.
+Governed evidence still records the exact selected DataRelease, DatasetVersion, FeatureSnapshot, AlphaPack, LabelSpec, SplitSpec, model profile, portfolio policy, code revision and implementation hashes. Simplifying configuration does not weaken lineage; it removes lifecycle internals from normal user configuration.
 
-See [Identity and Lineage](identity_and_lineage.md) and [Testing and Certification](testing_and_certification.md).
+See [Local Research Quickstart](local_research_quickstart.md), [Identity and Lineage](identity_and_lineage.md), and [Testing and Certification](testing_and_certification.md).
