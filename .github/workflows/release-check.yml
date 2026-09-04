@@ -53,9 +53,11 @@ jobs:
           .release-check-venv/bin/python -m pip install dist/*.whl
           .release-check-venv/bin/python - <<'PY'
           import importlib.metadata
+          import qlib_platform
           import tushare_qlib
 
-          print(importlib.metadata.version("tushare-qlib-a-share"))
+          print(importlib.metadata.version("qlib-platform"))
+          print(qlib_platform.__name__)
           print(tushare_qlib.__name__)
           PY
 

@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tushare-qlib-a-share"
+name = "qlib-platform"
 version = "0.3.0"
 description = "Auditable A-share quant research and alpha factory built on Microsoft Qlib"
 readme = "README.md"
@@ -89,10 +89,11 @@ docs = [
 ]
 
 [project.scripts]
-tq = "tushare_qlib.cli:main"
-tq-research = "tushare_qlib.research_quickstart:main"
-tq-research-summary = "tushare_qlib.research_summary:main"
-tq-render-scheduler = "tushare_qlib.scheduler:main"
+qlib-platform = "qlib_platform.cli:main"
+tq = "qlib_platform.cli:main"
+tq-research = "qlib_platform.research_quickstart:main"
+tq-research-summary = "qlib_platform.research_summary:main"
+tq-render-scheduler = "qlib_platform.scheduler:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

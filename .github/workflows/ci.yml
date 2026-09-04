@@ -134,8 +134,8 @@ jobs:
               assert isinstance(payload, dict), f'{path}: workflow must parse to a mapping'
           PY
       - run: python scripts/check_docs.py --root .
-      - run: python -m tushare_qlib --config configs/pipeline.integrated.yaml validate-qrun-contract
-      - run: python -m tushare_qlib project-audit --root . --output "$RUNNER_TEMP/project_audit.json"
+      - run: python -m qlib_platform --config configs/pipeline.integrated.yaml validate-qrun-contract
+      - run: python -m qlib_platform project-audit --root . --output "$RUNNER_TEMP/project_audit.json"
 
   test-matrix:
     needs: change-scope
@@ -197,7 +197,7 @@ jobs:
       - run: python -m ruff check src tests
       - run: python -m ruff format --check src tests
       - run: python -m mypy src
-      - run: python -m pytest --cov=src/tushare_qlib --cov-report=term-missing --cov-fail-under=60
+      - run: python -m pytest --cov=src/qlib_platform --cov-report=term-missing --cov-fail-under=60
 
   standalone-isolation:
     needs: change-scope

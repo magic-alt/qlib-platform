@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from .settings import Settings
+from ..settings import Settings
 
 
 PIT_FIELDS = (
