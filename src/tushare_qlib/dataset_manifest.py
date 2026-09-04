@@ -28,6 +28,19 @@ def _integer(value: object) -> int:
     return int(value) if isinstance(value, (str, int, float)) else 0
 
 
+def _timestamp_ns(value: object) -> int | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1_000_000_000)
+
+
 def collect_partitions(
     root: Path, *, exclude: Iterable[str] = ("dataset_manifest.json",)
 ) -> list[dict[str, object]]:
@@ -206,7 +219,9 @@ def verify_dataset_manifest(
     )
     if expected != payload.get("version_id"):
         raise ValueError("dataset version_id does not match its content contract")
+
     receipt = None
+    receipt_payload: Mapping[str, object] | None = None
     if normalized_mode == "deep" and reuse_receipt and receipt_dir is not None:
         receipt = load_verification_receipt(
             receipt_dir,
@@ -215,13 +230,35 @@ def verify_dataset_manifest(
             manifest_sha256=manifest_sha256,
         )
         if receipt is not None:
-            _, receipt_payload = receipt
+            _, loaded_receipt = receipt
+            receipt_payload = loaded_receipt
             if (
-                _integer(receipt_payload.get("fileCount", -1)) != len(partitions)
-                or _integer(receipt_payload.get("totalBytes", -1)) != total_bytes
+                _integer(loaded_receipt.get("fileCount", -1)) != len(partitions)
+                or _integer(loaded_receipt.get("totalBytes", -1)) != total_bytes
             ):
                 raise ValueError("verification receipt file inventory mismatch")
+
+    proof_source: str | None = None
+    proof_cutoff_ns: int | None = None
+    if receipt_payload is not None:
+        proof_cutoff_ns = _timestamp_ns(receipt_payload.get("verifiedAt"))
+        if proof_cutoff_ns is not None:
+            proof_source = "receipt"
+    elif normalized_mode == "deep" and reuse_receipt:
+        status = str(payload.get("status") or "").upper()
+        created_ns = _timestamp_ns(payload.get("created_at_utc"))
+        build_id = str(payload.get("build_id") or "").strip()
+        try:
+            collocated = manifest_path.parent.resolve() == data_path.resolve()
+        except OSError:
+            collocated = False
+        if build_id and created_ns is not None and collocated and status in {"VALIDATED", "PUBLISHED"}:
+            proof_source = "manifest-build"
+            proof_cutoff_ns = created_ns
+
     selected: list[Mapping[str, object]] = []
+    verification_targets: list[Mapping[str, object]] = []
+    hash_paths: set[str] = set()
     if normalized_mode == "sampled":
         selected = deterministic_sample(
             partitions,
@@ -229,16 +266,36 @@ def verify_dataset_manifest(
             path_key="path",
             sample_size=sample_size,
         )
+        verification_targets = selected
+        hash_paths = {str(partition["path"]) for partition in selected}
+    elif normalized_mode == "deep" and proof_source is not None:
+        selected = partitions
+        verification_targets = partitions
+        guard = deterministic_sample(
+            partitions,
+            identity=f"{payload['version_id']}:{manifest_sha256}:deep-reuse",
+            path_key="path",
+            sample_size=sample_size,
+        )
+        hash_paths = {str(partition["path"]) for partition in guard}
     elif normalized_mode == "deep":
         selected = partitions
+        verification_targets = partitions
+        hash_paths = {str(partition["path"]) for partition in partitions}
+
     resolved_cas = Path(cas_root).expanduser().resolve() if cas_root is not None else None
 
-    def verify_partition(partition: Mapping[str, object]) -> bool:
+    def verify_partition(partition: Mapping[str, object]) -> tuple[bool, bool]:
         file_path = _partition_path(data_path, partition["path"], resolve_containment=True)
         if file_path.is_symlink() or not file_path.is_file():
             raise ValueError(f"dataset partition checksum mismatch: {file_path}")
-        if file_path.stat().st_size != _integer(partition.get("bytes")):
+        stat = file_path.stat()
+        if stat.st_size != _integer(partition.get("bytes")):
             raise ValueError(f"dataset partition checksum mismatch (size drift): {file_path}")
+        proof_fresh = proof_cutoff_ns is None or stat.st_mtime_ns <= proof_cutoff_ns
+        partition_path = str(partition["path"])
+        if partition_path not in hash_paths:
+            return False, proof_fresh
         expected_digest = str(partition.get("sha256") or "")
         cas_object = (
             resolved_cas / expected_digest[:2] / expected_digest if resolved_cas is not None else None
@@ -251,19 +308,33 @@ def verify_dataset_manifest(
             and os.path.samefile(file_path, cas_object)
         )
         if trusted_cas_link:
-            return True
-        elif sha256_file(file_path) != expected_digest:
+            return True, proof_fresh
+        if sha256_file(file_path) != expected_digest:
             raise ValueError(f"dataset partition checksum mismatch: {file_path}")
-        return False
+        return False, proof_fresh
 
-    if workers == 1 or len(selected) < 2:
-        cas_results = [verify_partition(partition) for partition in selected]
-    else:
+    def execute_verification() -> list[tuple[bool, bool]]:
+        if workers == 1 or len(verification_targets) < 2:
+            return [verify_partition(partition) for partition in verification_targets]
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dataset-verify") as executor:
-            cas_results = list(executor.map(verify_partition, selected))
-    verified_via_cas = sum(cas_results)
+            return list(executor.map(verify_partition, verification_targets))
+
+    results = execute_verification()
+    if proof_source is not None and any(not proof_fresh for _, proof_fresh in results):
+        # The prior deep evidence is only reusable while the immutable payload has not
+        # changed since that evidence was produced.  A newer mtime invalidates the fast
+        # path; fall back to a fresh full-content deep pass and refresh the receipt.
+        proof_source = None
+        proof_cutoff_ns = None
+        receipt = None
+        receipt_payload = None
+        verification_targets = partitions
+        hash_paths = {str(partition["path"]) for partition in partitions}
+        results = execute_verification()
+
+    verified_via_cas = sum(verified_via_cas for verified_via_cas, _ in results)
     receipt_path: Path | None = receipt[0] if receipt is not None else None
-    if normalized_mode == "deep" and receipt is None and receipt_dir is not None:
+    if normalized_mode == "deep" and proof_source is None and receipt_dir is not None:
         receipt_path = write_verification_receipt(
             receipt_dir,
             artifact_kind="dataset",
@@ -272,14 +343,20 @@ def verify_dataset_manifest(
             file_count=len(partitions),
             total_bytes=total_bytes,
         )
+
     if evidence is not None:
+        if proof_source is None:
+            verification_source = "files"
+        else:
+            verification_source = f"{proof_source}+inventory+sampled"
         evidence.update(
             {
                 "mode": normalized_mode,
-                "verificationSource": "receipt+files" if receipt is not None else "files",
+                "verificationSource": verification_source,
                 "manifestSha256": manifest_sha256,
                 "fileCount": len(partitions),
                 "verifiedFileCount": len(selected),
+                "hashedFileCount": len(hash_paths),
                 "verifiedViaCasCount": verified_via_cas,
                 "workers": workers,
                 "totalBytes": total_bytes,
