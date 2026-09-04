@@ -1,74 +1,154 @@
 from __future__ import annotations
 
+import runpy
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+PACKAGE = ROOT / "src" / "qlib_platform"
+
+# These modules were moved into the data domain by the phase-2 codemod. The old
+# repository-wide `data` ignore rule caused Git to record the source deletion while
+# silently omitting the new target files. Restore them from the phase-2 base and run
+# the same import normalizer used by the original codemod.
+DATA_MOVES = {
+    "_extract_legacy": "data._legacy_ingestion",
+    "content_store": "data.content_store",
+    "corporate_actions": "data.corporate_actions",
+    "custom_handler": "data.custom_handler",
+    "daily_sync": "data.daily_sync",
+    "extended_data": "data.extended_data",
+    "extended_parallel": "data.extended_parallel",
+    "kline_export": "data.kline_export",
+    "normalize": "data.normalize",
+    "processor_state": "data.processor_state",
+    "processors": "data.processors",
+    "quality": "data.quality",
+    "store": "data.store",
+    "symbols": "data.symbols",
+    "universe": "data.universe",
+}
 
 
-def replace(path: str, old: str, new: str) -> None:
-    target = ROOT / path
-    text = target.read_text(encoding="utf-8")
-    if old not in text:
-        raise RuntimeError(f"expected text not found in {path}: {old!r}")
-    target.write_text(text.replace(old, new), encoding="utf-8")
+def _replace_if_present(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if old in text:
+        path.write_text(text.replace(old, new), encoding="utf-8")
 
 
-def main() -> None:
-    replace(
-        "tests/test_walk_forward.py",
-        "from qlib_platform import backtest_report",
-        "import qlib_platform.backtesting.backtest_report as backtest_report",
+def _restore_data_domain() -> None:
+    helpers = runpy.run_path(str(ROOT / "scripts" / "apply_domain_layout_phase2.py"))
+    normalize = helpers["_normalize_python_imports"]
+
+    for old, new in DATA_MOVES.items():
+        target = PACKAGE / (new.replace(".", "/") + ".py")
+        if target.is_file():
+            continue
+        source = PACKAGE / f"{old}.py"
+        if source.exists():
+            raise RuntimeError(f"unexpected root implementation still exists: {source}")
+        result = subprocess.run(
+            ["git", "show", f"origin/main:src/qlib_platform/{old}.py"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        source.write_text(result.stdout, encoding="utf-8")
+        normalize(source)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(target)
+
+        # The legacy base previously imported the compatibility client shim. Keep the
+        # provider-neutral protocol import public, but bind the concrete TuShare
+        # adapter explicitly now that the shim itself is gone.
+        if old == "_extract_legacy":
+            _replace_if_present(
+                target,
+                "from qlib_platform.data.sources import DataSourceClient, RetryPolicy, TushareClient",
+                "from qlib_platform.data.sources import DataSourceClient, RetryPolicy\n"
+                "from qlib_platform.data.sources.tushare import TushareClient",
+            )
+
+
+def _make_package_initializers_lightweight() -> None:
+    (PACKAGE / "data" / "__init__.py").write_text(
+        '"""Provider-neutral ingestion, market-data contracts, and storage primitives.\n\n'
+        "Import concrete services from their domain modules. Keeping package import\n"
+        "lightweight prevents unrelated storage/symbol imports from initializing the\n"
+        "ingestion provider stack.\n"
+        '"""\n',
+        encoding="utf-8",
     )
-    replace(
-        "tests/test_walk_forward.py",
-        "    from qlib_platform import walk_forward",
-        "    import qlib_platform.research.walk_forward as walk_forward",
-    )
-    replace(
-        "tests/test_daily_sync.py",
-        "from qlib_platform import daily_sync, qlib_export",
-        "import qlib_platform.data.daily_sync as daily_sync\nimport qlib_platform.datasets.qlib_export as qlib_export",
-    )
-    replace(
-        "tests/test_scheduler_assets.py",
-        "from qlib_platform import scheduler",
-        "import qlib_platform.runtime.scheduler as scheduler",
-    )
-
-    namespace_test = ROOT / "tests" / "test_package_namespace.py"
-    namespace_test.write_text(
-        """from __future__ import annotations\n\nimport importlib\nfrom pathlib import Path\n\nimport pytest\n\n\ndef test_provider_neutral_package_is_canonical():\n    package = importlib.import_module(\"qlib_platform\")\n    assert package.__version__ == \"0.3.0\"\n\n\ndef test_vendor_named_legacy_namespace_is_removed():\n    repository_root = Path(__file__).resolve().parents[1]\n    assert not (repository_root / \"src\" / \"tushare_qlib\").exists()\n    with pytest.raises(ModuleNotFoundError):\n        importlib.import_module(\"tushare_qlib\")\n\n\ndef test_domain_modules_resolve_from_canonical_namespace():\n    module = importlib.import_module(\"qlib_platform.backtesting.strategy_contract\")\n    assert module.__file__ is not None\n    assert \"qlib_platform/backtesting\" in module.__file__.replace(\"\\\\\", \"/\")\n""",
+    (PACKAGE / "research" / "__init__.py").write_text(
+        '"""Governed research workflows and diagnostics.\n\n'
+        "The package initializer intentionally has no eager re-exports: research\n"
+        "modules depend on lineage, while lineage is also used by research contracts.\n"
+        "Callers should import the concrete research submodule they use.\n"
+        '"""\n',
         encoding="utf-8",
     )
 
-    replace(
-        "docs/daily_sync.md",
-        "- `data/bronze/tushare/current/` 是完整且唯一的本地 raw working view；变更分区会在此原子替换，不再生成平行的 `revisions/` 数据集。可复现性由发布时冻结的 `data/bronze/versions/` 和 immutable DataRelease 保证。",
-        "- `data/bronze/market/current/` 是完整且唯一的 provider-neutral raw working view；变更分区会在此原子替换，不再生成平行的 `revisions/` 数据集。具体数据供应商属于 manifest/config provenance，不再进入 canonical storage identity。可复现性由发布时冻结的 immutable DataRelease/DatasetVersion 保证。\n- 历史 `data/bronze/tushare/` 不会被原地改名或删除；`migrate-qlib-layout --apply` 会在完整文件数、大小和字节校验后物化到 `data/bronze/market/`，保留旧目录与已有 manifest/DatasetVersion 身份。若同时发现更老的 `data/raw/` 与 `data/bronze/tushare/`，迁移 fail closed，要求先明确历史来源。",
+
+def _repair_lineage_paths() -> None:
+    feature_store = PACKAGE / "research" / "feature_store.py"
+    _replace_if_present(
+        feature_store,
+        '    package_root = Path(__file__).resolve().parent\n',
+        '    package_root = Path(__file__).resolve().parents[1]\n',
     )
-    replace(
-        "docs/daily_sync.md",
-        "- 空的 legacy `data/bronze/tushare/current/extended/hsgt_moneyflow/` 目录会在日更时清理；正确的 TuShare endpoint/目录名称是 `moneyflow_hsgt`。",
-        "- 空的 `data/bronze/market/current/extended/hsgt_moneyflow/` 目录会在日更时清理；当前 TuShare adapter 的正确 endpoint/目录名称是 `moneyflow_hsgt`。",
+    _replace_if_present(
+        feature_store,
+        '        package_root / "custom_handler.py",\n'
+        '        package_root / "data" / "fundamentals.py",\n',
+        '        package_root / "data" / "custom_handler.py",\n'
+        '        package_root / "data" / "fundamentals.py",\n',
     )
 
-    replace(
-        "docs/qlib_data_platform.md",
-        "├── bronze/tushare/current/       # replaceable materialized view used by normalization",
-        "├── bronze/market/current/        # provider-neutral replaceable market-data working view",
+    walk_forward = PACKAGE / "research" / "walk_forward.py"
+    _replace_if_present(
+        walk_forward,
+        '    project_root = Path(__file__).resolve().parents[2]\n',
+        '    project_root = Path(__file__).resolve().parents[3]\n',
     )
-    replace(
-        "docs/qlib_data_platform.md",
-        "`bronze/tushare/current` is the single complete local raw-data view; daily updates atomically replace\nchanged partitions there and do not create a parallel `revisions` dataset. `current` directories are\nworking views, not auditable versions.",
-        "`bronze/market/current` is the single complete local raw-data view; daily updates atomically replace\nchanged partitions there and do not create a parallel `revisions` dataset. The storage path describes the\nsemantic layer rather than the API vendor; provider provenance remains in manifests/configuration. `current`\ndirectories are working views, not auditable versions.",
+    _replace_if_present(
+        walk_forward,
+        '    package_root = Path(__file__).resolve().parent\n'
+        '    source_files = [\n'
+        '        Path(__file__),\n'
+        '        package_root / "custom_handler.py",\n'
+        '        package_root / "processors.py",\n'
+        '        package_root / "research_timing.py",\n'
+        '        package_root / "model_runtime.py",\n'
+        '        package_root / "processor_state.py",\n'
+        '        package_root / "train_select.py",\n'
+        '        package_root / "prediction_snapshot.py",\n'
+        '        package_root / "walk_forward_acceptance.py",\n'
+        '    ]\n',
+        '    package_root = Path(__file__).resolve().parents[1]\n'
+        '    source_files = [\n'
+        '        Path(__file__),\n'
+        '        package_root / "data" / "custom_handler.py",\n'
+        '        package_root / "data" / "processors.py",\n'
+        '        package_root / "research" / "research_timing.py",\n'
+        '        package_root / "models" / "model_runtime.py",\n'
+        '        package_root / "data" / "processor_state.py",\n'
+        '        package_root / "research" / "train_select.py",\n'
+        '        package_root / "artifacts" / "prediction_snapshot.py",\n'
+        '        package_root / "research" / "walk_forward_acceptance.py",\n'
+        '    ]\n',
     )
-    replace(
-        "docs/qlib_data_platform.md",
-        "The command journals every step under `data/.migration/` and preserves every legacy source directory in\nits original location.",
-        "The command journals every step under `data/.migration/` and preserves every legacy source directory in\nits original location. In particular, the pre-0.4 `data/bronze/tushare/` tree is materialized byte-for-byte\ninto `data/bronze/market/`; the older `data/raw/` layout is also supported. If both are present, migration\nfails closed instead of merging potentially different market histories. Existing manifests and DatasetVersion\nidentities are not rewritten merely to normalize a directory name.",
+    _replace_if_present(
+        walk_forward,
+        '            Path(__file__).resolve().parent / "prediction_backtest.py"\n',
+        '            Path(__file__).resolve().parents[1] / "backtesting" / "prediction_backtest.py"\n',
     )
 
-    print("phase-2 semantic/test fixups applied")
+
+def main() -> None:
+    _restore_data_domain()
+    _make_package_initializers_lightweight()
+    _repair_lineage_paths()
+    print("phase-2 data-domain recovery and lineage fixups applied")
 
 
 if __name__ == "__main__":
