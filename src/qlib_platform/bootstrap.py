@@ -5,88 +5,107 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from qlib_platform.datasets.dataset_resolver import pin_dataset
-from qlib_platform.releases.capabilities import require_release_capability
+from qlib_platform.datasets.data_source_resolver import (
+    ReleaseSelectionRequired,
+    resolve_local_raw_source,
+    resolve_source,
+)
+from qlib_platform.releases import import_qlib_dataset, publish_local_market_release
 from qlib_platform.settings import Settings
 
 
 def _run_cli(settings: Settings, *args: str) -> None:
-    from qlib_platform.cli import main
-
-    argv = ["tq", "--config", str(settings.config_path), *args]
-    original = sys.argv
-    try:
-        sys.argv = argv
-        main()
-    finally:
-        sys.argv = original
-
-
-def _git_clean(root: Path) -> bool:
-    completed = subprocess.run(
-        ["git", "-C", str(root), "status", "--porcelain"],
-        check=False,
-        capture_output=True,
-        text=True,
+    subprocess.run(
+        [sys.executable, "-m", "qlib_platform", "--config", str(settings.config_path), *args],
+        check=True,
     )
-    return completed.returncode == 0 and not completed.stdout.strip()
-
-
-def _resolve_local_release(settings: Settings, start: str | None, end: str | None):
-    from qlib_platform.datasets.dataset_resolver import resolve_source
-
-    resolved = resolve_source(settings)
-    if resolved.kind not in {"dataset", "local"}:
-        raise ValueError(f"local bootstrap requires local/dataset source, got {resolved.kind}")
-    if resolved.dataset is not None:
-        return resolved
-    if not start or not end:
-        return resolved
-    return resolved
 
 
 def bootstrap(
     settings: Settings,
     *,
-    source: str | None = None,
+    source: str = "auto",
+    path: str | Path | None = None,
     start: str | None = None,
     end: str | None = None,
-    exploratory: bool = False,
 ) -> dict[str, Any]:
-    source = (source or settings.source_kind or "auto").strip().lower()
     if source == "auto":
-        source = "local" if settings.qlib_data_uri.exists() else "tushare"
-
-    if source in {"data_release", "platform_release"}:
-        require_release_capability(settings, "dataset")
-        pinned = pin_dataset(settings)
-        return {
-            "status": "READY",
-            "source": "data_release",
-            "datasetVersionId": pinned.version_id,
-            "dataReleaseId": pinned.data_release_id,
-        }
-
-    if source in {"local", "dataset", "qlib"}:
-        from qlib_platform.datasets.data_release import ensure_local_data_release
-        from qlib_platform.datasets.dataset_resolver import resolve_source
-
-        resolved = resolve_source(settings)
-        selected_start = start or str(settings.data.get("start_date") or "")
-        selected_end = end or str(settings.data.get("end_date") or "")
-        if resolved.dataset is not None:
+        try:
+            resolved = resolve_source(settings)
+        except ReleaseSelectionRequired as exc:
+            return {
+                "status": exc.code,
+                "error": str(exc),
+                "recommendedCommand": "tq release list",
+                "selectionCommand": ("tq release promote <DATA_RELEASE_ID> --alias research-release-current"),
+                "retryCommand": "tq-research prepare --source auto",
+            }
+        if resolved.status == "IMPORT_REQUIRED":
+            release, dataset = import_qlib_dataset(settings, resolved.path or settings.qlib_data_uri)
             return {
                 "status": "READY",
-                "source": "local_dataset",
-                "datasetVersionId": resolved.dataset.version_id,
+                "source": "qlib",
+                "dataReleaseId": release.data_release_id,
+                "datasetVersionId": dataset.version_id,
             }
-        if not selected_start or not selected_end:
-            raise ValueError("local bootstrap requires --start/--end when no DatasetVersion is available")
-        if exploratory:
-            dataset = pin_dataset(settings, reference=None, allow_legacy=True)
-            release = ensure_local_data_release(
+        if resolved.status == "BUILD_REQUIRED":
+            selected_start = start or str(settings.data.get("start_date") or "")
+            selected_end = end or str(settings.data.get("end_date") or "")
+            if resolved.profile == "ashare_market_import_v1":
+                release, dataset = publish_local_market_release(
+                    settings,
+                    start=selected_start,
+                    end=selected_end,
+                )
+                return {
+                    "status": "READY",
+                    "source": "local_raw",
+                    "profile": release.profile,
+                    "governanceLevel": "exploratory",
+                    "dataReleaseId": release.data_release_id,
+                    "datasetVersionId": dataset.version_id,
+                    "missingCertifiedComponents": list(resolved.missing_components),
+                }
+            _run_cli(
                 settings,
-                dataset=dataset,
+                "dataset-build",
+                "--start",
+                selected_start,
+                "--end",
+                selected_end,
+            )
+            resolved = resolve_source(settings)
+        if resolved.status == "DOWNLOAD_REQUIRED":
+            return bootstrap(settings, source="tushare", start=start, end=end)
+        return {
+            "status": resolved.status,
+            "source": resolved.source,
+            "reference": resolved.reference,
+            "action": resolved.action,
+            "profile": resolved.profile,
+            "missingComponents": list(resolved.missing_components),
+        }
+    if source == "qlib":
+        if path is None:
+            path = settings.qlib_data_uri
+        release, dataset = import_qlib_dataset(settings, path)
+        return {
+            "status": "READY",
+            "source": "qlib",
+            "dataReleaseId": release.data_release_id,
+            "datasetVersionId": dataset.version_id,
+        }
+    if source == "raw":
+        selected_start = start or str(settings.data.get("start_date") or "")
+        selected_end = end or str(settings.data.get("end_date") or "")
+        resolved = resolve_local_raw_source(settings)
+        if resolved.status == "DATA_INCOMPLETE":
+            raise ValueError(
+                f"local raw bootstrap is missing components: {list(resolved.missing_components)}"
+            )
+        if resolved.profile == "ashare_market_import_v1":
+            release, dataset = publish_local_market_release(
+                settings,
                 start=selected_start,
                 end=selected_end,
             )
@@ -118,9 +137,8 @@ def bootstrap(
         end = end or str(settings.data.get("end_date") or "")
         if not start or not end:
             raise ValueError("TuShare bootstrap requires --start/--end or configured start_date/end_date")
-        # Credential validation belongs to the provider adapter/registry. The first
-        # ingestion command resolves the configured source and fails closed before
-        # performing any data write when its credential is unavailable.
+        # Provider credential validation belongs to the source adapter/registry;
+        # init-metadata resolves the provider before any ingestion write occurs.
         _run_cli(settings, "init-metadata")
         _run_cli(settings, "backfill", "--start", start, "--end", end)
         _run_cli(settings, "backfill-extended", "--start", start, "--end", end)
