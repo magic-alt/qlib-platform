@@ -74,6 +74,7 @@ def test_lineage_fails_closed_for_dirty_or_unknown_revision(
         return {"commit": "platform-commit", "dirty": platform_dirty}
 
     monkeypatch.setattr(lineage_module, "git_revision", revision)
+    monkeypatch.setattr(lineage_module, "resolve_qlib_repo", lambda configured: settings.qlib_repo)
 
     result = build_lineage(
         settings, _canonical(), dataset_fingerprint="dataset-1", feature_columns=["$close"]
@@ -130,3 +131,43 @@ def test_resolve_qlib_repo_falls_back_to_imported_editable_checkout(
     )
 
     assert resolve_qlib_repo(tmp_path / "missing-configured-repo") == checkout
+
+
+def test_resolve_qlib_repo_rejects_enclosing_application_repo_for_wheel_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    application = tmp_path / "qlib-platform"
+    (application / ".git").mkdir(parents=True)
+    package = application / ".venv" / "Lib" / "site-packages" / "qlib"
+    package.mkdir(parents=True)
+    origin = package / "__init__.py"
+    origin.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        lineage_module.importlib.util,
+        "find_spec",
+        lambda name: SimpleNamespace(origin=str(origin)) if name == "qlib" else None,
+    )
+
+    assert resolve_qlib_repo(None) is None
+
+
+def test_resolve_qlib_repo_rejects_stale_configured_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    configured = tmp_path / "stale-qlib"
+    (configured / ".git").mkdir(parents=True)
+    stale_package = configured / "qlib"
+    stale_package.mkdir()
+    (stale_package / "__init__.py").write_text("", encoding="utf-8")
+
+    actual = tmp_path / "actual-qlib"
+    package = actual / "qlib"
+    package.mkdir(parents=True)
+    (actual / ".git").mkdir()
+    origin = package / "__init__.py"
+    origin.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        lineage_module.importlib.util,
+        "find_spec",
+        lambda name: SimpleNamespace(origin=str(origin)) if name == "qlib" else None,
+    )
+
+    assert resolve_qlib_repo(configured) == actual
