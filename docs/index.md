@@ -30,7 +30,7 @@ This site is the canonical navigation surface for `qlib-platform` documentation.
 | Install and configure locally | [README Quick Start](https://github.com/magic-alt/qlib-platform#quick-start) | [Configuration](configuration.md), [Troubleshooting](troubleshooting.md) |
 | Run Qlib research | [Local example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest) | [Research Lifecycle](research_lifecycle.md), [CLI Reference](cli_reference.md) |
 | Work with releases/datasets | [Qlib Data Platform](qlib_data_platform.md) | [Data Schema](data_schema.md), [Identity and Lineage](identity_and_lineage.md) |
-| Develop alphas or diagnostics | [Research Lifecycle](research_lifecycle.md) | [Active Phase 3-D](alpha_research_phase_3.md), [Portfolio Policy](portfolio_v2_rank_buffer.md) |
+| Develop alphas or diagnostics | [Research Lifecycle](research_lifecycle.md) | [Stability Diagnostics](alpha_research_stability.md), [Portfolio Policy](portfolio_v2_rank_buffer.md) |
 | Operate research jobs | [Operations Runbook](OPERATIONS_RUNBOOK.md) | [Daily Research](operations/daily-research.md), [Recovery](operations/recovery.md) |
 | Integrate with `magic-alt/platform` | [Architecture Boundary](architecture_boundary.md) | [Artifact Contract v2](artifact_contract_v2.md) |
 | Validate a contribution | [CONTRIBUTING](https://github.com/magic-alt/qlib-platform/blob/main/CONTRIBUTING.md) | [Testing & Certification](testing_and_certification.md) |
@@ -79,7 +79,7 @@ Architecture
 - **[Qlib Data Platform](qlib_data_platform.md)** — data-release intake and Qlib materialization.
 - **[Data Schema](data_schema.md)** — research-side schema expectations.
 - **[Research Lifecycle](research_lifecycle.md)** — governed experiment stages and evidence flow.
-- **[Active Phase 3-D](alpha_research_phase_3.md)** — active diagnostics protocol; always cross-check [Current State](current_state.md).
+- **[Stability Diagnostics](alpha_research_stability.md)** — active diagnostics protocol; always cross-check [Current State](current_state.md).
 - **[Portfolio Policy](portfolio_v2_rank_buffer.md)** — typed portfolio-construction behavior.
 - **[Standalone Sovereignty](standalone_sovereignty.md)** — standalone guarantees.
 - **[Production ML Phase 4](production_ml_phase4.md)**, **[Model Lifecycle](model_lifecycle.md)**, and **[Production Feedback](production_feedback.md)** — local model/signal infrastructure and monitoring boundaries.
@@ -130,7 +130,7 @@ DataRelease
 
 - **[Research Infrastructure Certification](research_infrastructure_certification.md)** — certification bound to its explicit baseline.
 - **[Full Walk-forward Acceptance](full_walk_forward_acceptance.md)** — frozen acceptance protocol.
-- **[History Index](history/README.md)** — completed phases and superseded protocols.
+- **[History Index](history/README.md)** — completed or superseded research protocols.
 
 QMT canonical execution ownership has moved to [`magic-alt/platform`](https://github.com/magic-alt/platform). The QMT pages retained here are migration/history pointers, not current Research Plane execution runbooks.
 
