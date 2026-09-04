@@ -8,6 +8,7 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Added
 
+- FeatureSnapshot manifests now record a semantic raw-feature recipe identity plus cache-build provenance, including the exact source FeatureSnapshot/DatasetVersion for safe incremental reuse.
 - LightGBM runtime evidence now reports the best-effort physical accelerator name in addition to the backend/index, using OpenCL enumeration when available and `nvidia-smi` as an NVIDIA fallback without changing device selection.
 - Apache License 2.0 project licensing and package metadata.
 - Repository CODEOWNERS and a research-integrity-aware Code of Conduct.
@@ -23,6 +24,8 @@ The format follows the spirit of [Keep a Changelog](https://keepachangelog.com/e
 
 ### Changed
 
+- Raw FeatureSnapshot caching now reuses exact immutable DatasetVersion coverage, safely extends a snapshot on the same DatasetVersion using the AlphaPack warm-up window, and may reuse across DatasetVersions only when the new manifest names exactly one direct `updated_from` parent and its sync delta proves the requested history is unchanged or tail-only. Historical symbol revisions, PIT changes, missing/ambiguous parent lineage, or insufficient warm-up evidence fail closed to full materialization. Requested loads also read only overlapping yearly partitions, and concurrent identical publishers are checksum-verified before reuse.
+- Raw feature recipe fingerprints no longer depend on cache-orchestration or fitted-processor implementation files; they remain bound to the immutable DatasetVersion, universe, AlphaPack contract, feature-defining handler/fundamental implementation, loader contract, and Qlib revision.
 - Standalone research now explicitly clears the inherited `cn_tushare_v1` experiment DataRelease binding; when a local DatasetVersion has no upstream DataRelease, canonical research identity falls back to its immutable manifest `version_id` instead of the profile-level `local` label, while explicit DataRelease mismatches remain fail-closed.
 - Generated `tq-research` AlphaPack overlays now pin the already-resolved project root, registry, Qlib provider path, and DatasetVersion root before spawning child CLI processes, preventing nested quickstart output directories from rebasing inherited relative paths and losing `standalone-current`.
 - Deep DatasetVersion proof reuse now performs the full inventory guard with bounded worker batches, resolves only unique partition parent directories, and uses one non-following stat per file instead of resolving every partition path; this keeps the same existence/size/mtime fail-closed checks while removing the Windows startup bottleneck on large providers.
