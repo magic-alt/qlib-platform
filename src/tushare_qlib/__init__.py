@@ -16,6 +16,6 @@ __all__ = ["__version__"]
 
 # Reuse the canonical package search path so imports such as
 # ``tushare_qlib.research`` continue to resolve without duplicating the source
-# tree.  This is a compatibility surface only; implementations live under
-# ``qlib_platform``.
-__path__ = _canonical.__path__
+# tree.  Materialize it as a list to satisfy the package ``__path__`` contract
+# across Python/importlib implementations while keeping the namespace read-only.
+__path__ = list(_canonical.__path__)
