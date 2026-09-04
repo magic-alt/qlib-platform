@@ -1,7 +1,7 @@
 """Provider-neutral market-data adapters."""
 
-from .base import DataSourceClient, FetchResult, RetryPolicy
-from .registry import (
+from qlib_platform.data.sources.base import DataSourceClient, FetchResult, RetryPolicy
+from qlib_platform.data.sources.registry import (
     DataSourceBinding,
     DataSourceFactory,
     EndpointOverride,

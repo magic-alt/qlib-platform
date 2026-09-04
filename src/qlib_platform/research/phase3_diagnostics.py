@@ -11,27 +11,27 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ..feature_store import load_feature_store
-from ..lineage import git_revision, sha256_json
-from ..platform_release import load_platform_release
-from ..prediction_snapshot import load_prediction_snapshot
-from ..settings import Settings
-from ..store import sha256_file
-from .feature_diagnostics import feature_columns
-from .regime import build_regime_labels, load_regime_spec
-from .regime_diagnostics import (
+from qlib_platform.research.feature_store import load_feature_store
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.ops.platform_release import load_platform_release
+from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.feature_diagnostics import feature_columns
+from qlib_platform.research.regime import build_regime_labels, load_regime_spec
+from qlib_platform.research.regime_diagnostics import (
     ModelComparisonSpec,
     derive_model_regime_diagnostics,
 )
-from .regime_study import (
+from qlib_platform.research.regime_study import (
     _history_start,
     _load_benchmark_close,
     _load_pit_industries,
     _load_stock_returns,
 )
-from .phase3_contract import load_phase3_lock
-from .phase3_decay import derive_model_age_decay
-from .phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
+from qlib_platform.research.phase3_contract import load_phase3_lock
+from qlib_platform.research.phase3_decay import derive_model_age_decay
+from qlib_platform.research.phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
 
 
 PHASE3_DIAGNOSTICS_SCHEMA = "phase3_diagnostics_v1"

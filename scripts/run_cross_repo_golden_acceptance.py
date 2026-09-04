@@ -114,19 +114,19 @@ def _run_qlib_research(
     from qlib.data.dataset import DatasetH
     from qlib.data.dataset.handler import DataHandlerLP
     from qlib.data.dataset.loader import StaticDataLoader
-    from qlib_platform.institutional_artifacts import (
+    from qlib_platform.artifacts.institutional_artifacts import (
         ResearchBundleContext,
         ResearchPromotionStatus,
         export_research_bundle,
     )
-    from qlib_platform.model_runtime import (
+    from qlib_platform.models.model_runtime import (
         ModelProfile,
         build_model,
         resolved_model_parameters,
         resolve_runtime,
     )
-    from qlib_platform.platform_release import materialize_platform_release
-    from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+    from qlib_platform.ops.platform_release import materialize_platform_release
+    from qlib_platform.artifacts.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
 
     materialized = materialize_platform_release(settings)
     if materialized.data_release_id != release_id:

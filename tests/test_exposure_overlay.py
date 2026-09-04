@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from qlib_platform.exposure_overlay import ExposureOverlayPolicy, apply_exposure_overlay, exposure_scale
+from qlib_platform.backtesting.exposure_overlay import ExposureOverlayPolicy, apply_exposure_overlay, exposure_scale
 
 
 def test_exposure_overlay_uses_most_conservative_throttle():

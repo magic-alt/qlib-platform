@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from qlib_platform.artifacts import ArtifactContractError, ArtifactType
-from qlib_platform.trade_plan import build_trade_plan
+from qlib_platform.backtesting.trade_plan import build_trade_plan
 
 
 def test_trade_plan_uses_next_official_open_day(tmp_path: Path, monkeypatch, governed_artifact):

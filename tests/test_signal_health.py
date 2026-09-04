@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.signal_health import evaluate_signal_health
+from qlib_platform.runtime.signal_health import evaluate_signal_health
 
 
 def _settings(tmp_path: Path) -> Settings:

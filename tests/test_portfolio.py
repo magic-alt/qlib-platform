@@ -1,6 +1,6 @@
 import pandas as pd
 
-from qlib_platform.portfolio import PortfolioPolicy, construct_target_portfolio, portfolio_turnover
+from qlib_platform.backtesting.portfolio import PortfolioPolicy, construct_target_portfolio, portfolio_turnover
 
 
 def test_weights_stay_attached_to_instruments_regression():

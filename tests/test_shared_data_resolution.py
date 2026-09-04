@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 
 from qlib_platform.bootstrap import bootstrap
-from qlib_platform.data_source_resolver import ReleaseSelectionRequired, resolve_source
-from qlib_platform.dataset_manifest import write_dataset_manifest
-from qlib_platform.dataset_registry import DatasetRegistry
-from qlib_platform.dataset_resolver import resolve_dataset
+from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired, resolve_source
+from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.dataset_resolver import resolve_dataset
 from qlib_platform.releases import (
     FileReleaseStore,
     LocalReleasePublisher,

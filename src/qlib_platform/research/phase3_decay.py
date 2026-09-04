@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from .feature_diagnostics import newey_west_t
+from qlib_platform.research.feature_diagnostics import newey_west_t
 
 
 def _age_labels(upper_bounds: Sequence[int]) -> tuple[list[float], list[str]]:

@@ -5,8 +5,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import qlib_platform.data_source_resolver as resolver_module
-from qlib_platform.data_source_resolver import resolve_source
+import qlib_platform.datasets.data_source_resolver as resolver_module
+from qlib_platform.datasets.data_source_resolver import resolve_source
 from qlib_platform.releases import import_qlib_dataset
 from qlib_platform.settings import Settings
 

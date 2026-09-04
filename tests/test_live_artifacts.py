@@ -6,9 +6,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.artifact_resolver import ArtifactResolutionError, ArtifactResolver, sha256_path
+from qlib_platform.artifacts.artifact_resolver import ArtifactResolutionError, ArtifactResolver, sha256_path
 from qlib_platform.artifacts import ArtifactType
-from qlib_platform.live_artifacts import payload_sha256, stamp_live_artifact, validate_live_artifact
+from qlib_platform.artifacts.live_artifacts import payload_sha256, stamp_live_artifact, validate_live_artifact
 
 
 def test_portable_signal_uri_resolves_after_root_changes(tmp_path: Path):

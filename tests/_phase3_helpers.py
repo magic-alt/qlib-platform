@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 
 from qlib_platform.lineage import sha256_json
-from qlib_platform.prediction_snapshot import (
+from qlib_platform.artifacts.prediction_snapshot import (
     PredictionSnapshotSpec,
     prediction_snapshot_path,
     write_prediction_snapshot,
 )
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 
 ANCHORS = {

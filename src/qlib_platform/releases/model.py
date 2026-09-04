@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..data_release import DataRelease
+from qlib_platform.datasets.data_release import DataRelease
 
 
 @dataclass(frozen=True)

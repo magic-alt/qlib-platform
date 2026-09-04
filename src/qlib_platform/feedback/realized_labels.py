@@ -10,9 +10,9 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from ..lineage import sha256_json
-from ..research_timing import LabelSpec
-from ..store import sha256_file
+from qlib_platform.lineage import sha256_json
+from qlib_platform.research.research_timing import LabelSpec
+from qlib_platform.data.store import sha256_file
 
 
 REALIZED_LABEL_SCHEMA = "realized_label_snapshot_v1"

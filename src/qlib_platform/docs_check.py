@@ -129,7 +129,7 @@ def _markdown_findings(root: Path, files: list[Path]) -> list[DocumentationFindi
 
 
 def _cli_findings(root: Path, files: list[Path]) -> list[DocumentationFinding]:
-    from .cli import parser
+    from qlib_platform.cli import parser
 
     known = _commands(parser())
     findings: list[DocumentationFinding] = []

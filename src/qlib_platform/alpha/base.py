@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from ..lineage import sha256_json
+from qlib_platform.lineage import sha256_json
 
 
 @dataclass(frozen=True)

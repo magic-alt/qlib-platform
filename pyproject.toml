@@ -91,9 +91,9 @@ docs = [
 [project.scripts]
 qlib-platform = "qlib_platform.cli:main"
 tq = "qlib_platform.cli:main"
-tq-research = "qlib_platform.research_quickstart:main"
-tq-research-summary = "qlib_platform.research_summary:main"
-tq-render-scheduler = "qlib_platform.scheduler:main"
+tq-research = "qlib_platform.research.research_quickstart:main"
+tq-research-summary = "qlib_platform.research.research_summary:main"
+tq-render-scheduler = "qlib_platform.runtime.scheduler:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

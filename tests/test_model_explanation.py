@@ -10,7 +10,7 @@ import pytest
 
 from qlib_platform.cli import parser
 from qlib_platform.lineage import sha256_json
-from qlib_platform.processor_state import processor_state_manifest
+from qlib_platform.data.processor_state import processor_state_manifest
 from qlib_platform.research.explanation_study import (
     FoldModelInput,
     _materialize_bundle,
@@ -258,7 +258,7 @@ def test_explanation_bundle_is_immutable_and_detects_tamper(tmp_path: Path):
 
 def test_processor_replay_matches_fold_state_and_model_resolution_is_unique(tmp_path: Path):
     from qlib.data.dataset.processor import CSRankNorm, DropnaLabel, Fillna, RobustZScoreNorm
-    from qlib_platform.processors import ProcessInfSingleThread
+    from qlib_platform.data.processors import ProcessInfSingleThread
 
     dates = pd.bdate_range("2026-01-05", periods=4)
     instruments = ["A", "B", "C"]

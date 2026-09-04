@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.delivery_ledger import DeliveryService
+from qlib_platform.ops.delivery_ledger import DeliveryService
 from qlib_platform.notifier import FeishuNotifier, NotificationDeliveryError, NotificationEnvelope
-from qlib_platform.ops_state import OpsState
+from qlib_platform.ops.ops_state import OpsState
 
 
 def _envelope() -> NotificationEnvelope:

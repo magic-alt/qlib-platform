@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from qlib_platform.lineage import sha256_json
-from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+from qlib_platform.artifacts.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
 from qlib_platform.research.attribution_study import run_attribution_diagnose
 from qlib_platform.research.failure_attribution import (
     derive_daily_model_topk_overlap,
@@ -29,7 +29,7 @@ from qlib_platform.research.portfolio_attribution import (
 )
 from qlib_platform.research.turnover_attribution import derive_turnover_attribution
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 
 def _panel() -> tuple[dict[str, pd.DataFrame], pd.DataFrame, dict[pd.Timestamp, str]]:

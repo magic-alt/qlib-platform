@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qlib_platform.health import dependency_health, live_health, ready_health
+from qlib_platform.runtime.health import dependency_health, live_health, ready_health
 from qlib_platform.settings import Paths, Settings
 
 

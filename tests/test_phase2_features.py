@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from qlib_platform.alpha.registry import ALPHA_PACKS
-from qlib_platform.fundamentals import PIT_FIELDS_V2
+from qlib_platform.data.fundamentals import PIT_FIELDS_V2
 from qlib_platform.research.phase2_features import (
     BENCHMARK_FAMILIES,
     EXPERIMENT_MATRIX,
@@ -16,7 +16,7 @@ from qlib_platform.research.phase2_features import (
     residualize_lowvol,
     select_cluster_representative,
 )
-from qlib_platform.processors import Phase2FeatureSetProcessor
+from qlib_platform.data.processors import Phase2FeatureSetProcessor
 
 
 def _raw() -> pd.DataFrame:

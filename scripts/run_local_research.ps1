@@ -11,5 +11,5 @@ if (-not (Test-Path -LiteralPath $RepoPython)) {
     throw "Repository-local interpreter is missing: $RepoPython"
 }
 Set-Location -LiteralPath $RepoRoot
-& $RepoPython -m qlib_platform.research_quickstart @Arguments
+& $RepoPython -m qlib_platform.research.research_quickstart @Arguments
 exit $LASTEXITCODE

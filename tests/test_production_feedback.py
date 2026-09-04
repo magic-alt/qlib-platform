@@ -16,7 +16,7 @@ from qlib_platform.feedback.realized_labels import (
     realized_label_manifest_path,
     write_realized_label_snapshot,
 )
-from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+from qlib_platform.artifacts.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
 
 
 CALENDAR = pd.date_range("2026-01-05", periods=6, freq="B")

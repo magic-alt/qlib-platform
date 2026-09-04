@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from qlib_platform.signal_diagnostics import build_signal_diagnostics
+from qlib_platform.backtesting.signal_diagnostics import build_signal_diagnostics
 
 
 def test_signal_diagnostics_emit_ic_rank_ic_rolls_months_and_prediction_autocorrelation() -> None:

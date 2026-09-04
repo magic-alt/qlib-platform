@@ -9,11 +9,11 @@ import pytest
 
 from qlib_platform.cli import parser
 from qlib_platform.lineage import sha256_json
-from qlib_platform.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
+from qlib_platform.artifacts.prediction_snapshot import PredictionSnapshotSpec, write_prediction_snapshot
 from qlib_platform.research.feature_diagnostics import FeatureDiagnosticsSpec
 from qlib_platform.research.study import run_alpha_diagnose
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 
 def _settings(tmp_path: Path) -> Settings:

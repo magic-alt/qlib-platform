@@ -9,11 +9,11 @@ from typing import Any, Mapping
 
 import pandas as pd
 
-from ..lineage import git_revision, sha256_json
-from ..prediction_snapshot import _identity
-from ..store import sha256_file
-from .phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
-from .phase3_contract import (
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.artifacts.prediction_snapshot import _identity
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
+from qlib_platform.research.phase3_contract import (
     PHASE2_EVIDENCE_SCHEMA,
     _contains_final_holdout,
     _mapping,
@@ -23,14 +23,14 @@ from .phase3_contract import (
     load_phase3_contract,
     load_phase3_lock,
 )
-from .phase3_diagnostics import (
+from qlib_platform.research.phase3_diagnostics import (
     PHASE3_DIAGNOSTICS_SCHEMA,
     PHASE3_EVIDENCE_INDEX_SCHEMA,
     PHASE3_MANIFEST_NAME,
     _expected_artifact_names,
 )
-from .phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
-from .regime import load_regime_spec
+from qlib_platform.research.phase3_program import PHASE3_EXECUTION_ORDER, load_phase3_plan
+from qlib_platform.research.regime import load_regime_spec
 
 
 PHASE3_PORTABLE_EVIDENCE_SCHEMA = "phase3_portable_evidence_v1"
@@ -473,7 +473,7 @@ def _verify_release(
     payloads: Mapping[str, Path],
 ) -> dict[str, Any]:
     release = _load_json(release_path, "portable DataRelease manifest")
-    from ..releases.capabilities import assert_manifest_capability
+    from qlib_platform.releases.capabilities import assert_manifest_capability
 
     assert_manifest_capability(release, "phase3")
     if str(release.get("manifestSha256") or "") != sha256_json(

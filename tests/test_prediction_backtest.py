@@ -4,18 +4,18 @@ import pandas as pd
 import pytest
 
 from qlib_platform.canonical_config import StrategySpec
-from qlib_platform.prediction_backtest import (
+from qlib_platform.backtesting.prediction_backtest import (
     _load_predictions,
     _portfolio_config,
     backtest_predictions,
 )
-from qlib_platform.prediction_snapshot import (
+from qlib_platform.artifacts.prediction_snapshot import (
     PredictionSnapshotSpec,
     load_prediction_snapshot,
     write_prediction_snapshot,
 )
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.topk_dropout import TopkDropoutPolicy
+from qlib_platform.backtesting.topk_dropout import TopkDropoutPolicy
 
 
 def test_load_predictions_normalizes_single_score_column(tmp_path):

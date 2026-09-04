@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from qlib_platform.artifacts import ArtifactContractError, ArtifactType, validate_artifact
-from qlib_platform.lean_bridge import export_lean_targets
+from qlib_platform.ops.lean_bridge import export_lean_targets
 
 
 def test_parquet_round_trip_preserves_artifact_checksum(tmp_path, governed_artifact):

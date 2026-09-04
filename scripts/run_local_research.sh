@@ -7,4 +7,4 @@ if [[ ! -x "${repo_python}" ]]; then
   exit 2
 fi
 cd "${repo_root}"
-exec "${repo_python}" -m qlib_platform.research_quickstart "$@"
+exec "${repo_python}" -m qlib_platform.research.research_quickstart "$@"

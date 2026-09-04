@@ -1,7 +1,7 @@
 """Immutable production-feedback artifacts for the research plane."""
 
-from .prediction_evaluation import evaluate_prediction_snapshot, load_prediction_evaluation
-from .realized_labels import (
+from qlib_platform.feedback.prediction_evaluation import evaluate_prediction_snapshot, load_prediction_evaluation
+from qlib_platform.feedback.realized_labels import (
     RealizedLabelSpec,
     load_realized_label_snapshot,
     write_realized_label_snapshot,

@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from qlib_platform.dataset_registry import DatasetRegistry
-from qlib_platform.lakehouse import freeze_pipeline_layers
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.lakehouse import freeze_pipeline_layers
 from qlib_platform.settings import Paths, Settings
 
 

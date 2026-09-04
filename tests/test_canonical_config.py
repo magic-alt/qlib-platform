@@ -4,7 +4,7 @@ from pathlib import Path
 
 from qlib_platform.canonical_config import DatasetSpec, PortfolioSpec, StrategySpec
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
+from qlib_platform.backtesting.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 
 def _settings(tmp_path: Path, data: dict[str, object]) -> Settings:

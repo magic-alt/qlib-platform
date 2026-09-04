@@ -7,10 +7,10 @@ import subprocess
 from pathlib import Path
 from typing import Mapping
 
-from .canonical_config import CanonicalConfig
-from .settings import Settings
-from .store import sha256_file
-from .universe import membership_fingerprint
+from qlib_platform.canonical_config import CanonicalConfig
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.data.universe import membership_fingerprint
 
 
 def sha256_json(value: object) -> str:

@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.train_select import (
+from qlib_platform.research.train_select import (
     _align_oos_labels,
     _default_splits_from_data,
     _export_daily_selections,
@@ -92,7 +92,7 @@ def test_default_splits_reserve_release_observations_and_future_trade_day(tmp_pa
         qlib_data_uri=qlib_data,
     )
     monkeypatch.setattr(
-        "qlib_platform.research_timing.PartitionStore",
+        "qlib_platform.research.research_timing.PartitionStore",
         lambda root: SimpleNamespace(list_dates=lambda dataset: dates.strftime("%Y%m%d").tolist()),
     )
 
@@ -138,7 +138,7 @@ def test_platform_benchmark_is_loaded_from_bound_release(tmp_path, monkeypatch):
         data_release_id="ds_test",
         files=lambda role: [benchmark_path] if role == "benchmark" else [],
     )
-    monkeypatch.setattr("qlib_platform.platform_release.load_platform_release", lambda value: release)
+    monkeypatch.setattr("qlib_platform.ops.platform_release.load_platform_release", lambda value: release)
 
     actual = _load_local_benchmark_series(
         settings, "SH000300", pd.DatetimeIndex(["2024-01-02", "2024-01-03"])
@@ -164,7 +164,7 @@ def test_platform_official_calendar_is_loaded_from_bound_release(tmp_path, monke
         data_release_id="ds_test",
         files=lambda role: [calendar_path] if role == "trading_calendar" else [],
     )
-    monkeypatch.setattr("qlib_platform.platform_release.load_platform_release", lambda value: release)
+    monkeypatch.setattr("qlib_platform.ops.platform_release.load_platform_release", lambda value: release)
 
     assert _official_calendar(settings).tolist() == [
         pd.Timestamp("2024-01-02"),
@@ -194,7 +194,7 @@ def test_default_splits_fail_fast_when_qlib_calendar_is_stale(tmp_path, monkeypa
         qlib_data_uri=qlib_data,
     )
     monkeypatch.setattr(
-        "qlib_platform.research_timing.PartitionStore",
+        "qlib_platform.research.research_timing.PartitionStore",
         lambda root: SimpleNamespace(list_dates=lambda dataset: raw_dates.strftime("%Y%m%d").tolist()),
     )
 
@@ -221,7 +221,7 @@ def test_default_splits_fail_fast_when_official_calendar_is_stale(tmp_path, monk
         qlib_data_uri=qlib_data,
     )
     monkeypatch.setattr(
-        "qlib_platform.research_timing.PartitionStore",
+        "qlib_platform.research.research_timing.PartitionStore",
         lambda root: SimpleNamespace(list_dates=lambda dataset: dates.strftime("%Y%m%d").tolist()),
     )
 
@@ -259,7 +259,7 @@ def test_export_daily_selections_writes_one_topn_file_per_signal_date(tmp_path, 
     )
     score = pd.Series([0.1, 0.3, 0.2, 0.5, 0.2, 0.4], index=index)
     monkeypatch.setattr(
-        "qlib_platform.train_select._selection_volatility_by_date",
+        "qlib_platform.research.train_select._selection_volatility_by_date",
         lambda selections: {
             date: pd.Series({instrument: 0.02 for instrument in selected.index})
             for date, selected in selections.items()

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from qlib_platform.quality import assert_quality, validate_raw_store
-from qlib_platform.store import PartitionStore, frame_content_sha256
+from qlib_platform.data.quality import assert_quality, validate_raw_store
+from qlib_platform.data.store import PartitionStore, frame_content_sha256
 
 
 def test_failed_partition_is_retryable(tmp_path: Path, monkeypatch):

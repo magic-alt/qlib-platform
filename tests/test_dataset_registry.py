@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
-from qlib_platform.dataset_registry import DatasetRegistry
-from qlib_platform.dataset_resolver import resolve_dataset
-from qlib_platform.dataset_resolver import pin_dataset
+from qlib_platform.datasets.dataset_manifest import verify_dataset_manifest, write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.dataset_resolver import resolve_dataset
+from qlib_platform.datasets.dataset_resolver import pin_dataset
 from qlib_platform.settings import Paths, Settings
 
 

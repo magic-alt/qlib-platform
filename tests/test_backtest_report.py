@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 from pypdf import PdfReader
 
-from qlib_platform.backtest_report import (
+from qlib_platform.backtesting.backtest_report import (
     _plot_font,
     export_holding_snapshots,
     load_run_data,

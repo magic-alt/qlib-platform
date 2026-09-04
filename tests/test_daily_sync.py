@@ -7,15 +7,15 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.client import FetchResult
-from qlib_platform.corporate_actions import CorporateActionStore
+from qlib_platform.data.sources import FetchResult
+from qlib_platform.data.corporate_actions import CorporateActionStore
 from qlib_platform import daily_sync, qlib_export
-from qlib_platform.daily_sync import DailySyncService, SingleInstanceLock
-from qlib_platform.extract import Extractor
-from qlib_platform.kline_export import build_kline
-from qlib_platform.quality import QualityResult, make_report
+from qlib_platform.data.daily_sync import DailySyncService, SingleInstanceLock
+from qlib_platform.data.ingestion import Extractor
+from qlib_platform.data.kline_export import build_kline
+from qlib_platform.data.quality import QualityResult, make_report
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.store import PartitionStore
+from qlib_platform.data.store import PartitionStore
 
 
 def _settings(tmp_path: Path) -> Settings:

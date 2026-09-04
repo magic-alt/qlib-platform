@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from qlib_platform.artifacts import ArtifactType
-from qlib_platform.lean_bridge import export_lean_targets
+from qlib_platform.ops.lean_bridge import export_lean_targets
 
 
 def test_lean_export_has_valid_checksum(tmp_path: Path, governed_artifact):

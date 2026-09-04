@@ -10,7 +10,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from qlib_platform.model_bundle import create_model_bundle, load_model_bundle, verify_model_bundle
+from qlib_platform.models.model_bundle import create_model_bundle, load_model_bundle, verify_model_bundle
 from qlib_platform.settings import Paths, Settings
 
 

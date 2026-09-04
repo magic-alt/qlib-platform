@@ -22,7 +22,7 @@ from qlib_platform.research.synthesis_study import (
     run_phase1_synthesis,
 )
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 
 def _spec():

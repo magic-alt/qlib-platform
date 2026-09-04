@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from ..lineage import sha256_json
-from ..store import sha256_file
-from .phase2_contract import assert_workstream_allowed, load_phase2_lock
-from .phase2_features import EXPERIMENT_MATRIX, feature_set
-from .phase2_statistics import evaluate_candidate
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.phase2_contract import assert_workstream_allowed, load_phase2_lock
+from qlib_platform.research.phase2_features import EXPERIMENT_MATRIX, feature_set
+from qlib_platform.research.phase2_statistics import evaluate_candidate
 
 
 _XGB_GRID = (
@@ -212,7 +212,7 @@ def write_incremental_acceptance(
     testing = lock["contract"]["multiple_testing"]
     robustness = lock["contract"]["robustness"]
 
-    from .phase2_contract import MultipleTestingSpec, RobustnessSpec
+    from qlib_platform.research.phase2_contract import MultipleTestingSpec, RobustnessSpec
 
     testing_spec = MultipleTestingSpec(**testing)
     robustness_spec = RobustnessSpec(**robustness)

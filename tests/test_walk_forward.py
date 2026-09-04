@@ -5,17 +5,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from qlib_platform.model_runtime import ModelProfile, ResolvedRuntime
-from qlib_platform.prediction_snapshot import (
+from qlib_platform.models.model_runtime import ModelProfile, ResolvedRuntime
+from qlib_platform.artifacts.prediction_snapshot import (
     PredictionSnapshotSpec,
     load_prediction_snapshot,
     prediction_snapshot_path,
     write_prediction_snapshot,
 )
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 from qlib_platform import backtest_report
-from qlib_platform.walk_forward import (
+from qlib_platform.research.walk_forward import (
     Fold,
     _aggregate_component_timings,
     _checkpoint_fingerprint,
@@ -297,17 +297,17 @@ def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_
     )
     profile = ModelProfile("test", "lightgbm", "cpu", 0, {}, "test")
     runtime = ResolvedRuntime(profile, "cpu", None, {"lightgbm": "test"})
-    monkeypatch.setattr("qlib_platform.walk_forward.load_model_profile", lambda *args, **kwargs: profile)
-    monkeypatch.setattr("qlib_platform.walk_forward.resolve_runtime", lambda value: runtime)
-    monkeypatch.setattr("qlib_platform.walk_forward.shared_research_calendar", lambda value: calendar)
+    monkeypatch.setattr("qlib_platform.research.walk_forward.load_model_profile", lambda *args, **kwargs: profile)
+    monkeypatch.setattr("qlib_platform.research.walk_forward.resolve_runtime", lambda value: runtime)
+    monkeypatch.setattr("qlib_platform.research.walk_forward.shared_research_calendar", lambda value: calendar)
     monkeypatch.setattr(
-        "qlib_platform.walk_forward.git_revision",
+        "qlib_platform.research.walk_forward.git_revision",
         lambda value: {"commit": "test-commit", "dirty": False},
     )
     monkeypatch.setattr(backtest_report, "write_backtest_report", lambda *args, **kwargs: None)
-    monkeypatch.setattr("qlib_platform.walk_forward.feature_store_enabled", lambda value: True)
+    monkeypatch.setattr("qlib_platform.research.walk_forward.feature_store_enabled", lambda value: True)
     monkeypatch.setattr(
-        "qlib_platform.walk_forward.prepare_feature_data",
+        "qlib_platform.research.walk_forward.prepare_feature_data",
         lambda *args, **kwargs: (
             pd.DataFrame(),
             {
@@ -436,7 +436,7 @@ def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         return manifest_path
 
-    monkeypatch.setattr("qlib_platform.walk_forward.train_backtest_select", fake_train)
+    monkeypatch.setattr("qlib_platform.research.walk_forward.train_backtest_select", fake_train)
 
     def fake_continuous_backtest(
         _settings: Settings,
@@ -489,7 +489,7 @@ def test_default_three_month_walk_forward_completes_when_fold_and_final_quality_
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         return manifest_path
 
-    monkeypatch.setattr("qlib_platform.walk_forward.backtest_predictions", fake_continuous_backtest)
+    monkeypatch.setattr("qlib_platform.research.walk_forward.backtest_predictions", fake_continuous_backtest)
 
     with pytest.raises(RuntimeError, match="interrupted after fold rolling_02"):
         run_walk_forward(

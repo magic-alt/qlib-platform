@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.universe import build_membership_intervals, install_qlib_universe, write_membership
-from qlib_platform.universe import build_membership_from_source_intervals
+from qlib_platform.data.universe import build_membership_intervals, install_qlib_universe, write_membership
+from qlib_platform.data.universe import build_membership_from_source_intervals
 
 
 def _settings(tmp_path):

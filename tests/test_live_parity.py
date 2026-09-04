@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from qlib_platform.live_parity import compare_research_live_scores
+from qlib_platform.runtime.live_parity import compare_research_live_scores
 
 
 def test_research_live_parity_compares_score_rank_and_topk(tmp_path: Path):

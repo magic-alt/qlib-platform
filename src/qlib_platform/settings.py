@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
-from .runtime_resources import resource_path
+from qlib_platform.runtime.runtime_resources import resource_path
 
 _ENV_PATTERN = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
 

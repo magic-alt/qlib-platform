@@ -9,7 +9,7 @@ from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from .models import NotificationEnvelope
+from qlib_platform.notifier.models import NotificationEnvelope
 
 
 class NotificationDeliveryError(RuntimeError):

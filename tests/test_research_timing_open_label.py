@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qlib_platform.research_timing import label_spec_from_settings
+from qlib_platform.research.research_timing import label_spec_from_settings
 from qlib_platform.settings import Paths, Settings
 
 

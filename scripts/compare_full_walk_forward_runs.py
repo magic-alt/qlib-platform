@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from qlib_platform.full_walk_forward_acceptance import build_full_walk_forward_acceptance
+from qlib_platform.research.full_walk_forward_acceptance import build_full_walk_forward_acceptance
 
 
 def main() -> None:

@@ -8,7 +8,7 @@ import pytest
 from qlib_platform.cli import _report_payload, main, parser
 from qlib_platform.releases.capabilities import ReleaseCapabilityError
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.standalone_status import collect_status
+from qlib_platform.runtime.standalone_status import collect_status
 
 
 def test_report_payload_omits_uncreated_minimal_report_files(tmp_path):
@@ -183,7 +183,7 @@ def test_handoff_commands_check_release_capability_before_writing_or_network(
         lambda _path: "ds_" + "a" * 64,
     )
     monkeypatch.setattr(
-        "qlib_platform.trade_plan.resolve_selection_path",
+        "qlib_platform.backtesting.trade_plan.resolve_selection_path",
         lambda *_args, **_kwargs: tmp_path / "selection.csv",
     )
     monkeypatch.setattr(

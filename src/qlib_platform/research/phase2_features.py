@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 import pandas as pd
 
-from ..lineage import sha256_json
+from qlib_platform.lineage import sha256_json
 
 
 BENCHMARK_FAMILIES: dict[str, tuple[str, ...]] = {

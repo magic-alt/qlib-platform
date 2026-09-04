@@ -12,7 +12,7 @@ repeatable acceptance/build tool that is not duplicated by the main CLI.
 - **STATE-CHANGING** `register_tushare_daily_sync_task.ps1`: register the Windows scheduled task that
   invokes the daily-sync runner. Supports `-WhatIf` for validation.
 - **READ-ONLY RENDER** `render_standalone_scheduler.py`: render the supported systemd or cron scheduler
-  assets through `qlib_platform.scheduler`.
+  assets through `qlib_platform.runtime.scheduler`.
 - **ENVIRONMENT-CHANGING** `build_lightgbm_opencl_windows.ps1`: build and verify the pinned native Windows
   LightGBM OpenCL backend using the repository-local Python interpreter.
 
@@ -21,11 +21,11 @@ repeatable acceptance/build tool that is not duplicated by the main CLI.
 - **CONVENIENCE WRAPPER** `run_local_research.ps1`: Windows wrapper for the local-data research quickstart.
 - **CONVENIENCE WRAPPER** `run_local_research.sh`: macOS/Linux wrapper for the same CLI; invoke with `bash` when the
   checkout does not preserve the executable bit.
-- **REPORTING CLI** `<repo-python> -m qlib_platform.research_summary <research_matrix.json>`: combine signal and
+- **REPORTING CLI** `<repo-python> -m qlib_platform.research.research_summary <research_matrix.json>`: combine signal and
   prediction-only portfolio evidence into one IC/RankIC/ICIR/RankICIR/ExcessIR/MDD/turnover/cost comparison.
 
 The wrappers do not implement a second research engine. They call
-`python -m qlib_platform.research_quickstart`, which reuses the existing `bootstrap`, DatasetVersion verification,
+`python -m qlib_platform.research.research_quickstart`, which reuses the existing `bootstrap`, DatasetVersion verification,
 `train-select`, `research-run`, `runtime-probe`, and `backtest-predictions` implementations. See
 `docs/local_research_quickstart.md`.
 

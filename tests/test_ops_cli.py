@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.ops_cli import export_daily_ops
-from qlib_platform.ops_state import DeliveryStatus, OpsState, RunStatus
+from qlib_platform.ops.ops_cli import export_daily_ops
+from qlib_platform.ops.ops_state import DeliveryStatus, OpsState, RunStatus
 from qlib_platform.settings import Paths, Settings
 
 

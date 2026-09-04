@@ -9,7 +9,7 @@ import pytest
 
 from qlib_platform.cli import parser
 from qlib_platform.lineage import sha256_json
-from qlib_platform.prediction_snapshot import (
+from qlib_platform.artifacts.prediction_snapshot import (
     PredictionSnapshotSpec,
     prediction_snapshot_path,
     write_prediction_snapshot,
@@ -19,7 +19,7 @@ from qlib_platform.research.phase2_contract import write_phase2_contract_lock
 from qlib_platform.research.phase2_features import BENCHMARK_FAMILIES, EXPERIMENT_MATRIX, feature_set
 from qlib_platform.research.phase2_hypotheses import hypothesis_definition_sha256
 from qlib_platform.research.phase2_program import write_incremental_acceptance
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 
 HYPOTHESIS_FEATURE_SETS = {

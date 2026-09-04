@@ -6,11 +6,11 @@ from typing import Any, Mapping
 
 import pandas as pd
 
-from ..data_release import DataRelease, MARKET_IMPORT_PROFILE, QLIB_IMPORT_PROFILE
-from ..dataset_registry import DatasetRegistry
-from ..settings import Settings
-from .file_store import FileReleaseStore
-from .publisher import release_store_root
+from qlib_platform.datasets.data_release import DataRelease, MARKET_IMPORT_PROFILE, QLIB_IMPORT_PROFILE
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.settings import Settings
+from qlib_platform.releases.file_store import FileReleaseStore
+from qlib_platform.releases.publisher import release_store_root
 
 
 class ReleaseCapabilityError(ValueError):
@@ -86,13 +86,13 @@ def require_release_capability(
 
 
 def data_release_id_from_manifest(manifest: Mapping[str, Any]) -> str:
-    from ..research_bundle_export import resolve_data_release_id
+    from qlib_platform.artifacts.research_bundle_export import resolve_data_release_id
 
     return resolve_data_release_id(manifest, None)
 
 
 def data_release_id_from_artifact(path: str | Path) -> str:
-    from ..artifacts import ArtifactType, load_artifact_manifest, validate_artifact
+    from qlib_platform.artifacts import ArtifactType, load_artifact_manifest, validate_artifact
 
     source = Path(path).expanduser().resolve()
     frame = pd.read_csv(source)

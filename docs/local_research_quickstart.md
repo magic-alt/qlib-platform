@@ -24,7 +24,7 @@ remain the authoritative implementations.
 The repository now has one discoverable local-research entry point:
 
 ```text
-<repo-python> -m qlib_platform.research_quickstart COMMAND
+<repo-python> -m qlib_platform.research.research_quickstart COMMAND
 ```
 
 After editable/wheel installation, the equivalent console entry point is `tq-research`. Repository development and
@@ -45,7 +45,7 @@ The main commands are:
 A separate comparison command summarizes completed matrix evidence:
 
 ```text
-<repo-python> -m qlib_platform.research_summary <research_matrix.json>
+<repo-python> -m qlib_platform.research.research_summary <research_matrix.json>
 ```
 
 It produces IC, RankIC, ICIR, RankICIR, ExcessIR, max drawdown, turnover when available, and cost in one table without
@@ -386,14 +386,14 @@ Run `multifactor_core_v1` with the same interface:
 After a completed quickstart matrix, generate the comparison table:
 
 ```powershell
-& $RepoPython -m qlib_platform.research_summary `
+& $RepoPython -m qlib_platform.research.research_summary `
   data\output\quickstart\<RUN>\research_matrix.json
 ```
 
 macOS/Linux:
 
 ```bash
-$RepoPython -m qlib_platform.research_summary \
+$RepoPython -m qlib_platform.research.research_summary \
   data/output/quickstart/<RUN>/research_matrix.json
 ```
 
@@ -655,7 +655,7 @@ $RepoPython = '.\.venv\Scripts\python.exe'
 .\scripts\run_local_research.ps1 matrix
 
 # Compare the completed matrix
-& $RepoPython -m qlib_platform.research_summary data\output\quickstart\<RUN>\research_matrix.json
+& $RepoPython -m qlib_platform.research.research_summary data\output\quickstart\<RUN>\research_matrix.json
 
 # Walk-forward after narrowing the recipe
 .\scripts\run_local_research.ps1 run --mode walk-forward --alpha-pack alpha158_pit_v1 --model lightgbm

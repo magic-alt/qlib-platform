@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from qlib_platform.dataset_registry import DatasetRegistry
-from qlib_platform.runtime_resources import resource_path
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.runtime.runtime_resources import resource_path
 from qlib_platform.settings import Settings
 
 

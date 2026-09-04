@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from qlib_platform.execution_audit import reconcile_execution, require_reconciliation
+from qlib_platform.backtesting.execution_audit import reconcile_execution, require_reconciliation
 
 
 def _audit() -> pd.DataFrame:

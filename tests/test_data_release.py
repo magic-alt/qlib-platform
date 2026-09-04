@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from tests.test_platform_release import _settings, _write_release
-from qlib_platform.data_release import load_data_release
-from qlib_platform.dataset_manifest import write_dataset_manifest
-from qlib_platform.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.data_release import load_data_release
+from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
 from qlib_platform.releases import FileReleaseStore
 
 

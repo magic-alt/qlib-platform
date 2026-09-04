@@ -7,9 +7,9 @@ from typing import Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from .factor_taxonomy import FactorTaxonomy
-from .feature_diagnostics import newey_west_t, normalize_oos_labels
-from .regime import RegimeSpec
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy
+from qlib_platform.research.feature_diagnostics import newey_west_t, normalize_oos_labels
+from qlib_platform.research.regime import RegimeSpec
 
 
 @dataclass(frozen=True)

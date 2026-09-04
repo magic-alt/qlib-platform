@@ -1,7 +1,7 @@
 """Data ingestion, storage contracts, and provider adapters."""
 
-from .ingestion import Extractor
-from .sources import (
+from qlib_platform.data.ingestion import Extractor
+from qlib_platform.data.sources import (
     DataSourceBinding,
     DataSourceClient,
     FetchResult,

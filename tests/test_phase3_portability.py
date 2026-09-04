@@ -18,7 +18,7 @@ from qlib_platform.research.phase3_portability import (
     verify_phase3_portable_evidence,
 )
 from qlib_platform.research.phase3_program import write_phase3_experiment_plan
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 from tests._phase3_helpers import phase3_entry_fixture
 

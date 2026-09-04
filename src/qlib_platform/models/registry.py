@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base import ModelAdapter
+from qlib_platform.models.base import ModelAdapter
 
 
 _MODEL_REGISTRY: dict[str, ModelAdapter] = {}
@@ -28,10 +28,10 @@ def model_families() -> tuple[str, ...]:
     return tuple(sorted(_MODEL_REGISTRY))
 
 
-from .adapters.lightgbm import LightGBMAdapter  # noqa: E402
-from .adapters.pytorch_dnn import PyTorchDNNAdapter  # noqa: E402
-from .adapters.ridge import RidgeAdapter  # noqa: E402
-from .adapters.xgboost import XGBoostAdapter  # noqa: E402
+from qlib_platform.models.adapters.lightgbm import LightGBMAdapter  # noqa: E402
+from qlib_platform.models.adapters.pytorch_dnn import PyTorchDNNAdapter  # noqa: E402
+from qlib_platform.models.adapters.ridge import RidgeAdapter  # noqa: E402
+from qlib_platform.models.adapters.xgboost import XGBoostAdapter  # noqa: E402
 
 
 for _adapter in (RidgeAdapter(), LightGBMAdapter(), XGBoostAdapter(), PyTorchDNNAdapter()):

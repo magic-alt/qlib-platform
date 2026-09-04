@@ -1,6 +1,6 @@
 import pytest
 
-from qlib_platform.symbols import qlib_to_ts, ts_to_qlib
+from qlib_platform.data.symbols import qlib_to_ts, ts_to_qlib
 
 
 def test_symbol_round_trip():

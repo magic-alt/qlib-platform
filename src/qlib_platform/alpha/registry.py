@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from typing import Mapping
 
-from .base import AlphaPackSpec
-from ..fundamentals import PIT_FIELDS, PIT_FIELDS_V2
-from ..settings import Settings
+from qlib_platform.alpha.base import AlphaPackSpec
+from qlib_platform.data.fundamentals import PIT_FIELDS, PIT_FIELDS_V2
+from qlib_platform.settings import Settings
 
 
 _BASE_FIELDS = (

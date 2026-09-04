@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.platform_release import (
+from qlib_platform.ops.platform_release import (
     REQUIRED_RESEARCH_COMPONENTS,
     QLIB_RESEARCH_PROFILE,
     QLIB_RESEARCH_PROFILE_V2,

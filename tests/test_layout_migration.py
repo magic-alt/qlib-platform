@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import qlib_platform.layout_migration as migration_module
-from qlib_platform.dataset_registry import DatasetRegistry
-from qlib_platform.layout_migration import LayoutMigrator
+import qlib_platform.datasets.layout_migration as migration_module
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.layout_migration import LayoutMigrator
 from qlib_platform.settings import Paths, Settings
 
 

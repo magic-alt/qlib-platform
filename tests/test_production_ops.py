@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from qlib_platform.ops_state import OPS_SCHEMA_VERSION, DeliveryStatus, OpsState
+from qlib_platform.ops.ops_state import OPS_SCHEMA_VERSION, DeliveryStatus, OpsState
 
 
 def _deployment(identifier: str) -> dict[str, object]:

@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.research_summary import render_markdown, summarize_matrix
+from qlib_platform.research.research_summary import render_markdown, summarize_matrix
 
 
 def test_summary_combines_signal_and_prediction_portfolio_metrics(tmp_path: Path) -> None:

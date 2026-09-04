@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from qlib_platform.bootstrap import bootstrap
-from qlib_platform.data_source_resolver import ReleaseSelectionRequired
+from qlib_platform.datasets.data_source_resolver import ReleaseSelectionRequired
 from qlib_platform.settings import Paths, Settings
 
 

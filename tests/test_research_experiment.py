@@ -4,9 +4,9 @@ import pytest
 
 from qlib_platform.alpha import get_alpha_pack
 from qlib_platform.canonical_config import CanonicalConfig
-from qlib_platform.model_runtime import ModelProfile, ResolvedRuntime
-from qlib_platform.research_experiment import ResearchExperimentSpec
-from qlib_platform.research_timing import LabelSpec
+from qlib_platform.models.model_runtime import ModelProfile, ResolvedRuntime
+from qlib_platform.research.research_experiment import ResearchExperimentSpec
+from qlib_platform.research.research_timing import LabelSpec
 from qlib_platform.settings import Paths, Settings
 
 

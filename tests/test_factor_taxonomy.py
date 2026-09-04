@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.custom_handler import TushareAlpha158Fundamental
+from qlib_platform.data.custom_handler import TushareAlpha158Fundamental
 from qlib_platform.research.factor_taxonomy import load_factor_taxonomy
 
 

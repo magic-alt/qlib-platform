@@ -4,10 +4,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..lineage import sha256_json
-from ..store import sha256_file
-from .phase2_contract import load_phase2_lock
-from .phase2_features import HYPOTHESIS_FEATURE_SETS, HypothesisFeatureSetSpec
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.phase2_contract import load_phase2_lock
+from qlib_platform.research.phase2_features import HYPOTHESIS_FEATURE_SETS, HypothesisFeatureSetSpec
 
 
 @dataclass(frozen=True)

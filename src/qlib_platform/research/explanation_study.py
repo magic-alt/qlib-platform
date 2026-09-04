@@ -13,16 +13,16 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from ..feature_store import FEATURE_STORE_SCHEMA, load_feature_store
-from ..full_walk_forward_acceptance import RunEvidence
-from ..lineage import git_revision, sha256_json
-from ..processor_state import processor_state_manifest
-from ..settings import Settings
-from ..store import sha256_file
-from .attribution_study import ATTRIBUTION_STUDY_SCHEMA
-from .factor_taxonomy import load_factor_taxonomy
-from .feature_diagnostics import feature_columns
-from .model_explanation import (
+from qlib_platform.research.feature_store import FEATURE_STORE_SCHEMA, load_feature_store
+from qlib_platform.research.full_walk_forward_acceptance import RunEvidence
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.data.processor_state import processor_state_manifest
+from qlib_platform.settings import Settings
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.attribution_study import ATTRIBUTION_STUDY_SCHEMA
+from qlib_platform.research.factor_taxonomy import load_factor_taxonomy
+from qlib_platform.research.feature_diagnostics import feature_columns
+from qlib_platform.research.model_explanation import (
     derive_explanation_stability,
     derive_model_explanation_summary,
     derive_ridge_importance,
@@ -32,8 +32,8 @@ from .model_explanation import (
     load_model_explanation_spec,
     shap_summary_rows,
 )
-from .regime_study import REGIME_STUDY_SCHEMA
-from .study import STUDY_SCHEMA, _mapping
+from qlib_platform.research.regime_study import REGIME_STUDY_SCHEMA
+from qlib_platform.research.study import STUDY_SCHEMA, _mapping
 
 
 EXPLANATION_STUDY_SCHEMA = "alpha_model_explanation_study_v1"
@@ -340,7 +340,7 @@ def _load_fold_inputs(
 
 
 def _universe_filter(config: Mapping[str, Any]) -> Any:
-    from ..processors import AshareUniverseFilter
+    from qlib_platform.data.processors import AshareUniverseFilter
 
     return AshareUniverseFilter(
         min_listed_days=int(str(config.get("min_listed_days", 120))),
@@ -357,7 +357,7 @@ def _replay_processors(
     component_manifest: Mapping[str, Any],
 ) -> pd.DataFrame:
     from qlib.data.dataset.processor import CSRankNorm, DropnaLabel, Fillna, RobustZScoreNorm
-    from ..processors import ProcessInfSingleThread
+    from qlib_platform.data.processors import ProcessInfSingleThread
 
     canonical = _mapping(component_manifest.get("canonicalConfig"), "component canonical config")
     dataset = _mapping(canonical.get("dataset"), "component dataset config")

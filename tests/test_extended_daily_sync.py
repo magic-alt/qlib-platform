@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from qlib_platform.client import FetchResult
-from qlib_platform.extended_parallel import FastExtendedDataBackfill
+from qlib_platform.data.sources import FetchResult
+from qlib_platform.data.extended_parallel import FastExtendedDataBackfill
 from qlib_platform.settings import Settings
-from qlib_platform.store import PartitionStore
+from qlib_platform.data.store import PartitionStore
 
 
 class _Client:

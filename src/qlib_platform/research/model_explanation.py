@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from ..lineage import sha256_json
-from ..store import sha256_file
-from .factor_taxonomy import FactorTaxonomy
+from qlib_platform.lineage import sha256_json
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.factor_taxonomy import FactorTaxonomy
 
 
 EXPLANATION_SCHEMA = "ashare_model_explanation_v1"

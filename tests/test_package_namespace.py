@@ -10,7 +10,7 @@ def test_provider_neutral_package_is_canonical():
 
 def test_legacy_namespace_resolves_canonical_modules():
     legacy = importlib.import_module("qlib_platform")
-    module = importlib.import_module("qlib_platform.strategy_contract")
+    module = importlib.import_module("qlib_platform.backtesting.strategy_contract")
 
     assert legacy.__version__ == "0.3.0"
     assert module.__file__ is not None

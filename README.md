@@ -299,14 +299,14 @@ Use `.\scripts\run_local_research.ps1 plan ...` or add `--dry-run` before an exp
 After a completed run or matrix, use the repository-local interpreter so the summary command does not depend on shell `PATH`:
 
 ```powershell
-& $RepoPython -m qlib_platform.research_summary `
+& $RepoPython -m qlib_platform.research.research_summary `
   data\output\quickstart\<RUN>\research_matrix.json
 ```
 
 Equivalent macOS/Linux invocation:
 
 ```bash
-$RepoPython -m qlib_platform.research_summary \
+$RepoPython -m qlib_platform.research.research_summary \
   data/output/quickstart/<RUN>/research_matrix.json
 ```
 

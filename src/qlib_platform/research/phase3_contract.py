@@ -9,13 +9,13 @@ from typing import Any, Mapping, Sequence, cast
 import pandas as pd
 import yaml
 
-from ..lineage import git_revision, sha256_json
-from ..prediction_snapshot import load_prediction_snapshot
-from ..store import sha256_file
-from .phase2_features import EXPERIMENT_MATRIX, feature_set
-from .phase2_data_acceptance import REQUIRED_V2_ACCEPTANCE_CHECKS
-from .phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
-from .regime import load_regime_spec
+from qlib_platform.lineage import git_revision, sha256_json
+from qlib_platform.artifacts.prediction_snapshot import load_prediction_snapshot
+from qlib_platform.data.store import sha256_file
+from qlib_platform.research.phase2_features import EXPERIMENT_MATRIX, feature_set
+from qlib_platform.research.phase2_data_acceptance import REQUIRED_V2_ACCEPTANCE_CHECKS
+from qlib_platform.research.phase2_program import PHASE2_INCREMENTAL_CANDIDATE_FAMILY
+from qlib_platform.research.regime import load_regime_spec
 
 
 PHASE3_SCHEMA = "ashare_phase3_v1"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from qlib_platform.failure_codes import FailureCode, classify_failure
+from qlib_platform.runtime.failure_codes import FailureCode, classify_failure
 
 
 def test_failure_codes_are_stable_research_business_codes():

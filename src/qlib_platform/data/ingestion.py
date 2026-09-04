@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 from loguru import logger
 
-from .._extract_legacy import (
+from qlib_platform.data._legacy_ingestion import (
     ADJ_FIELDS,
     BASIC_FIELDS,
     DAILY_FIELDS,
@@ -17,10 +17,10 @@ from .._extract_legacy import (
     Endpoint,
     Extractor as _LegacyExtractor,
 )
-from ..quality import assert_quality, validate_raw_day, write_report
-from ..store import PartitionStore
-from .sources import RetryPolicy, create_data_source
-from .sources.mysql import build_lean_canonical_range_endpoints
+from qlib_platform.data.quality import assert_quality, validate_raw_day, write_report
+from qlib_platform.data.store import PartitionStore
+from qlib_platform.data.sources import RetryPolicy, create_data_source
+from qlib_platform.data.sources.mysql import build_lean_canonical_range_endpoints
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

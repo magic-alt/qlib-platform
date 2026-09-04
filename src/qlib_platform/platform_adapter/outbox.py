@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from ..content_store import ContentAddressedStore
-from ..store import sha256_file
+from qlib_platform.data.content_store import ContentAddressedStore
+from qlib_platform.data.store import sha256_file
 
 
 @dataclass(frozen=True)

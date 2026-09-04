@@ -6,10 +6,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.daily_signal_runner import run_daily_signal
-from qlib_platform.live_inference import LiveInferenceResult
+from qlib_platform.runtime.daily_signal_runner import run_daily_signal
+from qlib_platform.runtime.live_inference import LiveInferenceResult
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.signal_health import SignalHealthReport
+from qlib_platform.runtime.signal_health import SignalHealthReport
 
 
 def test_missing_notifier_config_records_failed_run(tmp_path: Path, monkeypatch):
@@ -23,7 +23,7 @@ def test_missing_notifier_config_records_failed_run(tmp_path: Path, monkeypatch)
     )
     settings.paths.mkdirs()
     monkeypatch.setattr(
-        "qlib_platform.daily_signal_runner.feishu_notifier_from_environment",
+        "qlib_platform.runtime.daily_signal_runner.feishu_notifier_from_environment",
         lambda: (_ for _ in ()).throw(ValueError("FEISHU_WEBHOOK_URL is required")),
     )
 
@@ -76,15 +76,15 @@ def test_daily_signal_full_call_path_is_idempotent(tmp_path: Path, monkeypatch):
             sent.append(envelope)
 
     monkeypatch.setattr(
-        "qlib_platform.daily_signal_runner.run_daily_sync",
+        "qlib_platform.runtime.daily_signal_runner.run_daily_sync",
         lambda value, as_of: calls.append(("sync", as_of)),
     )
     monkeypatch.setattr(
-        "qlib_platform.daily_signal_runner.run_live_inference",
+        "qlib_platform.runtime.daily_signal_runner.run_live_inference",
         lambda value, **kwargs: calls.append(("inference", kwargs["as_of"])) or _live_result(tmp_path),
     )
     monkeypatch.setattr(
-        "qlib_platform.daily_signal_runner.feishu_notifier_from_environment", lambda: Notifier()
+        "qlib_platform.runtime.daily_signal_runner.feishu_notifier_from_environment", lambda: Notifier()
     )
 
     run_daily_signal(settings, as_of="2026-08-10")
@@ -124,10 +124,10 @@ def test_daily_sync_failure_produces_domain_alert(tmp_path: Path, monkeypatch):
             sent.append(envelope)
 
     monkeypatch.setattr(
-        "qlib_platform.daily_signal_runner.feishu_notifier_from_environment", lambda: Notifier()
+        "qlib_platform.runtime.daily_signal_runner.feishu_notifier_from_environment", lambda: Notifier()
     )
     monkeypatch.setattr(
-        "qlib_platform.daily_signal_runner.run_daily_sync",
+        "qlib_platform.runtime.daily_signal_runner.run_daily_sync",
         lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("upstream timeout")),
     )
 

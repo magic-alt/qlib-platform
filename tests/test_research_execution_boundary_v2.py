@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from qlib_platform.institutional_artifacts import ResearchArtifactType, ResearchPromotionStatus
+from qlib_platform.artifacts.institutional_artifacts import ResearchArtifactType, ResearchPromotionStatus
 
 
 ROOT = Path(__file__).resolve().parents[1]

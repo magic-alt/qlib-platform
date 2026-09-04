@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 from ruamel.yaml import YAML
 
-from qlib_platform.backtest_report import export_holding_snapshots, write_backtest_report
+from qlib_platform.backtesting.backtest_report import export_holding_snapshots, write_backtest_report
 from qlib_platform.settings import Paths, Settings
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.model_runtime import (
+from qlib_platform.models.model_runtime import (
     ModelProfile,
     ResolvedRuntime,
     StageTimings,

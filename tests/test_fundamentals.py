@@ -5,15 +5,15 @@ from types import ModuleType
 import pandas as pd
 import pytest
 
-from qlib_platform.custom_handler import (
+from qlib_platform.data.custom_handler import (
     PIT_FEATURE_EXPRESSIONS,
     PIT_FEATURE_NAMES,
     TushareAlpha158Daily,
     TushareAlpha158Fundamental,
 )
-from qlib_platform.fundamentals import PIT_FIELDS, build_pit_fundamentals
-from qlib_platform.normalize import _merge_pit_fundamentals
-from qlib_platform.qlib_export import smoke_test_dataset
+from qlib_platform.data.fundamentals import PIT_FIELDS, build_pit_fundamentals
+from qlib_platform.data.normalize import _merge_pit_fundamentals
+from qlib_platform.datasets.qlib_export import smoke_test_dataset
 from qlib_platform.settings import Paths, Settings
 
 

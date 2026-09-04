@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.dataset_registry import DatasetRegistry
+from qlib_platform.datasets.dataset_registry import DatasetRegistry
 from qlib_platform.releases import (
     FileReleaseStore,
     LocalReleasePublisher,

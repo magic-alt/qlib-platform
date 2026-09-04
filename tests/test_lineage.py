@@ -9,7 +9,7 @@ import pytest
 from qlib_platform import lineage as lineage_module
 from qlib_platform.lineage import build_lineage, dirty_research_override_enabled, resolve_qlib_repo
 from qlib_platform.settings import Paths, Settings
-from qlib_platform.store import sha256_file
+from qlib_platform.data.store import sha256_file
 
 
 def _settings(tmp_path: Path, *, allow_dirty_research: bool = False) -> Settings:

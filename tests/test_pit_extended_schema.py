@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from qlib_platform.fundamentals import build_pit_from_extended
+from qlib_platform.data.fundamentals import build_pit_from_extended
 from qlib_platform.settings import Paths, Settings
 
 
