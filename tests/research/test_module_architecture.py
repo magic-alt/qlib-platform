@@ -9,6 +9,7 @@ RESEARCH = ROOT / "src" / "qlib_platform" / "research"
 LEGACY_IMPORT = re.compile(r"qlib_platform\.research\.phase[123]_")
 LEGACY_COMMAND = re.compile(r"phase[123]-")
 LEGACY_IDENTIFIER = re.compile(r"^phase[123](?:_|$)", re.IGNORECASE)
+LEGACY_MODULE_FILE = re.compile(r"(?:src/)?qlib_platform/research/phase[123]_[A-Za-z0-9_.-]*\.py")
 
 
 def _text_files(root: Path):
@@ -54,6 +55,15 @@ def test_repository_has_no_legacy_research_module_imports() -> None:
     for path in _text_files(ROOT):
         text = path.read_text(encoding="utf-8")
         if LEGACY_IMPORT.search(text):
+            offenders.append(path.relative_to(ROOT).as_posix())
+    assert offenders == []
+
+
+def test_repository_has_no_deleted_phase_module_file_references() -> None:
+    offenders = []
+    for path in _text_files(ROOT):
+        text = path.read_text(encoding="utf-8")
+        if LEGACY_MODULE_FILE.search(text):
             offenders.append(path.relative_to(ROOT).as_posix())
     assert offenders == []
 

@@ -57,7 +57,7 @@ def _dataset_snapshot(settings: Settings) -> dict[str, object]:
 
 def _contract(settings: Settings, start_time: str, end_time: str) -> dict[str, object]:
     del start_time, end_time
-    package_root = Path(__file__).resolve().parents[1]
+    package_root = Path(__file__).resolve().parents[2]
     snapshot = _dataset_snapshot(settings)
     pack = alpha_pack_from_settings(settings)
     # Only feature-defining implementation belongs in the raw-feature recipe.

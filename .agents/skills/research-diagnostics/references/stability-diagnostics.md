@@ -7,11 +7,11 @@ Before acting, read:
 - `docs/research_infrastructure_certification.md`
 - `docs/alpha_research_stability.md`
 - `configs/research/ashare_stability_diagnostics_v1.yaml`
-- `src/qlib_platform/research/phase3_contract.py`
-- `src/qlib_platform/research/phase3_program.py`
-- `src/qlib_platform/research/phase3_diagnostics.py`
-- `src/qlib_platform/research/phase3_portability.py`
-- the applicable `tests/test_phase3_*.py` files
+- `src/qlib_platform/research/contracts/stability_program.py`
+- `src/qlib_platform/research/workflow/stability_program.py`
+- `src/qlib_platform/research/diagnostics/stability.py`
+- `src/qlib_platform/research/diagnostics/portability.py`
+- the applicable `tests/test_stability_*.py` files
 - `tests/failure_injection/test_stability_contract_failures.py`
 
 Phase 3-D is diagnostics only. The permitted scope is P3-D00 through P3-D04:

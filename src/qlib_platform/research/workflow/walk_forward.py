@@ -445,18 +445,18 @@ def _training_checkpoint_fingerprint(
     runtime_fingerprint: str,
 ) -> str:
     dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
-    package_root = Path(__file__).resolve().parents[1]
-    source_files = [
-        Path(__file__),
-        package_root / "data" / "custom_handler.py",
-        package_root / "data" / "processors.py",
-        package_root / "research" / "research_timing.py",
-        package_root / "models" / "model_runtime.py",
-        package_root / "data" / "processor_state.py",
-        package_root / "research" / "train_select.py",
-        package_root / "artifacts" / "prediction_snapshot.py",
-        package_root / "research" / "walk_forward_acceptance.py",
-    ]
+    package_root = Path(__file__).resolve().parents[2]
+    source_files = {
+        "research/workflow/walk_forward.py": Path(__file__).resolve(),
+        "data/custom_handler.py": package_root / "data" / "custom_handler.py",
+        "data/processors.py": package_root / "data" / "processors.py",
+        "research/workflow/timing.py": package_root / "research" / "workflow" / "timing.py",
+        "models/model_runtime.py": package_root / "models" / "model_runtime.py",
+        "data/processor_state.py": package_root / "data" / "processor_state.py",
+        "research/workflow/train_select.py": package_root / "research" / "workflow" / "train_select.py",
+        "artifacts/prediction_snapshot.py": package_root / "artifacts" / "prediction_snapshot.py",
+        "research/evaluation/walk_forward.py": package_root / "research" / "evaluation" / "walk_forward.py",
+    }
     research = settings.data.get("research", {})
     research = research if isinstance(research, dict) else {}
     payload = {
@@ -477,7 +477,7 @@ def _training_checkpoint_fingerprint(
         "universeMembershipSha256": membership_fingerprint(settings),
         "qlibCommit": git_revision(resolve_qlib_repo(settings.qlib_repo)).get("commit"),
         "featureImplementationSha256": {
-            path.name: sha256_file(path) for path in source_files if path.is_file()
+            name: sha256_file(path) for name, path in source_files.items() if path.is_file()
         },
         "labelHorizonDays": _research_label_horizon_days(settings),
     }
@@ -513,7 +513,7 @@ def _portfolio_checkpoint_fingerprint(
             )
         },
         "portfolioImplementationSha256": sha256_file(
-            Path(__file__).resolve().parents[1] / "backtesting" / "prediction_backtest.py"
+            Path(__file__).resolve().parents[2] / "backtesting" / "prediction_backtest.py"
         ),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()

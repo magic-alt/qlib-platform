@@ -59,7 +59,7 @@ def _candidate(candidate_id: str = "candidate-1") -> dict[str, object]:
 
 def _contract_lock(tmp_path: Path) -> Path:
     return write_candidate_contract_lock(
-        phase1_manifest=_phase1(tmp_path / "phase1.json"),
+        synthesis_manifest=_phase1(tmp_path / "phase1.json"),
         contract_path="configs/research/ashare_candidate_research_v1.yaml",
         output=tmp_path / "contract-lock.json",
     )

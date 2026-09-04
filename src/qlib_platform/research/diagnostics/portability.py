@@ -14,7 +14,7 @@ from qlib_platform.artifacts.prediction_snapshot import _identity
 from qlib_platform.data.store import sha256_file
 from qlib_platform.research.workflow.candidate_program import INCREMENTAL_CANDIDATE_FAMILY
 from qlib_platform.research.contracts.stability_program import (
-    PHASE2_EVIDENCE_SCHEMA,
+    CANDIDATE_EVIDENCE_SCHEMA,
     _contains_final_holdout,
     _mapping,
     _sequence,
@@ -775,7 +775,10 @@ def verify_stability_portable_evidence(package_root: str | Path) -> dict[str, An
     acceptance = _validate_candidate_acceptance(acceptance_path, str(lock.get("predecessorProgram") or ""))
     evidence = _load_json(evidence_path, "portable Phase 2 evidence index")
     collector = _load_json(collector_path, "portable Phase 2 candidate metrics")
-    if evidence.get("schemaVersion") != PHASE2_EVIDENCE_SCHEMA or evidence.get("finalHoldout") is not False:
+    if (
+        evidence.get("schemaVersion") != CANDIDATE_EVIDENCE_SCHEMA
+        or evidence.get("finalHoldout") is not False
+    ):
         raise ValueError("portable Phase 2 evidence isolation state drift")
     if collector.get("collectorSha256") != sha256_json(
         {key: value for key, value in collector.items() if key != "collectorSha256"}

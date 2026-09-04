@@ -10,7 +10,7 @@ from qlib_platform.research.artifacts.io import write_immutable_json
 from qlib_platform.research.contracts.stability_program import load_stability_lock
 
 
-PHASE3_PLAN_SCHEMA = "phase3_diagnostic_plan_v1"
+STABILITY_PLAN_SCHEMA = "phase3_diagnostic_plan_v1"
 STABILITY_EXECUTION_ORDER = ("P3-D00", "P3-D01", "P3-D02", "P3-D03", "P3-D04")
 
 
@@ -19,7 +19,7 @@ def load_stability_plan(path: str | Path, *, contract_lock_sha256: str | None = 
     if not source.is_file():
         raise FileNotFoundError(f"Phase 3 diagnostic plan is missing: {source}")
     payload = json.loads(source.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or payload.get("schemaVersion") != PHASE3_PLAN_SCHEMA:
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != STABILITY_PLAN_SCHEMA:
         raise ValueError("unsupported Phase 3 diagnostic plan")
     recorded = str(payload.get("planSha256") or "")
     actual = sha256_json({key: value for key, value in payload.items() if key != "planSha256"})
@@ -101,7 +101,7 @@ def write_stability_experiment_plan(*, contract_lock: str | Path, output: str | 
         },
     ]
     payload: dict[str, Any] = {
-        "schemaVersion": PHASE3_PLAN_SCHEMA,
+        "schemaVersion": STABILITY_PLAN_SCHEMA,
         "programId": lock["programId"],
         "contractLock": {
             "path": str(source),

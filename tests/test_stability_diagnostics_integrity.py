@@ -24,7 +24,7 @@ def _existing_bundle(tmp_path: Path) -> tuple[Path, Path, dict[str, object], Pat
     acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path / "entry")
     lock_path = write_stability_contract_lock(
         candidate_acceptance=acceptance,
-        phase2_evidence=evidence,
+        candidate_evidence=evidence,
         candidate_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_stability_diagnostics_v1.yaml",
         output=tmp_path / "phase3-lock.json",

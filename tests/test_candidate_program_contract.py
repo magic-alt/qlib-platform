@@ -52,7 +52,7 @@ def test_repository_phase2_contract_freezes_research_protocol():
 @pytest.mark.parametrize("recommendation", sorted(RECOMMENDATION_ROUTES))
 def test_phase1_recommendation_strictly_routes_workstreams(tmp_path: Path, recommendation: str):
     lock_path = write_candidate_contract_lock(
-        phase1_manifest=_phase1(tmp_path / "phase1.json", recommendation),
+        synthesis_manifest=_phase1(tmp_path / "phase1.json", recommendation),
         contract_path="configs/research/ashare_candidate_research_v1.yaml",
         output=tmp_path / "phase2-lock.json",
     )
@@ -66,7 +66,7 @@ def test_phase1_recommendation_strictly_routes_workstreams(tmp_path: Path, recom
 
 def test_workstream_gate_fails_closed(tmp_path: Path):
     lock_path = write_candidate_contract_lock(
-        phase1_manifest=_phase1(tmp_path / "phase1.json", "NO_GO_NEW_ALPHA"),
+        synthesis_manifest=_phase1(tmp_path / "phase1.json", "NO_GO_NEW_ALPHA"),
         contract_path="configs/research/ashare_candidate_research_v1.yaml",
         output=tmp_path / "phase2-lock.json",
     )
@@ -85,7 +85,7 @@ def test_phase2_rejects_incomplete_or_holdout_using_phase1(tmp_path: Path):
 
     with pytest.raises(ValueError, match="isolation"):
         write_candidate_contract_lock(
-            phase1_manifest=source,
+            synthesis_manifest=source,
             contract_path="configs/research/ashare_candidate_research_v1.yaml",
             output=tmp_path / "phase2-lock.json",
         )
@@ -93,7 +93,7 @@ def test_phase2_rejects_incomplete_or_holdout_using_phase1(tmp_path: Path):
 
 def test_phase2_contract_lock_is_immutable(tmp_path: Path):
     kwargs = {
-        "phase1_manifest": _phase1(tmp_path / "phase1.json"),
+        "synthesis_manifest": _phase1(tmp_path / "phase1.json"),
         "contract_path": "configs/research/ashare_candidate_research_v1.yaml",
         "output": tmp_path / "phase2-lock.json",
     }

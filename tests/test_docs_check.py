@@ -87,7 +87,7 @@ def test_rejects_non_portable_workflow_provider(tmp_path: Path):
 
 
 def test_rejects_direct_historical_link_from_current_entry_point(tmp_path: Path):
-    target = tmp_path / "docs" / "history" / "research" / "alpha_research_phase_1.md"
+    target = tmp_path / "docs" / "history" / "research" / "alpha_research_initial_synthesis.md"
     target.parent.mkdir(parents=True)
     target.write_text(
         "---\nstatus: HISTORICAL\nowner: research\napplies_to_commit: test\nlast_verified: 2026-08-28\n---\n",

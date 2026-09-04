@@ -27,7 +27,7 @@ def _lock(tmp_path: Path, recommendation: str) -> Path:
         encoding="utf-8",
     )
     return write_candidate_contract_lock(
-        phase1_manifest=phase1,
+        synthesis_manifest=phase1,
         contract_path="configs/research/ashare_candidate_research_v1.yaml",
         output=tmp_path / f"lock-{recommendation}.json",
     )

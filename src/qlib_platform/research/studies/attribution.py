@@ -291,14 +291,14 @@ def _portfolio_inputs(
 
 
 def _implementation_hashes() -> dict[str, str]:
-    root = Path(__file__).resolve().parent
-    names = (
-        "failure_attribution.py",
-        "portfolio_attribution.py",
-        "turnover_attribution.py",
-        "attribution_study.py",
-    )
-    return {name: sha256_file(root / name) for name in names}
+    research_root = Path(__file__).resolve().parents[1]
+    files = {
+        "diagnostics/failure_attribution.py": research_root / "diagnostics" / "failure_attribution.py",
+        "diagnostics/portfolio_attribution.py": research_root / "diagnostics" / "portfolio_attribution.py",
+        "diagnostics/turnover_attribution.py": research_root / "diagnostics" / "turnover_attribution.py",
+        "studies/attribution.py": Path(__file__).resolve(),
+    }
+    return {name: sha256_file(path) for name, path in files.items()}
 
 
 def _artifact_entry(path: Path, *, rows: int | None = None) -> dict[str, object]:

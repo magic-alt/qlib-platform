@@ -1014,7 +1014,7 @@ def main() -> None:
         from qlib_platform.research.contracts.candidate_program import write_candidate_contract_lock
 
         lock_path = write_candidate_contract_lock(
-            phase1_manifest=args.synthesis_manifest,
+            synthesis_manifest=args.synthesis_manifest,
             contract_path=args.contract,
             output=args.output,
         )
@@ -1119,7 +1119,7 @@ def main() -> None:
 
         path = write_stability_contract_lock(
             candidate_acceptance=args.candidate_acceptance,
-            phase2_evidence=args.candidate_evidence,
+            candidate_evidence=args.candidate_evidence,
             candidate_data_acceptance=args.candidate_data_acceptance,
             contract_path=args.contract,
             output=args.output,

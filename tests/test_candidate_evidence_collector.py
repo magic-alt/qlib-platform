@@ -60,7 +60,7 @@ def _contract_lock(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     lock_path = write_candidate_contract_lock(
-        phase1_manifest=phase1,
+        synthesis_manifest=phase1,
         contract_path="configs/research/ashare_candidate_research_v1.yaml",
         output=tmp_path / "phase2-lock.json",
     )

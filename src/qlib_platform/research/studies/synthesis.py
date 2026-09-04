@@ -660,14 +660,15 @@ def run_research_synthesis(
         spec=spec,
     )
     revision = git_revision(Path(__file__).resolve().parents[3])
+    research_root = Path(__file__).resolve().parents[1]
     contract = {
         "schemaVersion": SYNTHESIS_STUDY_SCHEMA,
         "identity": identity,
         "sourceManifests": {name: _source_contract(source) for name, source in sorted(sources.items())},
         "synthesisSpec": spec.to_manifest(),
         "studyImplementationSha256": {
-            name: sha256_file(Path(__file__).resolve().parent / name)
-            for name in ("phase1_synthesis.py", "synthesis_study.py")
+            "reporting/synthesis.py": sha256_file(research_root / "reporting" / "synthesis.py"),
+            "studies/synthesis.py": sha256_file(Path(__file__).resolve()),
         },
         "studyCodeCommit": revision.get("commit"),
         "studyCodeDirty": revision.get("dirty"),

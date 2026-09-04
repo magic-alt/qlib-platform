@@ -17,7 +17,7 @@ def test_stability_plan_stops_at_d04_and_never_creates_candidates(tmp_path: Path
     acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path)
     lock = write_stability_contract_lock(
         candidate_acceptance=acceptance,
-        phase2_evidence=evidence,
+        candidate_evidence=evidence,
         candidate_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_stability_diagnostics_v1.yaml",
         output=tmp_path / "phase3-lock.json",
@@ -37,7 +37,7 @@ def test_stability_plan_is_immutable(tmp_path: Path):
     acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path)
     lock = write_stability_contract_lock(
         candidate_acceptance=acceptance,
-        phase2_evidence=evidence,
+        candidate_evidence=evidence,
         candidate_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_stability_diagnostics_v1.yaml",
         output=tmp_path / "phase3-lock.json",
@@ -60,7 +60,7 @@ def test_stability_plan_rejects_design_lock_rebinding(tmp_path: Path):
     acceptance, evidence, data_acceptance = phase3_entry_fixture(tmp_path)
     lock = write_stability_contract_lock(
         candidate_acceptance=acceptance,
-        phase2_evidence=evidence,
+        candidate_evidence=evidence,
         candidate_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_stability_diagnostics_v1.yaml",
         output=tmp_path / "phase3-lock.json",

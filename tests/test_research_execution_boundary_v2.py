@@ -9,10 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RESEARCH_OWNED = (
     "ops/platform_release.py",
     "artifacts/institutional_artifacts.py",
-    "research/feature_store.py",
-    "research/train_select.py",
-    "research/walk_forward.py",
-    "research/research_gate.py",
+    "research/features/store.py",
+    "research/workflow/train_select.py",
+    "research/workflow/walk_forward.py",
+    "research/evaluation/gates.py",
     "ops/lean_bridge.py",
 )
 

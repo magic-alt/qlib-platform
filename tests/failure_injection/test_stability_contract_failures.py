@@ -15,7 +15,7 @@ from tests._stability_helpers import phase3_entry_fixture
 def _write_lock(tmp_path: Path, acceptance: Path, evidence: Path, data_acceptance: Path) -> None:
     write_stability_contract_lock(
         candidate_acceptance=acceptance,
-        phase2_evidence=evidence,
+        candidate_evidence=evidence,
         candidate_data_acceptance=data_acceptance,
         contract_path="configs/research/ashare_stability_diagnostics_v1.yaml",
         output=tmp_path / "phase3-lock.json",

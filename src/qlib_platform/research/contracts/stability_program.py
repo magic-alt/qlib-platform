@@ -18,10 +18,10 @@ from qlib_platform.research.workflow.candidate_program import INCREMENTAL_CANDID
 from qlib_platform.research.diagnostics.regimes import load_regime_spec
 
 
-PHASE3_SCHEMA = "ashare_phase3_v1"
-PHASE3_LOCK_SCHEMA = "phase3_design_lock_v1"
-PHASE2_ACCEPTANCE_SCHEMA = "phase2_incremental_acceptance_v1"
-PHASE2_EVIDENCE_SCHEMA = "phase2_evidence_index_v1"
+STABILITY_CONTRACT_SCHEMA = "ashare_phase3_v1"
+STABILITY_LOCK_SCHEMA = "phase3_design_lock_v1"
+CANDIDATE_ACCEPTANCE_SCHEMA = "phase2_incremental_acceptance_v1"
+CANDIDATE_EVIDENCE_SCHEMA = "phase2_evidence_index_v1"
 
 
 def _mapping(value: object, name: str) -> Mapping[str, Any]:
@@ -119,7 +119,7 @@ def load_stability_contract(path: str | Path) -> Phase3Contract:
     if not source.is_file():
         raise FileNotFoundError(f"Phase 3 contract is missing: {source}")
     raw = _mapping(yaml.safe_load(source.read_text(encoding="utf-8")), "Phase 3 contract")
-    if raw.get("schema") != PHASE3_SCHEMA:
+    if raw.get("schema") != STABILITY_CONTRACT_SCHEMA:
         raise ValueError(f"unsupported Phase 3 schema: {raw.get('schema')}")
 
     identity = _mapping(raw.get("identity"), "identity")
@@ -221,7 +221,7 @@ def load_stability_contract(path: str | Path) -> Phase3Contract:
         raise ValueError("Phase 3-D cannot produce formal candidates")
 
     semantic = {
-        "schema": PHASE3_SCHEMA,
+        "schema": STABILITY_CONTRACT_SCHEMA,
         "identity": dict(identity),
         "objective": dict(objective),
         "anchors": [dict(_mapping(value, "anchor")) for value in anchors_raw],
@@ -255,7 +255,7 @@ def load_stability_contract(path: str | Path) -> Phase3Contract:
 
 def _validate_candidate_acceptance(path: Path, predecessor_program: str) -> dict[str, Any]:
     acceptance = _load_json(path, "Phase 2 acceptance")
-    if acceptance.get("schemaVersion") != PHASE2_ACCEPTANCE_SCHEMA:
+    if acceptance.get("schemaVersion") != CANDIDATE_ACCEPTANCE_SCHEMA:
         raise ValueError(f"unsupported Phase 2 acceptance: {acceptance.get('schemaVersion')}")
     recorded = str(acceptance.get("acceptanceSha256") or "")
     actual = sha256_json({key: value for key, value in acceptance.items() if key != "acceptanceSha256"})
@@ -574,7 +574,7 @@ def _anchor_lineage(
 def load_stability_lock(path: str | Path) -> dict[str, Any]:
     source = Path(path).expanduser().resolve()
     lock = _load_json(source, "Phase 3 design lock")
-    if lock.get("schemaVersion") != PHASE3_LOCK_SCHEMA:
+    if lock.get("schemaVersion") != STABILITY_LOCK_SCHEMA:
         raise ValueError(f"unsupported Phase 3 design lock: {lock.get('schemaVersion')}")
     recorded = str(lock.get("lockSha256") or "")
     actual = sha256_json({key: value for key, value in lock.items() if key != "lockSha256"})
@@ -600,19 +600,19 @@ def load_stability_lock(path: str | Path) -> dict[str, Any]:
 def write_stability_contract_lock(
     *,
     candidate_acceptance: str | Path,
-    phase2_evidence: str | Path,
+    candidate_evidence: str | Path,
     candidate_data_acceptance: str | Path,
     contract_path: str | Path,
     output: str | Path,
 ) -> Path:
     acceptance_path = Path(candidate_acceptance).expanduser().resolve()
-    evidence_path = Path(phase2_evidence).expanduser().resolve()
+    evidence_path = Path(candidate_evidence).expanduser().resolve()
     data_acceptance_path = Path(candidate_data_acceptance).expanduser().resolve()
     contract_source = Path(contract_path).expanduser().resolve()
     contract = load_stability_contract(contract_source)
     acceptance = _validate_candidate_acceptance(acceptance_path, contract.predecessor_program)
     evidence = _load_json(evidence_path, "Phase 2 evidence index")
-    if evidence.get("schemaVersion") != PHASE2_EVIDENCE_SCHEMA:
+    if evidence.get("schemaVersion") != CANDIDATE_EVIDENCE_SCHEMA:
         raise ValueError(f"unsupported Phase 2 evidence index: {evidence.get('schemaVersion')}")
     if evidence.get("finalHoldout") is not False:
         raise ValueError("Phase 2 evidence index must set finalHoldout=false")
@@ -707,22 +707,18 @@ def write_stability_contract_lock(
         label_spec=contract.label_spec,
     )
     revision = git_revision(Path(__file__).resolve().parents[3])
-    implementation_files = (
-        "phase3_contract.py",
-        "phase3_program.py",
-        "phase3_diagnostics.py",
-        "phase3_decay.py",
-        "regime.py",
-        "regime_diagnostics.py",
-    )
-    implementation_root = Path(__file__).resolve().parent
-    implementation = {
-        name: sha256_file(implementation_root / name)
-        for name in implementation_files
-        if (implementation_root / name).is_file()
+    research_root = Path(__file__).resolve().parents[1]
+    implementation_files = {
+        "contracts/stability_program.py": Path(__file__).resolve(),
+        "workflow/stability_program.py": research_root / "workflow" / "stability_program.py",
+        "diagnostics/stability.py": research_root / "diagnostics" / "stability.py",
+        "diagnostics/decay.py": research_root / "diagnostics" / "decay.py",
+        "diagnostics/regimes.py": research_root / "diagnostics" / "regimes.py",
+        "diagnostics/regime_analysis.py": research_root / "diagnostics" / "regime_analysis.py",
     }
+    implementation = {name: sha256_file(path) for name, path in implementation_files.items()}
     payload: dict[str, Any] = {
-        "schemaVersion": PHASE3_LOCK_SCHEMA,
+        "schemaVersion": STABILITY_LOCK_SCHEMA,
         "programId": contract.program_id,
         "predecessorProgram": contract.predecessor_program,
         "entryCondition": {

@@ -215,14 +215,14 @@ def _load_bound_features(
 
 
 def _implementation_hashes() -> dict[str, str]:
-    root = Path(__file__).resolve().parent
-    names = (
-        "study.py",
-        "feature_diagnostics.py",
-        "factor_taxonomy.py",
-        "factor_clusters.py",
-    )
-    return {name: sha256_file(root / name) for name in names}
+    research_root = Path(__file__).resolve().parents[1]
+    files = {
+        "studies/alpha.py": Path(__file__).resolve(),
+        "diagnostics/features.py": research_root / "diagnostics" / "features.py",
+        "features/taxonomy.py": research_root / "features" / "taxonomy.py",
+        "features/clusters.py": research_root / "features" / "clusters.py",
+    }
+    return {name: sha256_file(path) for name, path in files.items()}
 
 
 def _study_contract(
