@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: research
+applies_to_commit: f702bc80d27a92ab526dca630b168c99a15c95a5
 last_verified: 2026-09-04
 ---
 
@@ -53,7 +54,7 @@ QLIB_DATA_URI=
 Only fill optional values when needed:
 
 - `TUSHARE_TOKEN`: this machine must download or refresh TuShare data;
-- `QLIB_REPO`: optional Qlib source-checkout override;
+- `QLIB_REPO`: optional Qlib source-checkout override; the pinned `pyqlib==0.9.7` installation is sufficient when this is blank;
 - `QLIB_DATA_URI`: optional existing Qlib provider override;
 - integrated-mode variables are not required for standalone research.
 
@@ -121,7 +122,7 @@ If several active local DataReleases exist, the resolver:
 3. verifies/materializes it;
 4. promotes the matching release + DatasetVersion snapshot;
 5. keeps one active release by default;
-6. moves older immutable releases to `data/releases/archive/`.
+6. moves older immutable releases to `data/releases/archive/` and refreshes registry paths for exact-ID replay.
 
 Archived releases are not deleted. Exact immutable IDs remain addressable for audit/replay, while `release list` stays useful for normal operation.
 
@@ -131,7 +132,9 @@ This policy is controlled by the standalone profile's `release_store.active_keep
 
 `MATERIALIZE_REQUIRED` is an internal transition, not a normal operator task.
 
-For a compatible frozen DataRelease the bootstrap now reconstructs `qlib_staging` and PIT universe data from the release itself, then creates a DatasetVersion whose manifest remains bound to that release. It does **not** silently rebuild a different release from mutable raw data.
+For a compatible frozen DataRelease the bootstrap reconstructs `qlib_staging` and PIT universe data from the release itself, then creates a DatasetVersion whose manifest remains bound to that release. It does **not** silently rebuild a different release from mutable raw data.
+
+When no external Qlib Git checkout is configured, the pinned `pyqlib==0.9.7` wheel supplies a stable implementation identity and qlib-platform's packaged compatibility exporter creates the same day-frequency provider layout needed by the DatasetVersion lifecycle.
 
 That distinction preserves lineage:
 
