@@ -32,13 +32,9 @@ def test_market_data_view_preserves_missing_qlib_limit_flags(tmp_path, monkeypat
     signal_date = pd.Timestamp("2026-08-21")
     trade_date = pd.Timestamp("2026-08-24")
     instruments = ["SH600900", "SH600930"]
-    score_index = pd.MultiIndex.from_product(
-        [[signal_date], instruments], names=["datetime", "instrument"]
-    )
+    score_index = pd.MultiIndex.from_product([[signal_date], instruments], names=["datetime", "instrument"])
     score = pd.Series([0.9, 0.1], index=score_index, name="score")
-    quote_index = pd.MultiIndex.from_product(
-        [instruments, [trade_date]], names=["instrument", "datetime"]
-    )
+    quote_index = pd.MultiIndex.from_product([instruments, [trade_date]], names=["instrument", "datetime"])
     raw = pd.DataFrame(
         {
             "$close": [10.0, 11.0],
@@ -72,13 +68,9 @@ def test_market_data_view_preserves_explicit_limit_evidence(tmp_path, monkeypatc
     signal_date = pd.Timestamp("2026-08-21")
     trade_date = pd.Timestamp("2026-08-24")
     instruments = ["SH600900", "SH600930"]
-    score_index = pd.MultiIndex.from_product(
-        [[signal_date], instruments], names=["datetime", "instrument"]
-    )
+    score_index = pd.MultiIndex.from_product([[signal_date], instruments], names=["datetime", "instrument"])
     score = pd.Series([0.9, 0.1], index=score_index, name="score")
-    quote_index = pd.MultiIndex.from_product(
-        [instruments, [trade_date]], names=["instrument", "datetime"]
-    )
+    quote_index = pd.MultiIndex.from_product([instruments, [trade_date]], names=["instrument", "datetime"])
     raw = pd.DataFrame(
         {
             "$close": [10.0, 11.0],
