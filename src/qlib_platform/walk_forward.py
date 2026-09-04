@@ -168,7 +168,7 @@ def _write_continuous_oos_stream(
     """Persist one strictly ordered prediction/label stream from rolling folds."""
 
     if not manifests:
-        raise ValueError("continuous OOS stream requires rolling component manifests")
+        raise ValueError("continuous OOS stream requires rolling component evidence")
     output_dir.mkdir(parents=True, exist_ok=True)
     predictions: list[pd.DataFrame] = []
     labels: list[pd.DataFrame] = []
@@ -436,17 +436,17 @@ def _training_checkpoint_fingerprint(
     runtime_fingerprint: str,
 ) -> str:
     dataset_manifest = settings.qlib_data_uri / "dataset_manifest.json"
-    project_root = Path(__file__).resolve().parents[2]
+    package_root = Path(__file__).resolve().parent
     source_files = [
         Path(__file__),
-        project_root / "src" / "tushare_qlib" / "custom_handler.py",
-        project_root / "src" / "tushare_qlib" / "processors.py",
-        project_root / "src" / "tushare_qlib" / "research_timing.py",
-        project_root / "src" / "tushare_qlib" / "model_runtime.py",
-        project_root / "src" / "tushare_qlib" / "processor_state.py",
-        project_root / "src" / "tushare_qlib" / "train_select.py",
-        project_root / "src" / "tushare_qlib" / "prediction_snapshot.py",
-        project_root / "src" / "tushare_qlib" / "walk_forward_acceptance.py",
+        package_root / "custom_handler.py",
+        package_root / "processors.py",
+        package_root / "research_timing.py",
+        package_root / "model_runtime.py",
+        package_root / "processor_state.py",
+        package_root / "train_select.py",
+        package_root / "prediction_snapshot.py",
+        package_root / "walk_forward_acceptance.py",
     ]
     research = settings.data.get("research", {})
     research = research if isinstance(research, dict) else {}
@@ -504,7 +504,7 @@ def _portfolio_checkpoint_fingerprint(
             )
         },
         "portfolioImplementationSha256": sha256_file(
-            Path(__file__).resolve().parents[2] / "src" / "tushare_qlib" / "prediction_backtest.py"
+            Path(__file__).resolve().parent / "prediction_backtest.py"
         ),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
