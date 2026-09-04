@@ -339,9 +339,7 @@ def backtest_predictions(
             holdings.to_parquet(holdings_path, index=False)
         position_dates = pd.DatetimeIndex(sorted(pd.Timestamp(date).normalize() for date in positions))
         held_instruments = (
-            holdings["instrument"].astype(str).drop_duplicates().tolist()
-            if not holdings.empty
-            else []
+            holdings["instrument"].astype(str).drop_duplicates().tolist() if not holdings.empty else []
         )
         market_data = _market_data_view(
             settings,
