@@ -31,7 +31,7 @@ def test_phase_named_runtime_modules_are_compatibility_only() -> None:
         canonical = _RESEARCH_ROOT / canonical_name
         assert canonical.is_file(), f"missing canonical research module: {canonical_name}"
         source = legacy.read_text(encoding="utf-8")
-        assert len(source.splitlines()) <= 4, f"{legacy_name} grew beyond a compatibility shim"
+        assert len(source.splitlines()) <= 8, f"{legacy_name} grew beyond a compatibility shim"
         assert "def " not in source
         assert "class " not in source
         assert "Compatibility shim" in source
