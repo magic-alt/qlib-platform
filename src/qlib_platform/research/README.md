@@ -15,4 +15,4 @@
 - `artifacts/`: immutable research artifact I/O.
 - `interfaces/`: research-facing interface helpers.
 
-Historical stage identifiers may remain inside immutable artifact schema values or governance state where changing them would break lineage. They must not be used as Python module boundaries, import paths, filenames, or CLI command names.
+Runtime Python identifiers and implementation-hash paths use the responsibility-oriented layout. Historical stage identifiers may remain inside immutable artifact schema values or governance state where changing them would break lineage. They must not be used as Python module boundaries, import paths, filenames, or CLI command names.
