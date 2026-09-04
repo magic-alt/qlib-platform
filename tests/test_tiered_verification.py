@@ -27,6 +27,21 @@ def _dataset(tmp_path: Path) -> Path:
     return manifest
 
 
+def _dense_dataset(tmp_path: Path, *, count: int = 128) -> Path:
+    root = tmp_path / "dense-dataset"
+    feature_root = root / "features" / "sh600000"
+    feature_root.mkdir(parents=True)
+    for index in range(count):
+        (feature_root / f"feature_{index:03d}.day.bin").write_bytes(f"value-{index}".encode())
+    manifest, _ = write_dataset_manifest(
+        root,
+        dataset_name="dense-test",
+        layer="qlib",
+        semantic_contract={"pit": "next_trading_day"},
+    )
+    return manifest
+
+
 def _provider(root: Path) -> Path:
     (root / "calendars").mkdir(parents=True)
     (root / "instruments").mkdir()
@@ -114,6 +129,33 @@ def test_collocated_manifest_build_proof_avoids_rehashing_every_partition(tmp_pa
     assert evidence["verifiedFileCount"] == 2
     assert evidence["hashedFileCount"] == 1
     assert len(hashed) == 1
+
+
+def test_reused_deep_inventory_resolves_unique_directories_not_every_file(tmp_path: Path, monkeypatch):
+    manifest = _dense_dataset(tmp_path)
+    original_resolve = Path.resolve
+    resolved: list[Path] = []
+
+    def counting_resolve(path: Path, *args, **kwargs):
+        resolved.append(path)
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", counting_resolve)
+    evidence: dict[str, object] = {}
+    verify_dataset_manifest(
+        manifest,
+        mode="deep",
+        reuse_receipt=True,
+        sample_size=1,
+        workers=4,
+        evidence=evidence,
+    )
+
+    assert evidence["verificationSource"] == "manifest-build+inventory+sampled"
+    assert evidence["verifiedFileCount"] == 128
+    assert evidence["hashedFileCount"] == 1
+    assert evidence["inventoryDirectoryCount"] == 2
+    assert len(resolved) < 10
 
 
 def test_manifest_build_proof_falls_back_to_full_deep_after_mutation(tmp_path: Path):
