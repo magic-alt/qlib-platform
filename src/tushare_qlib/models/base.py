@@ -14,6 +14,7 @@ class RuntimeResolution:
     resolved_device: str
     fallback_reason: str | None
     versions: dict[str, str]
+    device_name: str | None = None
 
 
 class ModelAdapter(ABC):
