@@ -6,10 +6,12 @@ from tushare_qlib.research_quickstart import (
     MATRIX_ALPHA_PACKS,
     MATRIX_MODELS,
     _last_json,
+    _overlay,
     _selected,
     build_research_command,
     parser,
 )
+from tushare_qlib.settings import Settings
 
 
 def test_matrix_defaults_cover_three_alpha158_levels_and_core_models() -> None:
@@ -36,6 +38,41 @@ def test_diagnostics_default_to_sampled_but_research_stays_deep() -> None:
     assert command_parser.parse_args(["run"]).verify_mode == "deep"
     assert command_parser.parse_args(["matrix"]).verify_mode == "deep"
     assert command_parser.parse_args(["doctor", "--verify-mode", "deep"]).verify_mode == "deep"
+
+
+def test_generated_overlay_preserves_parent_data_paths_from_nested_output(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    configs = repo / "configs"
+    configs.mkdir(parents=True)
+    base = configs / "pipeline.standalone.yaml"
+    base.write_text(
+        "\n".join(
+            [
+                "mode: standalone",
+                "project_root: ./data",
+                "storage:",
+                "  registry_path: ./data/registry/qlib.sqlite",
+                "qlib:",
+                "  dataset_dir: ./data/qlib/current",
+                "  versions_root: ./data/qlib/versions",
+                "  dataset_name: cn_standalone",
+                "  dataset_ref: standalone-current",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    settings = Settings.load(base, create_dirs=False)
+    nested_output = settings.paths.output / "quickstart" / "run-id"
+
+    overlay = _overlay(settings, nested_output, "alpha158_market_v1")
+    child = Settings.load(overlay, create_dirs=False)
+
+    assert child.paths.root == settings.paths.root
+    assert child.registry_path == settings.registry_path
+    assert child.qlib_data_uri == settings.qlib_data_uri
+    assert child.qlib_versions_root == settings.qlib_versions_root
+    assert child.qlib_dataset_ref == "standalone-current"
 
 
 def test_fixed_command_uses_explicit_windows_and_safe_signal_stage(tmp_path: Path) -> None:
