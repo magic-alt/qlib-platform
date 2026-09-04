@@ -58,9 +58,7 @@ def test_packaged_dump_all_update_and_fix(tmp_path: Path) -> None:
         "2026-09-02",
         "2026-09-03",
     ]
-    np.testing.assert_allclose(
-        _bin(provider, "close"), np.asarray([0.0, 10.0, 11.0, 12.0], dtype="<f4")
-    )
+    np.testing.assert_allclose(_bin(provider, "close"), np.asarray([0.0, 10.0, 11.0, 12.0], dtype="<f4"))
 
     _write(source, ["2026-09-01", "2026-09-02", "2026-09-03"], [10.0, 99.0, 12.0])
     dump_qlib_bin(
@@ -69,6 +67,4 @@ def test_packaged_dump_all_update_and_fix(tmp_path: Path) -> None:
         qlib_dir=provider,
         include_fields=("close", "volume"),
     )
-    np.testing.assert_allclose(
-        _bin(provider, "close"), np.asarray([0.0, 10.0, 99.0, 12.0], dtype="<f4")
-    )
+    np.testing.assert_allclose(_bin(provider, "close"), np.asarray([0.0, 10.0, 99.0, 12.0], dtype="<f4"))
