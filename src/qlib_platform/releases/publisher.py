@@ -22,6 +22,7 @@ from qlib_platform.datasets.data_release import (
 from qlib_platform.data.content_store import ContentAddressedStore, clone_tree_copy_on_write
 from qlib_platform.datasets.dataset_manifest import write_dataset_manifest
 from qlib_platform.datasets.dataset_registry import DatasetRegistry, DatasetVersion
+from qlib_platform.datasets.qlib_staging_contract import validate_qlib_staging_files
 from qlib_platform.settings import Settings
 from qlib_platform.data.store import sha256_file
 
@@ -102,6 +103,8 @@ class LocalReleasePublisher:
                 role_root.mkdir(parents=True)
                 entries: list[dict[str, object]] = []
                 source_files = self._source_files(source)
+                if role == "qlib_staging":
+                    validate_qlib_staging_files(source_files, role=role)
                 source_root = source.source if source.source.is_dir() else source.source.parent
                 for original in source_files:
                     relative_source = original.relative_to(source_root)
