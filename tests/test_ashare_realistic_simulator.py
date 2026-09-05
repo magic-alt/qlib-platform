@@ -126,8 +126,28 @@ def test_limit_up_buy_is_rejected_fail_closed() -> None:
     assert result.rejections.iloc[0]["reason"] == "limit_up_no_buy_liquidity"
 
 
-def test_limit_inference_covers_current_st_growth_beijing_and_ipo_rules() -> None:
+def test_limit_inference_covers_dated_st_growth_beijing_and_ipo_rules() -> None:
     rules = AShareMarketRules()
+    assert (
+        infer_price_limit_pct(
+            board="MAIN",
+            is_st=True,
+            listing_days=20,
+            rules=rules,
+            trade_date="2026-07-03",
+        )
+        == 0.05
+    )
+    assert (
+        infer_price_limit_pct(
+            board="MAIN",
+            is_st=True,
+            listing_days=20,
+            rules=rules,
+            trade_date="2026-07-06",
+        )
+        == 0.10
+    )
     assert infer_price_limit_pct(board="MAIN", is_st=True, listing_days=20, rules=rules) == 0.10
     assert infer_price_limit_pct(board="CHINEXT", is_st=True, listing_days=20, rules=rules) == 0.20
     assert infer_price_limit_pct(board="BSE", is_st=False, listing_days=20, rules=rules) == 0.30
