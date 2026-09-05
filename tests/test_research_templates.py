@@ -7,9 +7,7 @@ from qlib_platform.settings import Settings
 
 
 def test_model_profile_only_replaces_default_lightgbm() -> None:
-    args = parser().parse_args(
-        ["run", "--model-profile", "configs/model_profiles/custom_experiment.yaml"]
-    )
+    args = parser().parse_args(["run", "--model-profile", "configs/model_profiles/custom_experiment.yaml"])
 
     alphas, profiles = _selected(args)
 
