@@ -261,11 +261,7 @@ def build_dashboard_data(
         job = dict(raw_job)
         summary = _mapping(job.get("summary"))
         signal, portfolio = _job_metrics(job)
-        decision = (
-            summary.get("decision")
-            or summary.get("promotionStatus")
-            or job.get("status")
-        )
+        decision = summary.get("decision") or summary.get("promotionStatus") or job.get("status")
         warnings = [str(item) for item in _list(job.get("warnings"))]
         warnings.extend(item for item in global_warnings if item not in warnings)
         jobs.append(
@@ -357,9 +353,7 @@ def _gate_table(job: Mapping[str, Any]) -> str:
     return (
         '<div class="table-wrap"><table><thead><tr>'
         "<th>Gate</th><th>Observed</th><th>Threshold</th><th>Status</th>"
-        "</tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table></div>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div>"
     )
 
 
@@ -420,9 +414,9 @@ def render_dashboard(data: Mapping[str, Any]) -> str:
 <h1>Research Dashboard</h1>
 <p class="muted">Environment → immutable data → model → signal → portfolio → research decision.</p>
 <div class="badges">
-<span class="badge">{_escape(data.get('mode'))}</span>
-<span class="badge">stage: {_escape(data.get('stage'))}</span>
-<span class="badge">{_escape(job.get('alphaPack'))} × {_escape(job.get('model'))}</span>
+<span class="badge">{_escape(data.get("mode"))}</span>
+<span class="badge">stage: {_escape(data.get("stage"))}</span>
+<span class="badge">{_escape(job.get("alphaPack"))} × {_escape(job.get("model"))}</span>
 <span class="badge reject">{_escape(decision)}</span>
 </div>
 </section>
@@ -471,7 +465,7 @@ def render_dashboard(data: Mapping[str, Any]) -> str:
 <li>Tune TopK / holding policy only after stable alpha exists, then stress transaction costs.</li>
 </ol></div></section>
 
-<div class="footer">Source matrix: {_escape(data.get('sourceMatrix'))} · Read-only research evidence.</div>
+<div class="footer">Source matrix: {_escape(data.get("sourceMatrix"))} · Read-only research evidence.</div>
 </main></body></html>"""
 
 
@@ -481,11 +475,7 @@ def write_dashboard(
 ) -> Path:
     matrix_path = Path(matrix).expanduser().resolve()
     data = build_dashboard_data(_read_json(matrix_path), matrix_path=matrix_path)
-    target = (
-        Path(output).expanduser().resolve()
-        if output
-        else matrix_path.parent / "research_dashboard.html"
-    )
+    target = Path(output).expanduser().resolve() if output else matrix_path.parent / "research_dashboard.html"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(render_dashboard(data), encoding="utf-8")
     return target
