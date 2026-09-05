@@ -19,3 +19,11 @@ mypy==1.17.1
 types-PyYAML==6.0.12.20260815
 fastjsonschema==2.22.2
 argon2-cffi==25.1.0
+
+# Optional research backends are pinned here so the fail-closed dependency-review
+# fallback can audit exact additions even though they are not installed by default CI.
+psycopg==3.3.5
+psycopg-binary==3.3.5
+ray==2.58.0
+dask==2026.8.0
+distributed==2026.8.0
