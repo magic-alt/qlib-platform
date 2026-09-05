@@ -30,7 +30,8 @@ class StressResult:
 def _validate_weights(weights: pd.Series, instruments: pd.Index, *, name: str) -> np.ndarray:
     if weights.index.has_duplicates or not weights.index.equals(instruments):
         raise ValueError(f"{name} instruments must exactly match scenario instruments and order")
-    values = pd.to_numeric(weights, errors="coerce").to_numpy(dtype=float)
+    numeric = pd.to_numeric(weights, errors="coerce")
+    values: np.ndarray = np.asarray(numeric, dtype=float)
     if not np.isfinite(values).all():
         raise ValueError(f"{name} must contain only finite values")
     return values
