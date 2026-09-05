@@ -53,7 +53,7 @@ class ExperimentQueryMixin:
             WHERE experiment_id = ? ORDER BY kind, created_at""",
             (experiment_id,),
         )
-        row = experiment.iloc[0].to_dict()
+        row: dict[str, Any] = {str(key): value for key, value in experiment.iloc[0].items()}
         for column in ("params_json", "lineage_json"):
             row[column.removesuffix("_json")] = json.loads(str(row.pop(column)))
         row["metrics"] = metrics.to_dict(orient="records")

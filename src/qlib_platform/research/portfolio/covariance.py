@@ -7,7 +7,8 @@ import pandas as pd
 def nearest_psd(matrix: np.ndarray, *, floor: float = 1e-10) -> np.ndarray:
     symmetric = (matrix + matrix.T) / 2.0
     eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
-    return (eigenvectors * np.maximum(eigenvalues, floor)) @ eigenvectors.T
+    result: np.ndarray = (eigenvectors * np.maximum(eigenvalues, floor)) @ eigenvectors.T
+    return result
 
 
 def estimate_covariance(
@@ -26,7 +27,7 @@ def estimate_covariance(
         raise ValueError("insufficient return history for covariance estimation")
     if numeric.columns.has_duplicates:
         raise ValueError("return columns must contain unique instruments")
-    covariance = numeric.cov(min_periods=min_observations).to_numpy(dtype=float)
+    covariance: np.ndarray = numeric.cov(min_periods=min_observations).to_numpy(dtype=float)
     if not np.isfinite(covariance).all():
         raise ValueError("covariance contains missing values; provide sufficient overlapping history")
     diagonal = np.diag(np.diag(covariance))
