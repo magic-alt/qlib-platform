@@ -17,6 +17,7 @@ from qlib_platform.datasets.qlib_staging_contract import (
     QlibStagingContractError,
     validate_qlib_staging_files,
 )
+from qlib_platform.datasets.qlib_staging_repair import repair_transient_qlib_staging_release
 from qlib_platform.releases import (
     FileReleaseStore,
     import_qlib_dataset,
@@ -163,9 +164,21 @@ def _materialize_selected_release(settings: Settings, release_id: str) -> dict[s
             },
         )
 
-    # Validate the structural contract before replacing staging. Numeric chunk names
-    # are valid; only the actual qlib-staging-v2 schema matters.
+    # Historical recursive publishers could freeze DuckDB scratch partitions such as
+    # .curated_by_symbol/symbol=SH600000/00000.parquet into qlib_staging. Those files
+    # intentionally omit symbol because it lives in the partition directory. Derive a
+    # clean child release from the verified parent before invoking the strict materializer.
     if "qlib_staging" in release.components:
+        repaired = repair_transient_qlib_staging_release(settings, release)
+        if repaired is not None:
+            result = _materialize_selected_release(settings, repaired.release.data_release_id)
+            result["recoveredFromIncompatibleRelease"] = True
+            result["recoveryReason"] = "qlib_staging_transient_inventory"
+            result["parentDataReleaseId"] = release.data_release_id
+            result["ignoredTransientFiles"] = list(repaired.ignored_transient_files)
+            return result
+        # Numeric chunk names are valid when they are canonical top-level files; schema
+        # remains fail-closed for genuine qlib-staging-v2 corruption.
         validate_qlib_staging_files(release.files("qlib_staging"))
 
     bound = _release_bound_settings(settings, release_id)
