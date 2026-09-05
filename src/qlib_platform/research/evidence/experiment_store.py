@@ -9,6 +9,7 @@ from qlib_platform.research.evidence.experiment_db import (
     open_connection,
 )
 from qlib_platform.research.evidence.experiment_store_compare import ExperimentCompareMixin
+from qlib_platform.research.evidence.experiment_store_qlib import ExperimentQlibFederationMixin
 from qlib_platform.research.evidence.experiment_store_query import ExperimentQueryMixin
 from qlib_platform.research.evidence.experiment_store_write import ExperimentWriteMixin
 from qlib_platform.research.evidence.experiment_store_write_artifacts import ExperimentArtifactWriteMixin
@@ -21,8 +22,9 @@ class ExperimentStore(
     ExperimentArtifactWriteMixin,
     ExperimentQueryMixin,
     ExperimentCompareMixin,
+    ExperimentQlibFederationMixin,
 ):
-    """Searchable metadata index over immutable research artifacts."""
+    """Searchable metadata index over immutable research artifacts and upstream Qlib runs."""
 
     def __init__(self, uri: str | Path = "research_experiments.duckdb") -> None:
         self.backend, self._db = open_connection(uri)
