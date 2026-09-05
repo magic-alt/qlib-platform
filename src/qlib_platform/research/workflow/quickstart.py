@@ -22,17 +22,33 @@ from qlib_platform.research.interfaces.cli_ux import (
     render_terminal_summary,
     summarize_result,
 )
+from qlib_platform.research.reporting.web_dashboard import write_dashboard
+from qlib_platform.research.workflow.templates import (
+    RESEARCH_TEMPLATES,
+    deep_merge,
+    get_research_template,
+    template_catalog,
+)
 from qlib_platform.runtime.runtime_resources import resource_argument, resource_path
 from qlib_platform.settings import Settings
 
 MODEL_PRESETS = {
     "ridge": "configs/model_profiles/ridge_golden_v1.yaml",
     "lightgbm": "configs/model_profiles/lightgbm_auto.yaml",
+    "lightgbm_qlib_official": "configs/model_profiles/lightgbm_qlib_alpha158_official_v1.yaml",
     "xgboost": "configs/model_profiles/xgboost_cpu_v1.yaml",
     "pytorch": "configs/model_profiles/pytorch_auto.yaml",
 }
 MATRIX_ALPHA_PACKS = ("alpha158_market_v1", "alpha158_daily_v1", "alpha158_pit_v1")
 MATRIX_MODELS = ("ridge", "lightgbm", "xgboost")
+_WARNING_MARKERS = (
+    "warning",
+    "nan",
+    "fallback",
+    "mean of empty slice",
+    "deprecated",
+    "future calendar",
+)
 
 
 def _verification_args(p: argparse.ArgumentParser, *, default_mode: str = "deep") -> None:
@@ -43,9 +59,21 @@ def _verification_args(p: argparse.ArgumentParser, *, default_mode: str = "deep"
 
 def _research_args(p: argparse.ArgumentParser, *, matrix: bool = False) -> None:
     p.add_argument("--dataset-ref")
+    if not matrix:
+        p.add_argument(
+            "--template",
+            choices=sorted(RESEARCH_TEMPLATES),
+            help="versioned research protocol; explicit alpha/model options override template defaults",
+        )
     p.add_argument("--alpha-pack", action="append", choices=sorted(ALPHA_PACKS))
     p.add_argument("--model", action="append", choices=sorted(MODEL_PRESETS))
-    p.add_argument("--model-profile", action="append", default=[], metavar="PATH")
+    p.add_argument(
+        "--model-profile",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="custom model profile; when used alone it replaces the default LightGBM preset",
+    )
     p.add_argument("--mode", choices=["fixed", "walk-forward"], default="fixed")
     p.add_argument("--train", nargs=2, metavar=("START", "END"))
     p.add_argument("--valid", nargs=2, metavar=("START", "END"))
@@ -97,13 +125,19 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--dataset-ref")
     _verification_args(prepare, default_mode="sampled")
 
-    catalog = sub.add_parser("catalog", help="list AlphaPacks and model presets")
+    catalog = sub.add_parser("catalog", help="list AlphaPacks, model presets and research templates")
     catalog.add_argument("--json", action="store_true", dest="as_json")
 
     plan = sub.add_parser("plan", help="write exact commands/config overlays without training")
     _research_args(plan)
     run = sub.add_parser("run", help="run selected AlphaPack/model experiments")
     _research_args(run)
+    baseline = sub.add_parser(
+        "baseline",
+        help="run the Microsoft Qlib Alpha158 reference protocol on pinned local data",
+    )
+    _research_args(baseline)
+    baseline.set_defaults(template="qlib_alpha158_official_v1")
     matrix = sub.add_parser("matrix", help="run Alpha158 Market/Daily/PIT x Ridge/LGB/XGB")
     _research_args(matrix, matrix=True)
 
@@ -219,7 +253,7 @@ def doctor(settings: Settings, args: argparse.Namespace) -> dict[str, Any]:
     }
     if source.status != "READY":
         payload["recommendedCommand"] = (
-            "tq-research run --alpha-pack alpha158_market_v1 --model lightgbm"
+            "tq-research baseline"
             if settings.mode == "standalone"
             else "tq-research prepare --source auto"
         )
@@ -230,9 +264,8 @@ def doctor(settings: Settings, args: argparse.Namespace) -> dict[str, Any]:
         dataset=dataset,
         alphaPacks=_alphas(settings, Path(str(dataset["path"]))),
         models=_models(settings),
-        recommendedCommand=(
-            f"tq-research run --dataset-ref {reference} --alpha-pack alpha158_market_v1 --model lightgbm"
-        ),
+        researchTemplates=template_catalog(),
+        recommendedCommand=f"tq-research baseline --dataset-ref {reference}",
     )
     return payload
 
@@ -271,48 +304,93 @@ def catalog(settings: Settings) -> dict[str, Any]:
             {"name": name, "profile": str(resource_path(path).expanduser().resolve())}
             for name, path in MODEL_PRESETS.items()
         ],
+        "researchTemplates": template_catalog(),
         "defaultMatrix": {"alphaPacks": list(MATRIX_ALPHA_PACKS), "models": list(MATRIX_MODELS)},
     }
 
 
 def _selected(args: argparse.Namespace) -> tuple[tuple[str, ...], tuple[tuple[str, Path], ...]]:
     matrix = bool(getattr(args, "matrix_defaults", False))
-    alphas = tuple(args.alpha_pack or (MATRIX_ALPHA_PACKS if matrix else ("alpha158_market_v1",)))
-    names = tuple(args.model or (MATRIX_MODELS if matrix else ("lightgbm",)))
-    profiles = [(name, resource_path(MODEL_PRESETS[name]).expanduser().resolve()) for name in names]
-    profiles.extend((Path(raw).stem, Path(raw).expanduser().resolve()) for raw in args.model_profile)
-    unique = []
-    seen = set()
+    template = get_research_template(getattr(args, "template", None))
+    if args.alpha_pack:
+        alphas = tuple(args.alpha_pack)
+    elif matrix:
+        alphas = MATRIX_ALPHA_PACKS
+    elif template is not None:
+        alphas = (template.alpha_pack,)
+    else:
+        alphas = ("alpha158_market_v1",)
+
+    profiles: list[tuple[str, Path]] = []
+    if args.model:
+        profiles.extend(
+            (name, resource_path(MODEL_PRESETS[name]).expanduser().resolve()) for name in args.model
+        )
+    profiles.extend(
+        (Path(raw).stem, Path(raw).expanduser().resolve()) for raw in args.model_profile
+    )
+    if not profiles:
+        if matrix:
+            profiles.extend(
+                (name, resource_path(MODEL_PRESETS[name]).expanduser().resolve())
+                for name in MATRIX_MODELS
+            )
+        elif template is not None:
+            profiles.append(
+                (
+                    template.model_name,
+                    resource_path(template.model_profile).expanduser().resolve(),
+                )
+            )
+        else:
+            profiles.append(
+                ("lightgbm", resource_path(MODEL_PRESETS["lightgbm"]).expanduser().resolve())
+            )
+
+    unique: list[tuple[str, Path]] = []
+    seen: set[str] = set()
     for name, path in profiles:
-        if str(path) not in seen:
+        identity = str(path)
+        if identity not in seen:
             unique.append((name, path))
-            seen.add(str(path))
+            seen.add(identity)
     return alphas, tuple(unique)
 
 
-def _overlay(settings: Settings, root: Path, alpha: str) -> Path:
-    path = root / "configs" / f"{alpha}.yaml"
+def _overlay(
+    settings: Settings,
+    root: Path,
+    alpha: str,
+    *,
+    template_id: str | None = None,
+) -> Path:
+    path = root / "configs" / f"{template_id or alpha}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(
-            {
-                "extends": str(settings.config_path.resolve()),
-                # Generated overlays live under data/output/quickstart.  Inherited relative
-                # paths would otherwise be re-based against that nested file location when
-                # the child CLI reloads the overlay.  Pin the already-resolved data anchors
-                # so the child process sees exactly the same DatasetVersion and registry.
-                "project_root": str(settings.paths.root.resolve()),
-                "storage": {"registry_path": str(settings.registry_path)},
-                "qlib": {
-                    "dataset_dir": str(settings.qlib_data_uri),
-                    "versions_root": str(settings.qlib_versions_root),
-                },
-                "experiment": {"alpha": {"pack": alpha}},
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    template = get_research_template(template_id)
+    payload: dict[str, Any] = {
+        "extends": str(settings.config_path.resolve()),
+    }
+    if template is not None:
+        payload = deep_merge(payload, template.config_overlay())
+
+    # Generated overlays live under data/output/quickstart.  Pin the already-resolved
+    # data anchors after applying the template so no research template can silently
+    # redirect a job away from the verified local DatasetVersion.
+    payload["project_root"] = str(settings.paths.root.resolve())
+    payload["storage"] = deep_merge(
+        payload.get("storage", {}), {"registry_path": str(settings.registry_path)}
     )
+    payload["qlib"] = deep_merge(
+        payload.get("qlib", {}),
+        {
+            "dataset_dir": str(settings.qlib_data_uri),
+            "versions_root": str(settings.qlib_versions_root),
+        },
+    )
+    payload["experiment"] = deep_merge(
+        payload.get("experiment", {}), {"alpha": {"pack": alpha}}
+    )
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
 
 
@@ -400,16 +478,34 @@ def _last_json(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _warning_lines(stderr: str) -> list[str]:
+    warnings: list[str] = []
+    for raw in stderr.splitlines():
+        line = raw.strip()
+        lowered = line.lower()
+        if line and any(marker in lowered for marker in _WARNING_MARKERS) and line not in warnings:
+            warnings.append(line)
+        if len(warnings) >= 50:
+            break
+    return warnings
+
+
+def _merge_warnings(job: dict[str, Any], warnings: list[str]) -> None:
+    current = [str(item) for item in job.get("warnings", [])]
+    job["warnings"] = list(dict.fromkeys([*current, *warnings]))
+
+
 def _execute(
     command: list[str], *, verbose: bool = False, echo_stdout: bool = True
-) -> tuple[int, dict[str, Any] | None]:
+) -> tuple[int, dict[str, Any] | None, list[str]]:
     run = subprocess.run(command, text=True, capture_output=True, check=False)
     if echo_stdout and run.stdout:
         print(run.stdout, end="")
+    warnings = _warning_lines(run.stderr)
     stderr = run.stderr if verbose else filter_known_child_noise(run.stderr)
     if stderr:
         print(stderr, end="", file=sys.stderr)
-    return run.returncode, _last_json(run.stdout)
+    return run.returncode, _last_json(run.stdout), warnings
 
 
 def _attach_summary(
@@ -441,24 +537,26 @@ def _matrix_markdown(payload: Mapping[str, Any]) -> str:
         "# Local research matrix",
         "",
         f"Dataset: `{payload['datasetRef']}`  ",
-        f"Mode: `{payload['mode']}`",
+        f"Mode: `{payload['mode']}`  ",
+        f"Template: `{payload.get('template') or 'custom'}`  ",
+        f"Dashboard: `{payload.get('dashboard', '-')}`",
         "",
-        "| AlphaPack | Model | Status | Research manifest | Portfolio manifest |",
-        "| --- | --- | --- | --- | --- |",
+        "| Template | AlphaPack | Model | Status | Warnings | Research manifest | Portfolio manifest |",
+        "| --- | --- | --- | --- | ---: | --- | --- |",
     ]
     for job in payload["jobs"]:
         result = job.get("result") or {}
         backtest = job.get("predictionBacktest") or {}
         backtest_result = backtest.get("result") or {}
         lines.append(
-            f"| {job['alphaPack']} | {job['model']} | {job.get('status', 'PLANNED')} | "
+            f"| {job.get('template') or '-'} | {job['alphaPack']} | {job['model']} | "
+            f"{job.get('status', 'PLANNED')} | {len(job.get('warnings', []))} | "
             f"{result.get('manifest', '-')} | {backtest_result.get('manifest', '-')} |"
         )
     lines.extend(
         [
             "",
-            "> Research evidence only. Current governance state still controls candidates, holdout and "
-            "publishing.",
+            "> Research evidence only. Current governance state still controls candidates, holdout and publishing.",
             "",
         ]
     )
@@ -467,20 +565,29 @@ def _matrix_markdown(payload: Mapping[str, Any]) -> str:
 
 def _write_matrix(root: Path, payload: dict[str, Any]) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    (root / "research_matrix.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    matrix_path = root / "research_matrix.json"
+    dashboard_path = root / "research_dashboard.html"
+    payload["dashboard"] = str(dashboard_path)
+    matrix_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     (root / "research_matrix.md").write_text(_matrix_markdown(payload), encoding="utf-8")
+    try:
+        write_dashboard(matrix_path, dashboard_path)
+    except Exception as exc:
+        payload["dashboardError"] = f"{type(exc).__name__}: {exc}"
+        matrix_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        (root / "research_matrix.md").write_text(_matrix_markdown(payload), encoding="utf-8")
 
 
 def build_plan(settings: Settings, args: argparse.Namespace, root: Path) -> dict[str, Any]:
     reference = _dataset_ref(settings, args.dataset_ref)
     alphas, profiles = _selected(args)
+    template = get_research_template(getattr(args, "template", None))
+    template_id = template.template_id if template is not None else None
     jobs = []
     for alpha in alphas:
-        config = _overlay(settings, root, alpha)
+        config = _overlay(settings, root, alpha, template_id=template_id)
         for model, profile in profiles:
-            namespace = f"quickstart-{alpha}-{model}".replace("_", "-")
+            namespace = f"quickstart-{template_id or alpha}-{model}".replace("_", "-")
             command = build_research_command(
                 config=config,
                 mode=args.mode,
@@ -499,6 +606,9 @@ def build_plan(settings: Settings, args: argparse.Namespace, root: Path) -> dict
             )
             jobs.append(
                 {
+                    "template": template_id,
+                    "templateDescription": template.description if template is not None else None,
+                    "parityNotes": list(template.parity_notes) if template is not None else [],
                     "alphaPack": alpha,
                     "model": model,
                     "modelProfile": str(profile),
@@ -507,10 +617,12 @@ def build_plan(settings: Settings, args: argparse.Namespace, root: Path) -> dict
                 }
             )
     return {
-        "schemaVersion": "1.0",
+        "schemaVersion": "1.1",
         "createdAtUtc": datetime.now(timezone.utc).isoformat(),
         "datasetRef": reference,
         "mode": args.mode,
+        "template": template_id,
+        "templateDescription": template.description if template is not None else None,
         "stage": "release" if args.mode == "walk-forward" else args.stage,
         "predictionBacktest": bool(
             args.mode == "fixed" and args.stage == "signal" and args.prediction_backtest
@@ -537,8 +649,6 @@ def _preparation_failure(
         plan["recommendedCommand"] = str(
             result.get("recommendedCommand") or "tq-research prepare --source auto"
         )
-    # Explicit release/version selection remains available in integrated mode, but
-    # standalone quickstart never makes users handle content-addressed IDs.
     if settings.mode != "standalone":
         for key in (
             "selectionCommand",
@@ -610,11 +720,12 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
             "--model-profile",
             str(job["modelProfile"]),
         ]
-        code, runtime = _execute(
+        code, runtime, warnings = _execute(
             probe,
             verbose=args.verbose_child_output,
             echo_stdout=args.verbose_child_output,
         )
+        _merge_warnings(job, warnings)
         job["runtime"] = runtime
         if code:
             job.update(status="RUNTIME_UNAVAILABLE", exitCode=code)
@@ -622,7 +733,10 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
             if not args.continue_on_error:
                 break
             continue
-        code, result = _execute(list(job["command"]), verbose=args.verbose_child_output)
+        code, result, warnings = _execute(
+            list(job["command"]), verbose=args.verbose_child_output
+        )
+        _merge_warnings(job, warnings)
         result = _attach_summary(settings, job, result)
         job.update(status="SUCCEEDED" if code == 0 else "FAILED", exitCode=code, result=result)
         if code:
@@ -646,8 +760,15 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
                 ]
                 if args.topn is not None:
                     bt.extend(["--topn", str(args.topn)])
-                bt_code, bt_result = _execute(bt, verbose=args.verbose_child_output)
-                backtest_payload: dict[str, Any] = {"exitCode": bt_code, "result": bt_result}
+                bt_code, bt_result, bt_warnings = _execute(
+                    bt, verbose=args.verbose_child_output
+                )
+                _merge_warnings(job, bt_warnings)
+                backtest_payload: dict[str, Any] = {
+                    "exitCode": bt_code,
+                    "result": bt_result,
+                    "warnings": bt_warnings,
+                }
                 bt_summary = summarize_result(settings.paths.output, bt_result)
                 if bt_summary:
                     backtest_payload["summary"] = bt_summary
@@ -660,6 +781,13 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
                         break
     plan["failureCount"] = failures
     plan["status"] = "SUCCEEDED" if failures == 0 else "PARTIAL" if args.continue_on_error else "FAILED"
+    plan["observedWarnings"] = list(
+        dict.fromkeys(
+            warning
+            for job in plan["jobs"]
+            for warning in [str(item) for item in job.get("warnings", [])]
+        )
+    )
     _write_matrix(root, plan)
     return 0 if failures == 0 else 2
 
@@ -692,9 +820,11 @@ def main() -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             for alpha in payload["alphaPacks"]:
-                print(f"alpha  {alpha['id']:<28} {alpha['handler']}")
+                print(f"alpha     {alpha['id']:<34} {alpha['handler']}")
             for model in payload["modelPresets"]:
-                print(f"model  {model['name']:<28} {model['profile']}")
+                print(f"model     {model['name']:<34} {model['profile']}")
+            for template in payload["researchTemplates"]:
+                print(f"template  {template['id']:<34} {template['description']}")
         return 0
     if args.command == "backtest":
         command = [
@@ -722,7 +852,16 @@ def main() -> int:
     if args.command == "plan":
         plan["status"] = "PLANNED"
         _write_matrix(root, plan)
-        print(json.dumps({"output": str(root), "jobs": len(plan["jobs"])}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "output": str(root),
+                    "jobs": len(plan["jobs"]),
+                    "dashboard": str(root / "research_dashboard.html"),
+                },
+                ensure_ascii=False,
+            )
+        )
         return 0
     code = run_plan(settings, args, plan, root)
     print(render_terminal_summary(plan, root))
@@ -731,6 +870,8 @@ def main() -> int:
         "output": str(root),
         "matrix": str(root / "research_matrix.json"),
         "summary": str(root / "research_matrix.md"),
+        "dashboard": str(root / "research_dashboard.html"),
+        "template": plan.get("template"),
     }
     for key in (
         "error",
