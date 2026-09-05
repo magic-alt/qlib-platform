@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,6 +88,78 @@ def test_auto_bootstrap_rebuilds_bad_staging_from_certified_raw(tmp_path: Path, 
     assert result["recoveredFromIncompatibleRelease"] is True
     assert result["recoveryReason"] == "qlib_staging_contract"
     assert calls == [("dataset-build", "--start", "20260101", "--end", "20260824")]
+
+
+def test_auto_bootstrap_uses_valid_alternate_release_before_raw_rebuild(tmp_path: Path, monkeypatch) -> None:
+    settings = _settings(tmp_path)
+    failed_release_id = "ds_" + "a" * 64
+    alternate_release_id = "ds_" + "b" * 64
+    attempts: list[str] = []
+
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap.resolve_source",
+        lambda _settings: SourceResolution(
+            "MATERIALIZE_REQUIRED",
+            "data_release",
+            failed_release_id,
+            action="dataset-materialize",
+            profile="ashare_qlib_research_v2",
+        ),
+    )
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap._recover_selected_dataset_alias",
+        lambda _settings, _release_id: None,
+    )
+
+    def materialize(_settings, release_id):
+        attempts.append(release_id)
+        if release_id == failed_release_id:
+            raise QlibStagingContractError(
+                "qlib_staging file must contain date and symbol columns: 00000.parquet"
+            )
+        return {
+            "status": "READY",
+            "source": "data_release",
+            "reference": settings.qlib_dataset_ref,
+            "dataReleaseId": release_id,
+            "datasetVersionId": "version-1",
+        }
+
+    class FakeStore:
+        def __init__(self, _root):
+            pass
+
+        def list(self):
+            return (
+                SimpleNamespace(
+                    data_release_id=failed_release_id,
+                    profile="ashare_qlib_research_v2",
+                ),
+                SimpleNamespace(
+                    data_release_id=alternate_release_id,
+                    profile="ashare_qlib_research_v2",
+                ),
+            )
+
+        def latest(self, records=None):
+            assert records is not None
+            return records[-1]
+
+    monkeypatch.setattr("qlib_platform.bootstrap._materialize_selected_release", materialize)
+    monkeypatch.setattr("qlib_platform.bootstrap.FileReleaseStore", FakeStore)
+    monkeypatch.setattr(
+        "qlib_platform.bootstrap.resolve_local_raw_source",
+        lambda _settings: pytest.fail("valid alternate release must be preferred over mutable raw data"),
+    )
+
+    result = bootstrap(settings, source="auto")
+
+    assert result["status"] == "READY"
+    assert result["dataReleaseId"] == alternate_release_id
+    assert result["failedDataReleaseId"] == failed_release_id
+    assert result["recoveredFromIncompatibleRelease"] is True
+    assert result["recoveryReason"] == "qlib_staging_alternate_release"
+    assert attempts == [failed_release_id, alternate_release_id]
 
 
 def test_auto_bootstrap_fails_closed_when_certified_raw_is_incomplete(tmp_path: Path, monkeypatch) -> None:

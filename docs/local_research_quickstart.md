@@ -119,8 +119,8 @@ If several active local DataReleases exist, the resolver:
 
 1. filters out profiles that cannot materialize a Qlib research dataset;
 2. selects the newest compatible release by publication/as-of time;
-3. verifies/materializes it;
-4. promotes the matching release + DatasetVersion snapshot;
+3. verifies/materializes it, trying older compatible releases in order if its frozen staging contract is invalid;
+4. promotes the first matching verified release + DatasetVersion snapshot;
 5. keeps one active release by default;
 6. moves older immutable releases to `data/releases/archive/` and refreshes registry paths for exact-ID replay.
 
