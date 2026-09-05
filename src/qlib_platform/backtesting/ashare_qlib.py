@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from types import MethodType
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from qlib.backtest.decision import Order
@@ -91,7 +91,7 @@ class AShareQlibExchangeGuard:
         if trade_account is not None and position is not None:
             raise ValueError("trade_account and position can only choose one")
         if trade_account is not None:
-            return getattr(trade_account, "current_position")
+            return cast(object, getattr(trade_account, "current_position"))
         return position
 
     def _validate_sell(
