@@ -65,13 +65,13 @@ def test_resolve_strategy_policy_rejects_unknown_policy_type() -> None:
         resolve_strategy_policy(object())  # type: ignore[arg-type]
 
 
-def test_build_qlib_strategy_config_points_topk_at_qlib_native_strategy() -> None:
+def test_build_qlib_strategy_config_routes_topk_through_ashare_adapter() -> None:
     policy = TopkDropoutPolicy(topk=10, n_drop=3, hold_thresh=1, risk_degree=0.95)
 
     config = build_qlib_strategy_config(policy)
 
-    assert config["class"] == "TopkDropoutStrategy"
-    assert config["module_path"] == "qlib.contrib.strategy"
+    assert config["class"] == "AShareTopkDropoutStrategy"
+    assert config["module_path"] == "qlib_platform.backtesting.qlib_strategies"
     kwargs = config["kwargs"]
     assert kwargs["signal"] == "<PRED>"
     assert kwargs["topk"] == 10
@@ -80,7 +80,7 @@ def test_build_qlib_strategy_config_points_topk_at_qlib_native_strategy() -> Non
     assert kwargs["risk_degree"] == 0.95
 
 
-def test_build_qlib_strategy_config_points_rank_buffer_at_local_strategy() -> None:
+def test_build_qlib_strategy_config_routes_rank_buffer_through_ashare_adapter() -> None:
     policy = RankBufferPolicy(
         target_size=10,
         entry_rank=10,
@@ -92,7 +92,7 @@ def test_build_qlib_strategy_config_points_rank_buffer_at_local_strategy() -> No
 
     config = build_qlib_strategy_config(policy)
 
-    assert config["class"] == "RankBufferStrategy"
+    assert config["class"] == "AShareRankBufferStrategy"
     assert config["module_path"] == "qlib_platform.backtesting.qlib_strategies"
     kwargs = config["kwargs"]
     assert kwargs["signal"] == "<PRED>"
@@ -102,6 +102,13 @@ def test_build_qlib_strategy_config_points_rank_buffer_at_local_strategy() -> No
     assert kwargs["max_replacements"] == 3
     assert kwargs["hold_thresh"] == 1
     assert kwargs["risk_degree"] == 0.95
+
+
+def test_build_qlib_strategy_config_rejects_t0_policy() -> None:
+    policy = TopkDropoutPolicy(topk=10, n_drop=3, hold_thresh=0)
+
+    with pytest.raises(ValueError, match="hold_thresh >= 1"):
+        build_qlib_strategy_config(policy)
 
 
 def test_rank_buffer_policy_from_mapping_accepts_config_camel_case() -> None:
