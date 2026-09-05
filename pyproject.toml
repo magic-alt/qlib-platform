@@ -66,6 +66,15 @@ pytorch = [
 xgboost = [
   "xgboost>=2.0,<4.0",
 ]
+postgres = [
+  "psycopg[binary]>=3.1,<4",
+]
+parallel-ray = [
+  "ray>=2.10,<3",
+]
+parallel-dask = [
+  "dask[distributed]>=2024.1,<2027",
+]
 all = [
   "tushare>=1.4.0,<2.0",
   "tenacity>=8.2,<10",
@@ -93,6 +102,7 @@ qlib-platform = "qlib_platform.cli:main"
 tq = "qlib_platform.cli:main"
 tq-research = "qlib_platform.research.workflow.quickstart:main"
 tq-research-summary = "qlib_platform.research.reporting.summary:main"
+tq-research-console = "qlib_platform.research.reporting.research_console:main"
 tq-render-scheduler = "qlib_platform.runtime.scheduler:main"
 
 [tool.setuptools.packages.find]

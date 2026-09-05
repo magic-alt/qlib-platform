@@ -1,0 +1,30 @@
+# Research-only alpha -> portfolio optimizer profile.
+# This profile does not authorize candidate promotion, final-holdout access, or publishing.
+profile_id: alpha_optimizer_ashare_v1
+risk_model:
+  kind: barra_like
+  annualization: 252
+  covariance_shrinkage: 0.10
+  min_observations: 60
+  style_factors:
+    - size
+    - value
+    - momentum
+    - volatility
+    - liquidity
+  industry_exposure: one_hot
+optimizer:
+  risk_aversion: 5.0
+  linear_turnover_cost: 0.001
+  impact_cost: 0.01
+  step_size: 0.05
+  max_iterations: 2000
+  tolerance: 1.0e-8
+constraints:
+  target_exposure: 1.0
+  min_weight: 0.0
+  max_weight: 0.08
+  max_turnover: 0.30
+  # Factor/industry bounds are intentionally supplied by each experiment because
+  # the active exposure taxonomy is DatasetVersion/FeatureSnapshot dependent.
+  factor_bounds: {}
