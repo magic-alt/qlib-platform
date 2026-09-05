@@ -56,8 +56,13 @@ RESEARCH_TEMPLATES: dict[str, ResearchTemplate] = {
                 "open_cost": 0.0005,
                 "close_cost": 0.0015,
                 "min_cost": 5,
+                # Prepared feature-store panels are processed by DataHandlerLP
+                # directly, bypassing Alpha158.__init__. Disable that cache for
+                # this parity control so Microsoft's processor contract remains
+                # authoritative end to end.
+                "feature_store": {"enabled": False},
                 # The platform keeps a finite, local-data execution guard instead
-                # of removing the volume cap entirely.  One hundred percent of
+                # of removing the volume cap entirely. One hundred percent of
                 # observed daily volume is effectively non-binding for this control.
                 "max_participation_rate": 1.0,
                 "benchmark": "SH000300",
@@ -85,6 +90,7 @@ RESEARCH_TEMPLATES: dict[str, ResearchTemplate] = {
         },
         parity_notes=(
             "Alpha158 feature expressions and processors match the upstream reference handler.",
+            "Feature-store reuse is disabled for this control because cached raw panels otherwise bypass Alpha158 processor construction.",
             "The label is the upstream one-day T+1 close-return label.",
             "LightGBM, TopK50/drop5/hold1, account, close execution and fee parameters mirror the reference recipe.",
             "Actual stocks, prices, membership history and benchmark observations come from the pinned local DatasetVersion.",
