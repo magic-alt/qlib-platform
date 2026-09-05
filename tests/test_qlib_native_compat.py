@@ -49,14 +49,18 @@ def test_generic_factory_accepts_arbitrary_importable_class_without_registry() -
     assert instance.label == "custom"
 
 
-def test_native_qrun_delegates_to_upstream_without_rewriting(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_native_qrun_delegates_to_upstream_without_rewriting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     import qlib.cli.run
 
     workflow = tmp_path / "workflow.yaml"
     workflow.write_text("task: {model: custom}\n", encoding="utf-8")
     calls: list[tuple[str, str, str]] = []
 
-    def fake_workflow(config_path: str, experiment_name: str = "workflow", uri_folder: str = "mlruns") -> None:
+    def fake_workflow(
+        config_path: str, experiment_name: str = "workflow", uri_folder: str = "mlruns"
+    ) -> None:
         calls.append((config_path, experiment_name, uri_folder))
 
     original = workflow.read_bytes()
