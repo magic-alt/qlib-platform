@@ -25,7 +25,7 @@ def test_qlib_is_core_and_heavy_capabilities_are_explicit_extras() -> None:
 
     # Qlib 0.9.7's RL extra pins Tianshou <=0.4.10, whose package metadata
     # forces vulnerable protobuf~=3.19.0. Do not silently bundle that chain.
-    assert 'qlib-rl = [' not in text
+    assert "qlib-rl = [" not in text
     assert '"tianshou' not in qlib_full
 
     qlib_analysis = text.split("qlib-analysis = [", 1)[1].split("]", 1)[0]
