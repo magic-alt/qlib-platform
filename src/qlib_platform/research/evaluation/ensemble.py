@@ -122,9 +122,7 @@ def build_qlib_double_ensemble(
     try:
         from qlib.contrib.model.double_ensemble import DEnsembleModel
     except ImportError as exc:  # pragma: no cover - optional qlib/lightgbm dependency
-        raise RuntimeError(
-            "DoubleEnsemble requires the qlib extra: install qlib-platform[qlib]"
-        ) from exc
+        raise RuntimeError("DoubleEnsemble requires the qlib extra: install qlib-platform[qlib]") from exc
     kwargs = asdict(resolved)
     kwargs.update(lightgbm_params)
     return DEnsembleModel(**kwargs)

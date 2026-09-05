@@ -17,9 +17,7 @@ def utc_now() -> str:
 
 
 def json_payload(value: Mapping[str, Any] | Sequence[Any] | None) -> str:
-    return json.dumps(
-        value or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-    )
+    return json.dumps(value or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
 class Connection(Protocol):

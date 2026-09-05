@@ -79,7 +79,9 @@ def estimate_barra_like_risk(
         specific.to_numpy(dtype=float)
     )
     return BarraLikeRiskModel(
-        covariance=pd.DataFrame(nearest_psd(asset_covariance), index=returns.columns, columns=returns.columns),
+        covariance=pd.DataFrame(
+            nearest_psd(asset_covariance), index=returns.columns, columns=returns.columns
+        ),
         factor_exposures=exposures,
         factor_covariance=factor_covariance,
         specific_variance=specific,

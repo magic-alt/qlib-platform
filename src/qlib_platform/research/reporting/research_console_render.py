@@ -49,9 +49,7 @@ def render_research_console(
         ("Factors", store.list_factors(limit=500)),
         ("Portfolios", store.list_portfolios(limit=250)),
     )
-    catalog_html = "".join(
-        f"<section><h2>{title}</h2>{_table(frame)}</section>" for title, frame in catalogs
-    )
+    catalog_html = "".join(f"<section><h2>{title}</h2>{_table(frame)}</section>" for title, frame in catalogs)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -69,4 +67,4 @@ th {{ color: #9fb5e8; }} .empty {{ padding: 8px 0; }}
 </style></head><body>
 <header><h1>Research Console</h1>
 <p>Read-only metadata view. Immutable artifacts remain in the governed artifact store.</p></header>
-<main>{''.join(sections)}{catalog_html}</main></body></html>"""
+<main>{"".join(sections)}{catalog_html}</main></body></html>"""

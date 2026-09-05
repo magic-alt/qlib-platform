@@ -97,7 +97,10 @@ def project_constraints(
                 )
         if float(np.max(np.abs(projected - before))) <= 1e-10:
             break
-    if constraints.max_turnover is not None and turnover(projected, current) > constraints.max_turnover + 1e-7:
+    if (
+        constraints.max_turnover is not None
+        and turnover(projected, current) > constraints.max_turnover + 1e-7
+    ):
         raise ValueError("turnover constraint is infeasible")
     if exposures is not None:
         for column_index, factor in enumerate(exposure_columns):

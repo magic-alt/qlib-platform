@@ -75,9 +75,7 @@ def serve_research_console(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Serve the qlib-platform research metadata console")
-    parser.add_argument(
-        "--db", default="research_experiments.duckdb", help="DuckDB path or PostgreSQL DSN"
-    )
+    parser.add_argument("--db", default="research_experiments.duckdb", help="DuckDB path or PostgreSQL DSN")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)

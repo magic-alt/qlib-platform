@@ -74,9 +74,7 @@ def _result(
         "requested_notional": float(state.requested_notional),
         "filled_notional": float(state.filled_notional),
         "fill_ratio_notional": (
-            float(state.filled_notional / state.requested_notional)
-            if state.requested_notional > 0
-            else 0.0
+            float(state.filled_notional / state.requested_notional) if state.requested_notional > 0 else 0.0
         ),
         "aggregate_capacity_notional": float(state.total_capacity_notional),
         "capacity_utilization": (

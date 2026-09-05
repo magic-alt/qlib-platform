@@ -93,12 +93,7 @@ def optimize_alpha_portfolio(
         turnover=turnover(weights, current),
         linear_cost=linear_cost,
         impact_cost=impact_cost,
-        objective=(
-            expected_return
-            - resolved_config.risk_aversion * variance
-            - linear_cost
-            - impact_cost
-        ),
+        objective=(expected_return - resolved_config.risk_aversion * variance - linear_cost - impact_cost),
         iterations=iterations,
         converged=converged,
         factor_exposures=factor_exposure,

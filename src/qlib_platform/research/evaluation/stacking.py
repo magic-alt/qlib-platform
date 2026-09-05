@@ -106,9 +106,7 @@ class StackingEnsembler:
             raise ValueError("stacking labels contain missing or non-numeric values")
         if len(aligned) <= aligned.shape[1]:
             raise ValueError("stacking requires more OOF rows than base models")
-        self.coef_, self.intercept_ = self._fit_matrix(
-            aligned.to_numpy(dtype=float), y.to_numpy(dtype=float)
-        )
+        self.coef_, self.intercept_ = self._fit_matrix(aligned.to_numpy(dtype=float), y.to_numpy(dtype=float))
         self.model_names_ = tuple(str(name) for name in aligned.columns)
         self.diagnostics_ = StackingDiagnostics(
             n_rows=len(aligned),
