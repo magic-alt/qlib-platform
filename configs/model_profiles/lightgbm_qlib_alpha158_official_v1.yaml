@@ -1,9 +1,9 @@
 name: lightgbm_qlib_alpha158_official_v1
 family: lightgbm
-device: auto
+device: cpu
 device_index: 0
 model_kwargs:
-  # Mirrors Microsoft's current Alpha158 LightGBM benchmark recipe.  Parameters
+  # Mirrors Microsoft's current Alpha158 LightGBM benchmark recipe. Parameters
   # that the upstream YAML leaves to LGBModel/LightGBM defaults are made explicit
   # so qlib-platform adapter defaults cannot silently change this control.
   loss: mse
