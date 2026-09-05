@@ -356,7 +356,9 @@ def run_optuna_study(
             {
                 "number": int(trial.number),
                 "state": str(trial.state.name),
-                "value": float(trial.value) if trial.value is not None and math.isfinite(trial.value) else None,
+                "value": float(trial.value)
+                if trial.value is not None and math.isfinite(trial.value)
+                else None,
                 "params": dict(trial.params),
                 "metrics": metrics,
                 "trialSeed": spec.seed + int(trial.number),
@@ -394,9 +396,7 @@ def run_optuna_study(
             raise ValueError(f"incomplete immutable HPO study exists: {root}")
         existing = json.loads(manifest_path.read_text(encoding="utf-8"))
         if existing != manifest:
-            raise ValueError(
-                f"immutable HPO study already exists with different evidence: {manifest_path}"
-            )
+            raise ValueError(f"immutable HPO study already exists with different evidence: {manifest_path}")
     else:
         building = Path(tempfile.mkdtemp(prefix=".hpo-study-building-", dir=parent))
         try:
