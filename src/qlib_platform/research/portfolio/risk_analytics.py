@@ -72,7 +72,9 @@ def _validate_covariance(covariance: pd.DataFrame) -> tuple[pd.Index, np.ndarray
     return covariance.index, values
 
 
-def _validate_weights(weights: pd.Series, instruments: pd.Index, *, name: str) -> tuple[pd.Series, np.ndarray]:
+def _validate_weights(
+    weights: pd.Series, instruments: pd.Index, *, name: str
+) -> tuple[pd.Series, np.ndarray]:
     if weights.index.has_duplicates:
         raise ValueError(f"{name} instruments must be unique")
     if not weights.index.equals(instruments):
@@ -114,9 +116,7 @@ def portfolio_risk(weights: pd.Series, covariance: pd.DataFrame) -> RiskBreakdow
 
     diagonal = np.diag(covariance_values)
     variance_without = (
-        variance
-        - 2.0 * weight_values * covariance_times_weights
-        + (weight_values**2) * diagonal
+        variance - 2.0 * weight_values * covariance_times_weights + (weight_values**2) * diagonal
     )
     variance_without = np.maximum(variance_without, 0.0)
     incremental = volatility - np.sqrt(variance_without)
@@ -154,9 +154,7 @@ def tracking_risk(
         tracking_error=breakdown.volatility,
         marginal_risk=breakdown.marginal_risk.rename("marginal_tracking_risk"),
         component_risk=breakdown.component_risk.rename("component_tracking_risk"),
-        percent_contribution=breakdown.percent_contribution.rename(
-            "tracking_risk_percent_contribution"
-        ),
+        percent_contribution=breakdown.percent_contribution.rename("tracking_risk_percent_contribution"),
         incremental_risk=breakdown.incremental_risk.rename("incremental_tracking_risk"),
     )
 
