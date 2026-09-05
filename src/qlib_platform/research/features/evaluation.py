@@ -148,7 +148,9 @@ def _daily_metrics(
                     "valid_count": valid,
                     "coverage": valid / universe if universe else float("nan"),
                     "ic": _safe_corr(pair["factor"], pair["label"], "pearson") if eligible else float("nan"),
-                    "rank_ic": _safe_corr(pair["factor"], pair["label"], "spearman") if eligible else float("nan"),
+                    "rank_ic": _safe_corr(pair["factor"], pair["label"], "spearman")
+                    if eligible
+                    else float("nan"),
                 }
             )
     return pd.DataFrame(rows).sort_values(["date", "factor"], kind="stable").reset_index(drop=True)
