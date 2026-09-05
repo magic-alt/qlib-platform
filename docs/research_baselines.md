@@ -38,8 +38,10 @@ The control intentionally preserves the qlib-platform data lineage, immutable Da
 | Feature handler | upstream `Alpha158` feature expressions |
 | Infer processors | none, matching upstream Alpha158 |
 | Learn processors | `DropnaLabel` + label `CSZScoreNorm` |
+| Feature-store reuse | disabled so cached panels cannot bypass upstream processor construction |
 | Label | one-day T+1 close return (`return_1d_t1_v1`) |
 | Model | LightGBM reference parameters from Qlib's Alpha158 benchmark |
+| Runtime | CPU, matching LightGBM's upstream default execution path |
 | Boosting defaults | 1000 rounds, 50-round early stopping, made explicit |
 | Portfolio | TopK 50, drop 5, minimum hold 1 |
 | Tradability decision | `only_tradable: false`, matching the upstream strategy recipe |
@@ -49,7 +51,7 @@ The control intentionally preserves the qlib-platform data lineage, immutable Da
 | Benchmark | SH000300, loaded from governed local benchmark data |
 | Stocks/data | active local CSI300 membership, prices and DatasetVersion lineage |
 
-Two deviations are deliberate. First, local research windows are selected from the active DatasetVersion instead of forcing Qlib's historical 2008-2020 sample dates onto a different dataset; explicit `--train/--valid/--test` windows remain available. Second, qlib-platform retains point-in-time local limit flags and its deterministic volume guard when replaying orders. This keeps the control executable against the real local A-share dataset rather than pretending the local market data has the exact mechanics of Qlib's tutorial provider.
+Two market-data deviations are deliberate. First, local research windows are selected from the active DatasetVersion instead of forcing Qlib's historical 2008-2020 sample dates onto a different dataset; explicit `--train/--valid/--test` windows remain available. Second, qlib-platform retains point-in-time local limit flags and its deterministic volume guard when replaying orders. This keeps the control executable against the real local A-share dataset rather than pretending the local market data has the exact mechanics of Qlib's tutorial provider.
 
 ## Platform Alpha158 baseline
 
