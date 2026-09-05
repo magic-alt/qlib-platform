@@ -8,8 +8,10 @@ import pandas as pd
 
 from qlib.backtest.decision import Order, OrderDir, TradeDecisionWO
 from qlib.backtest.position import Position
-from qlib.contrib.strategy.signal_strategy import BaseSignalStrategy
+from qlib.contrib.strategy.signal_strategy import BaseSignalStrategy, TopkDropoutStrategy
 
+from qlib_platform.backtesting.ashare_qlib import guard_qlib_exchange, normalize_qlib_buy_amount
+from qlib_platform.backtesting.ashare_rules import AShareMarketRules
 from qlib_platform.backtesting.topk_dropout import RankBufferPolicy
 
 
@@ -166,3 +168,60 @@ class RankBufferStrategy(BaseSignalStrategy):
                     )
                 )
         return TradeDecisionWO(sell_order_list + buy_order_list, self)
+
+
+def _normalize_buy_orders(
+    decision: TradeDecisionWO,
+    strategy: BaseSignalStrategy,
+    rules: AShareMarketRules,
+) -> TradeDecisionWO:
+    for order in decision.get_decision():
+        if order.direction != Order.BUY or float(order.amount) <= 0:
+            continue
+        order.amount = normalize_qlib_buy_amount(
+            strategy.trade_exchange,
+            order.stock_id,
+            float(order.amount),
+            order.start_time,
+            order.end_time,
+            rules,
+        )
+    return decision
+
+
+class AShareTopkDropoutStrategy(TopkDropoutStrategy):
+    """Qlib TopkDropout with the canonical cash A-share execution contract."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        hold_thresh = int(kwargs.get("hold_thresh", 1))
+        if hold_thresh < 1:
+            raise ValueError("A-share cash strategy requires hold_thresh >= 1 for T+1")
+        self._ashare_rules = AShareMarketRules()
+        super().__init__(*args, **kwargs)
+
+    def reset_common_infra(self, common_infra):  # type: ignore[no-untyped-def]
+        super().reset_common_infra(common_infra)
+        guard_qlib_exchange(self.trade_exchange, self._ashare_rules)
+
+    def generate_trade_decision(self, execute_result=None):  # type: ignore[no-untyped-def]
+        decision = super().generate_trade_decision(execute_result=execute_result)
+        return _normalize_buy_orders(decision, self, self._ashare_rules)
+
+
+class AShareRankBufferStrategy(RankBufferStrategy):
+    """RankBuffer strategy with the canonical cash A-share execution contract."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        hold_thresh = int(kwargs.get("hold_thresh", 1))
+        if hold_thresh < 1:
+            raise ValueError("A-share cash strategy requires hold_thresh >= 1 for T+1")
+        self._ashare_rules = AShareMarketRules()
+        super().__init__(*args, **kwargs)
+
+    def reset_common_infra(self, common_infra):  # type: ignore[no-untyped-def]
+        super().reset_common_infra(common_infra)
+        guard_qlib_exchange(self.trade_exchange, self._ashare_rules)
+
+    def generate_trade_decision(self, execute_result=None):  # type: ignore[no-untyped-def]
+        decision = super().generate_trade_decision(execute_result=execute_result)
+        return _normalize_buy_orders(decision, self, self._ashare_rules)
