@@ -94,9 +94,10 @@ def normalize_buy_quantity(instrument: str, quantity: float, rules: AShareMarket
     if is_star_market(instrument):
         if raw < rules.star_min_buy_size:
             return 0
-        return rules.star_min_buy_size + (
-            (raw - rules.star_min_buy_size) // rules.star_buy_increment
-        ) * rules.star_buy_increment
+        return (
+            rules.star_min_buy_size
+            + ((raw - rules.star_min_buy_size) // rules.star_buy_increment) * rules.star_buy_increment
+        )
     return (raw // rules.buy_lot_size) * rules.buy_lot_size
 
 
