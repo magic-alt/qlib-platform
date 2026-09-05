@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: research
+applies_to_commit: 184ff32078dd6edf2c4c299d4208d4e13d0fb990
+last_verified: 2026-09-05
+---
+
 # Professional research expansion: P1-P3
 
 This change adds the next research-platform layers without altering the active governed Phase 3-D program. It does not select/promote a model, access the final holdout, or authorize publishing.
