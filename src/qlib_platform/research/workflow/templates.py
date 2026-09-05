@@ -37,9 +37,7 @@ RESEARCH_TEMPLATES: dict[str, ResearchTemplate] = {
         model_name="lightgbm",
         model_profile="configs/model_profiles/lightgbm_auto.yaml",
         overlay={},
-        parity_notes=(
-            "Uses the platform production preprocessing, execution and research-gate contract.",
-        ),
+        parity_notes=("Uses the platform production preprocessing, execution and research-gate contract.",),
     ),
     "qlib_alpha158_official_v1": ResearchTemplate(
         template_id="qlib_alpha158_official_v1",
