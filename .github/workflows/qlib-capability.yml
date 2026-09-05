@@ -1,0 +1,74 @@
+name: Qlib Capability Contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qlib-capability-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qlib-core-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Verify native Qlib core capability contract
+        run: python -m qlib_platform.qlib_compat capability-check
+      - name: Verify generic passthrough and Recorder federation
+        run: >-
+          python -m pytest -q
+          tests/test_qlib_native_compat.py
+          tests/test_qlib_capability_manifest.py
+          tests/test_qlib_recorder_federation.py
+          tests/test_qlib_packaging_contract.py
+
+  qlib-model-zoo-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev,qlib-full]'
+      - name: Verify Qlib contrib model capability surface
+        run: >-
+          python -m qlib_platform.qlib_compat capability-check
+          --require-extra lightgbm
+          --require-extra xgboost
+          --require-extra catboost
+          --require-extra sklearn
+          --require-extra pytorch
+          --require-extra analysis
+          --require-extra tuner
+
+  qlib-rl-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev,qlib-rl]'
+      - name: Verify Qlib reinforcement-learning import surface
+        run: python -m qlib_platform.qlib_compat capability-check --require-extra rl
