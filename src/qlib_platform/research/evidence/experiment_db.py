@@ -9,7 +9,7 @@ from typing import Any, Protocol
 import pandas as pd
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def utc_now() -> str:
@@ -107,6 +107,14 @@ _SCHEMA_STATEMENTS = (
         experiment_id TEXT NOT NULL, kind TEXT NOT NULL, uri TEXT NOT NULL, sha256 TEXT NOT NULL,
         metadata_json TEXT NOT NULL, created_at TEXT NOT NULL,
         PRIMARY KEY (experiment_id, kind, sha256))""",
+    """CREATE TABLE IF NOT EXISTS qlib_recorders (
+        experiment_id TEXT PRIMARY KEY, recorder_id TEXT NOT NULL,
+        qlib_experiment_id TEXT NOT NULL, recorder_name TEXT, status TEXT NOT NULL,
+        tracking_uri TEXT, artifact_uri TEXT, start_time TEXT, end_time TEXT,
+        params_json TEXT NOT NULL, tags_json TEXT NOT NULL, metrics_json TEXT NOT NULL,
+        synced_at TEXT NOT NULL)""",
+    """CREATE UNIQUE INDEX IF NOT EXISTS qlib_recorders_identity
+        ON qlib_recorders (qlib_experiment_id, recorder_id)""",
 )
 
 

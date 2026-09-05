@@ -1,0 +1,81 @@
+schema_version: 1
+contract: qlib-native-superset-v1
+qlib_version: "0.9.7"
+policy:
+  native_passthrough: true
+  platform_allowlist_required: false
+  monkey_patch_upstream: false
+  certified_platform_lane_is_opt_in: true
+capabilities:
+  - {id: core.qlib, target: qlib, level: required}
+  - {id: core.object_factory, target: "qlib.utils:init_instance_by_config", level: required}
+  - {id: workflow.qrun, target: "qlib.cli.run:workflow", level: required}
+  - {id: workflow.task_train, target: "qlib.model.trainer:task_train", level: required}
+  - {id: workflow.experiment_manager, target: "qlib.workflow:R", level: required}
+  - {id: workflow.recorder, target: "qlib.workflow.recorder:Recorder", level: required}
+  - {id: workflow.experiment, target: "qlib.workflow.exp:Experiment", level: required}
+  - {id: workflow.signal_record, target: "qlib.workflow.record_temp:SignalRecord", level: required}
+  - {id: workflow.portfolio_analysis_record, target: "qlib.workflow.record_temp:PortAnaRecord", level: required}
+  - {id: data.provider, target: "qlib.data:D", level: required}
+  - {id: data.dataset, target: "qlib.data.dataset:Dataset", level: required}
+  - {id: data.dataset_h, target: "qlib.data.dataset:DatasetH", level: required}
+  - {id: data.ts_dataset_h, target: "qlib.data.dataset:TSDatasetH", level: required}
+  - {id: data.handler, target: "qlib.data.dataset.handler:DataHandler", level: required}
+  - {id: data.handler_lp, target: "qlib.data.dataset.handler:DataHandlerLP", level: required}
+  - {id: data.processor, target: "qlib.data.dataset.processor:Processor", level: required}
+  - {id: data.alpha158, target: "qlib.contrib.data.handler:Alpha158", level: required}
+  - {id: data.alpha360, target: "qlib.contrib.data.handler:Alpha360", level: required}
+  - {id: data.highfreq_handler, target: qlib.contrib.data.highfreq_handler, level: required}
+  - {id: data.highfreq_processor, target: qlib.contrib.data.highfreq_processor, level: required}
+  - {id: data.multi_timeseries_dataset, target: "qlib.contrib.data.dataset:MTSDatasetH", level: required}
+  - {id: model.base, target: "qlib.model.base:Model", level: required}
+  - {id: model.linear, target: "qlib.contrib.model.linear:LinearModel", level: optional, extra: sklearn}
+  - {id: model.lightgbm, target: "qlib.contrib.model.gbdt:LGBModel", level: optional, extra: lightgbm}
+  - {id: model.double_ensemble, target: "qlib.contrib.model.double_ensemble:DEnsembleModel", level: optional, extra: lightgbm}
+  - {id: model.highfreq_gbdt, target: qlib.contrib.model.highfreq_gdbt_model, level: optional, extra: lightgbm}
+  - {id: model.xgboost, target: "qlib.contrib.model.xgboost:XGBModel", level: optional, extra: xgboost}
+  - {id: model.catboost, target: "qlib.contrib.model.catboost_model:CatBoostModel", level: optional, extra: catboost}
+  - {id: model.pytorch_lstm, target: "qlib.contrib.model.pytorch_lstm:LSTM", level: optional, extra: pytorch}
+  - {id: model.pytorch_lstm_ts, target: "qlib.contrib.model.pytorch_lstm_ts:LSTM", level: optional, extra: pytorch}
+  - {id: model.pytorch_gru, target: "qlib.contrib.model.pytorch_gru:GRU", level: optional, extra: pytorch}
+  - {id: model.pytorch_gru_ts, target: "qlib.contrib.model.pytorch_gru_ts:GRU", level: optional, extra: pytorch}
+  - {id: model.pytorch_alstm, target: "qlib.contrib.model.pytorch_alstm:ALSTM", level: optional, extra: pytorch}
+  - {id: model.pytorch_alstm_ts, target: qlib.contrib.model.pytorch_alstm_ts, level: optional, extra: pytorch}
+  - {id: model.pytorch_gats, target: "qlib.contrib.model.pytorch_gats:GATs", level: optional, extra: pytorch}
+  - {id: model.pytorch_gats_ts, target: qlib.contrib.model.pytorch_gats_ts, level: optional, extra: pytorch}
+  - {id: model.pytorch_general_nn, target: qlib.contrib.model.pytorch_general_nn, level: optional, extra: pytorch}
+  - {id: model.pytorch_dnn, target: "qlib.contrib.model.pytorch_nn:DNNModelPytorch", level: optional, extra: pytorch}
+  - {id: model.pytorch_tabnet, target: "qlib.contrib.model.pytorch_tabnet:TabnetModel", level: optional, extra: pytorch}
+  - {id: model.pytorch_sfm, target: "qlib.contrib.model.pytorch_sfm:SFM_Model", level: optional, extra: pytorch}
+  - {id: model.pytorch_tcn, target: "qlib.contrib.model.pytorch_tcn:TCN", level: optional, extra: pytorch}
+  - {id: model.pytorch_tcn_ts, target: qlib.contrib.model.pytorch_tcn_ts, level: optional, extra: pytorch}
+  - {id: model.pytorch_add, target: "qlib.contrib.model.pytorch_add:ADD", level: optional, extra: pytorch}
+  - {id: model.pytorch_transformer, target: qlib.contrib.model.pytorch_transformer, level: optional, extra: pytorch}
+  - {id: model.pytorch_transformer_ts, target: "qlib.contrib.model.pytorch_transformer_ts:TransformerModel", level: optional, extra: pytorch}
+  - {id: model.pytorch_adarnn, target: qlib.contrib.model.pytorch_adarnn, level: optional, extra: pytorch}
+  - {id: model.pytorch_hist, target: qlib.contrib.model.pytorch_hist, level: optional, extra: pytorch}
+  - {id: model.pytorch_igmtf, target: qlib.contrib.model.pytorch_igmtf, level: optional, extra: pytorch}
+  - {id: model.pytorch_krnn, target: qlib.contrib.model.pytorch_krnn, level: optional, extra: pytorch}
+  - {id: model.pytorch_localformer, target: qlib.contrib.model.pytorch_localformer, level: optional, extra: pytorch}
+  - {id: model.pytorch_localformer_ts, target: qlib.contrib.model.pytorch_localformer_ts, level: optional, extra: pytorch}
+  - {id: model.pytorch_sandwich, target: qlib.contrib.model.pytorch_sandwich, level: optional, extra: pytorch}
+  - {id: model.pytorch_tcts, target: qlib.contrib.model.pytorch_tcts, level: optional, extra: pytorch}
+  - {id: model.pytorch_tra, target: qlib.contrib.model.pytorch_tra, level: optional, extra: pytorch}
+  - {id: model.tcn_core, target: qlib.contrib.model.tcn, level: optional, extra: pytorch}
+  - {id: strategy.base, target: "qlib.strategy.base:BaseStrategy", level: required}
+  - {id: strategy.signal, target: qlib.contrib.strategy.signal_strategy, level: required}
+  - {id: strategy.rule, target: qlib.contrib.strategy.rule_strategy, level: required}
+  - {id: strategy.optimizer, target: qlib.contrib.strategy.optimizer, level: required}
+  - {id: backtest.executor, target: "qlib.backtest.executor:BaseExecutor", level: required}
+  - {id: backtest.exchange, target: "qlib.backtest.exchange:Exchange", level: required}
+  - {id: backtest.api, target: qlib.backtest, level: required}
+  - {id: workflow.rolling, target: qlib.contrib.rolling, level: required}
+  - {id: online.workflow, target: qlib.workflow.online, level: required}
+  - {id: online.contrib, target: qlib.contrib.online, level: required}
+  - {id: reinforcement_learning, target: qlib.rl, level: required}
+  - {id: reinforcement_learning.order_execution, target: qlib.rl.order_execution, level: optional, extra: rl}
+  - {id: meta.data_selection, target: qlib.contrib.meta.data_selection, level: optional, extra: pytorch}
+  - {id: report.graph, target: qlib.contrib.report.graph, level: optional, extra: analysis}
+  - {id: report.analysis_model, target: qlib.contrib.report.analysis_model, level: optional, extra: analysis}
+  - {id: report.analysis_position, target: qlib.contrib.report.analysis_position, level: optional, extra: analysis}
+  - {id: tuner.hyperopt, target: "qlib.contrib.tuner.tuner:Tuner", level: optional, extra: tuner}
