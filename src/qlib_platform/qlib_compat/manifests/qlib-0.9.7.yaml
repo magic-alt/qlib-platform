@@ -27,7 +27,7 @@ capabilities:
   - {id: data.alpha360, target: "qlib.contrib.data.handler:Alpha360", level: required}
   - {id: data.highfreq_handler, target: qlib.contrib.data.highfreq_handler, level: required}
   - {id: data.highfreq_processor, target: qlib.contrib.data.highfreq_processor, level: required}
-  - {id: data.multi_timeseries_dataset, target: "qlib.contrib.data.dataset:MTSDatasetH", level: required}
+  - {id: data.multi_timeseries_dataset, target: "qlib.contrib.data.dataset:MTSDatasetH", level: optional, extra: pytorch}
   - {id: model.base, target: "qlib.model.base:Model", level: required}
   - {id: model.linear, target: "qlib.contrib.model.linear:LinearModel", level: optional, extra: sklearn}
   - {id: model.lightgbm, target: "qlib.contrib.model.gbdt:LGBModel", level: optional, extra: lightgbm}
