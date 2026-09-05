@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from qlib_platform.backtesting.ashare_costs import execution_fees
+from qlib_platform.backtesting.ashare_rules import normalize_buy_quantity
 from qlib_platform.backtesting.ashare_simulator import (
     AShareMarketRules,
     infer_price_limit_pct,
@@ -52,6 +54,47 @@ def test_t_plus_one_blocks_same_day_sale_and_releases_next_session() -> None:
     assert list(result.fills["side"]) == ["BUY", "SELL"]
     assert "t_plus_one_or_no_position" in set(result.rejections["reason"])
     assert int(result.positions.iloc[0]["quantity"]) == 500
+
+
+def test_default_fee_profile_matches_wanyi_mianwu_cash_account() -> None:
+    rules = AShareMarketRules()
+
+    assert rules.commission_bps == 1.0
+    assert rules.min_commission == 0.0
+    assert execution_fees(100_000.0, "BUY", rules) == 11.0
+    assert execution_fees(100_000.0, "SELL", rules) == 61.0
+
+
+def test_board_specific_buy_quantity_rules() -> None:
+    rules = AShareMarketRules()
+
+    assert normalize_buy_quantity("000001.SZ", 356, rules) == 300
+    assert normalize_buy_quantity("SH688981", 199, rules) == 0
+    assert normalize_buy_quantity("SH688981", 399, rules) == 399
+    assert normalize_buy_quantity("688981.SH", 401, rules) == 401
+
+
+def test_star_market_simulator_accepts_one_share_increments_above_minimum() -> None:
+    bars = pd.DataFrame(
+        [
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "688981.SH",
+                "open": 50.0,
+                "close": 50.5,
+                "prev_close": 49.0,
+                "volume": 100_000,
+                "board": "STAR",
+            }
+        ]
+    )
+    orders = pd.DataFrame(
+        [{"trade_date": "2026-01-05", "instrument": "688981.SH", "side": "BUY", "quantity": 399}]
+    )
+
+    result = simulate_ashare_orders(bars, orders, initial_cash=100_000)
+
+    assert int(result.fills.iloc[0]["filled_quantity"]) == 399
 
 
 def test_volume_participation_creates_partial_fill() -> None:
