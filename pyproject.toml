@@ -39,10 +39,9 @@ data = ["tushare>=1.4.0,<2.0", "tenacity>=8.2,<10", "pymysql>=1.1,<2.0"]
 qlib = ["lightgbm==4.6.0"]
 qlib-full = [
   "lightgbm==4.6.0", "xgboost>=2.0,<4.0", "torch>=2.13,<3.0", "catboost>=1.2,<2.0",
-  "scikit-learn>=1.4,<2.0", "scipy>=1.11,<=1.15.3", "tianshou<=0.4.10",
-  "protobuf>=6.33.5,<8", "hyperopt>=0.2.7,<1.0", "plotly>=5.20,<7.0", "statsmodels>=0.14,<1.0",
+  "scikit-learn>=1.4,<2.0", "scipy>=1.11,<=1.15.3", "hyperopt>=0.2.7,<1.0",
+  "plotly>=5.20,<7.0", "statsmodels>=0.14,<1.0",
 ]
-qlib-rl = ["torch>=2.13,<3.0", "tianshou<=0.4.10", "protobuf>=6.33.5,<8"]
 qlib-analysis = ["plotly>=5.20,<7.0", "statsmodels>=0.14,<1.0"]
 qlib-tuner = ["hyperopt>=0.2.7,<1.0"]
 hpo = ["optuna>=4.9,<5.0"]

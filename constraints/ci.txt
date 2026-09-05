@@ -26,8 +26,6 @@ torch==2.14.0
 catboost==1.2.8
 scikit-learn==1.7.2
 scipy==1.15.3
-tianshou==0.4.10
-protobuf==6.33.6
 hyperopt==0.2.7
 plotly==6.3.0
 statsmodels==0.14.5

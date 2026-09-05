@@ -31,15 +31,21 @@ def test_pinned_capability_manifest_declares_additive_superset_policy() -> None:
         "strategy.base",
         "backtest.executor",
         "backtest.exchange",
+        "reinforcement_learning",
     ):
         assert capabilities[capability_id]["level"] == "required"
 
     assert capabilities["model.linear"]["extra"] == "sklearn"
     assert capabilities["model.pytorch_hist"]["extra"] == "pytorch"
-    assert capabilities["reinforcement_learning"]["level"] == "required"
-    assert capabilities["reinforcement_learning.order_execution"]["extra"] == "rl"
+    assert capabilities["reinforcement_learning.order_execution"]["extra"] == "upstream-rl-legacy"
     assert capabilities["tuner.hyperopt"]["extra"] == "tuner"
     assert capabilities["report.graph"]["extra"] == "analysis"
+
+    exceptions = {item["id"]: item for item in manifest["known_upstream_exceptions"]}
+    rl_exception = exceptions["qlib.rl.order_execution.dependencies"]
+    assert rl_exception["status"] == "blocked_upstream_security"
+    assert rl_exception["upstream_requirement"] == "tianshou<=0.4.10"
+    assert rl_exception["transitive_constraint"] == "protobuf~=3.19.0"
 
 
 def test_required_core_capabilities_are_importable_for_pinned_qlib() -> None:
@@ -47,6 +53,7 @@ def test_required_core_capabilities_are_importable_for_pinned_qlib() -> None:
 
     assert report["expectedQlibVersion"] == "0.9.7"
     assert report["passed"], report["requiredFailures"]
+    assert report["knownUpstreamExceptions"]
 
 
 def test_required_extra_promotes_optional_capabilities_to_fail_closed(tmp_path: Path) -> None:
@@ -54,6 +61,7 @@ def test_required_extra_promotes_optional_capabilities_to_fail_closed(tmp_path: 
         "schema_version": 1,
         "contract": "test",
         "qlib_version": "0.9.7",
+        "known_upstream_exceptions": [],
         "capabilities": [
             {
                 "id": "missing.optional",

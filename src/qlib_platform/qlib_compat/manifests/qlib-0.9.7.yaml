@@ -6,6 +6,12 @@ policy:
   platform_allowlist_required: false
   monkey_patch_upstream: false
   certified_platform_lane_is_opt_in: true
+known_upstream_exceptions:
+  - id: qlib.rl.order_execution.dependencies
+    status: blocked_upstream_security
+    upstream_requirement: "tianshou<=0.4.10"
+    transitive_constraint: "protobuf~=3.19.0"
+    behavior: "Native Qlib RL remains unblocked for user-managed environments, but qlib-platform does not bundle the vulnerable legacy dependency chain."
 capabilities:
   - {id: core.qlib, target: qlib, level: required}
   - {id: core.object_factory, target: "qlib.utils:init_instance_by_config", level: required}
@@ -73,7 +79,7 @@ capabilities:
   - {id: online.workflow, target: qlib.workflow.online, level: required}
   - {id: online.contrib, target: qlib.contrib.online, level: required}
   - {id: reinforcement_learning, target: qlib.rl, level: required}
-  - {id: reinforcement_learning.order_execution, target: qlib.rl.order_execution, level: optional, extra: rl}
+  - {id: reinforcement_learning.order_execution, target: qlib.rl.order_execution, level: optional, extra: upstream-rl-legacy}
   - {id: meta.data_selection, target: qlib.contrib.meta.data_selection, level: optional, extra: pytorch}
   - {id: report.graph, target: qlib.contrib.report.graph, level: optional, extra: analysis}
   - {id: report.analysis_model, target: qlib.contrib.report.analysis_model, level: optional, extra: analysis}

@@ -120,6 +120,9 @@ def check_capabilities(
         )
 
     failures = [result for result in results if result.required and not result.available]
+    exceptions = payload.get("known_upstream_exceptions", [])
+    if not isinstance(exceptions, list):
+        raise ValueError("known_upstream_exceptions must be a list")
     return {
         "contract": str(payload.get("contract", "qlib-native-superset-v1")),
         "expectedQlibVersion": expected_version,
@@ -127,6 +130,7 @@ def check_capabilities(
         "versionPassed": version_ok,
         "versionDetail": version_detail,
         "requiredExtras": sorted(required_extras),
+        "knownUpstreamExceptions": exceptions,
         "passed": version_ok and not failures,
         "requiredFailures": [result.capability_id for result in failures],
         "results": [

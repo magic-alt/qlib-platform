@@ -62,7 +62,19 @@ Qlib remains authoritative for its native Recorder and artifacts. `federate_qlib
 
 ## Packaging
 
-`pyqlib==0.9.7` is a core dependency because Qlib is the substrate rather than an optional backend. Heavy families remain explicit through `qlib-full`, `qlib-rl`, `qlib-analysis`, and `qlib-tuner` extras. Existing focused `pytorch`, `xgboost`, `postgres`, `parallel-ray`, and `parallel-dask` extras remain available.
+`pyqlib==0.9.7` is a core dependency because Qlib is the substrate rather than an optional backend. Heavy model/analysis capabilities are explicit through `qlib-full`, `qlib-analysis`, and `qlib-tuner`; existing focused `pytorch`, `xgboost`, `postgres`, `parallel-ray`, and `parallel-dask` extras remain available.
+
+### Known upstream RL dependency exception
+
+Qlib 0.9.7 declares `tianshou<=0.4.10` for its optional RL stack. Tianshou 0.4.10 in turn declares `protobuf~=3.19.0`, and the repository's fail-closed dependency audit identifies that protobuf line as vulnerable. Qlib also pinned Tianshou to this legacy range because later Tianshou versions were known to break its RL integration.
+
+P4 therefore does **not** weaken dependency review, silently upgrade Tianshou beyond Qlib's certified range, or distribute the vulnerable legacy chain through a `qlib-rl` extra. The base `qlib.rl` namespace remains part of the required native capability contract. `qlib.rl.order_execution` is recorded as `upstream-rl-legacy`; a user-managed environment can explicitly verify it with:
+
+```bash
+.venv/bin/tq-qlib capability-check --require-extra upstream-rl-legacy
+```
+
+This is a fail-closed upstream compatibility exception, not a platform feature removal. Resolution requires Microsoft Qlib to certify a newer Tianshou API or a separately reviewed compatibility patch.
 
 ## Non-goals
 

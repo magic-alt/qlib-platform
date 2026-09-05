@@ -58,9 +58,9 @@ jobs:
           --require-extra analysis
           --require-extra tuner
 
-  qlib-rl-contract:
+  qlib-upstream-exception-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,6 +69,6 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-      - run: python -m pip install -c constraints/ci.txt -e '.[dev,qlib-rl]'
-      - name: Verify Qlib reinforcement-learning import surface
-        run: python -m qlib_platform.qlib_compat capability-check --require-extra rl
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Verify fail-closed upstream exception remains explicit
+        run: python -m pytest -q tests/test_qlib_capability_manifest.py tests/test_qlib_packaging_contract.py
