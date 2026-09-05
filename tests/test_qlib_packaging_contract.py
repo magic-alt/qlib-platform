@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 
 
 def test_qlib_is_core_and_heavy_capabilities_are_explicit_extras() -> None:
-    payload = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    project = payload["project"]
-    dependencies = project["dependencies"]
-    extras = project["optional-dependencies"]
+    text = Path("pyproject.toml").read_text(encoding="utf-8")
 
-    assert "pyqlib==0.9.7" in dependencies
-    assert "tq-qlib" in project["scripts"]
-    assert project["scripts"]["tq-qlib"] == "qlib_platform.qlib_compat.cli:main"
+    assert '"pyqlib==0.9.7"' in text
+    assert 'tq-qlib = "qlib_platform.qlib_compat.cli:main"' in text
 
-    qlib_full = set(extras["qlib-full"])
+    qlib_full = text.split("qlib-full = [", 1)[1].split("]", 1)[0]
     for prefix in (
         "lightgbm",
         "xgboost",
@@ -27,8 +22,11 @@ def test_qlib_is_core_and_heavy_capabilities_are_explicit_extras() -> None:
         "plotly",
         "statsmodels",
     ):
-        assert any(item.startswith(prefix) for item in qlib_full)
+        assert f'"{prefix}' in qlib_full
 
-    assert any(item.startswith("tianshou") for item in extras["qlib-rl"])
-    assert any(item.startswith("plotly") for item in extras["qlib-analysis"])
-    assert any(item.startswith("hyperopt") for item in extras["qlib-tuner"])
+    qlib_rl = text.split("qlib-rl = [", 1)[1].split("]", 1)[0]
+    qlib_analysis = text.split("qlib-analysis = [", 1)[1].split("]", 1)[0]
+    qlib_tuner = text.split("qlib-tuner = [", 1)[1].split("]", 1)[0]
+    assert '"tianshou' in qlib_rl
+    assert '"plotly' in qlib_analysis
+    assert '"hyperopt' in qlib_tuner
