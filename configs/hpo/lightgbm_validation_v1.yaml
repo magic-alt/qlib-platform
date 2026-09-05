@@ -1,0 +1,36 @@
+schemaVersion: hpo_search_space_v1
+name: lightgbm_validation_v1
+objectiveMetric: rank_ic_mean
+direction: maximize
+parameters:
+  learning_rate:
+    type: float
+    low: 0.005
+    high: 0.10
+    log: true
+  num_leaves:
+    type: int
+    low: 16
+    high: 128
+  max_depth:
+    type: int
+    low: 4
+    high: 12
+  colsample_bytree:
+    type: float
+    low: 0.60
+    high: 1.00
+  subsample:
+    type: float
+    low: 0.60
+    high: 1.00
+  lambda_l1:
+    type: float
+    low: 0.001
+    high: 100.0
+    log: true
+  lambda_l2:
+    type: float
+    low: 0.001
+    high: 200.0
+    log: true

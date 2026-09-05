@@ -1,0 +1,12 @@
+name: qlib_tcn_v1
+family: qlib_tcn
+device: auto
+device_index: 0
+model_kwargs:
+  step_len: 20
+  n_epochs: 100
+  lr: 0.001
+  early_stop: 10
+  batch_size: 800
+  metric: loss
+  loss: mse

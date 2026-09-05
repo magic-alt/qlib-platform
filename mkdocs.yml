@@ -101,6 +101,7 @@ nav:
   - Research & ML:
       - Research Baselines & Templates: research_baselines.md
       - Research Web Dashboard: research_web_dashboard.md
+      - Professional Research Engines: professional_research_engines.md
       - Stability Diagnostics: alpha_research_stability.md
       - Model Lifecycle: model_lifecycle.md
       - Production Feedback: production_feedback.md

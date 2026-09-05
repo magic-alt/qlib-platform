@@ -30,9 +30,28 @@ def model_families() -> tuple[str, ...]:
 
 from qlib_platform.models.adapters.lightgbm import LightGBMAdapter  # noqa: E402
 from qlib_platform.models.adapters.pytorch_dnn import PyTorchDNNAdapter  # noqa: E402
+from qlib_platform.models.adapters.qlib_zoo import (  # noqa: E402
+    QlibDoubleEnsembleAdapter,
+    QlibGRUAdapter,
+    QlibLSTMAdapter,
+    QlibTCNAdapter,
+    QlibTabNetAdapter,
+    QlibTransformerAdapter,
+)
 from qlib_platform.models.adapters.ridge import RidgeAdapter  # noqa: E402
 from qlib_platform.models.adapters.xgboost import XGBoostAdapter  # noqa: E402
 
 
-for _adapter in (RidgeAdapter(), LightGBMAdapter(), XGBoostAdapter(), PyTorchDNNAdapter()):
+for _adapter in (
+    RidgeAdapter(),
+    LightGBMAdapter(),
+    XGBoostAdapter(),
+    PyTorchDNNAdapter(),
+    QlibLSTMAdapter(),
+    QlibGRUAdapter(),
+    QlibTransformerAdapter(),
+    QlibTCNAdapter(),
+    QlibTabNetAdapter(),
+    QlibDoubleEnsembleAdapter(),
+):
     register_model_adapter(_adapter)
