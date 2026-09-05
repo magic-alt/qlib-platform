@@ -22,7 +22,7 @@ class AShareMarketRules:
         slippage_bps: float = 2.0,
         impact_bps_at_full_participation: float = 50.0,
         main_board_limit_pct: float = 0.10,
-        st_main_board_limit_pct: float = 0.05,
+        st_main_board_limit_pct: float = 0.10,
         growth_board_limit_pct: float = 0.20,
         beijing_limit_pct: float = 0.30,
         ipo_no_limit_days: int = 5,
