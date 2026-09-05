@@ -168,7 +168,18 @@ def test_dnn_rejects_stale_configured_input_dimension_before_importing_torch():
 
 
 def test_model_registry_exposes_complete_initial_family_set():
-    assert model_families() == ("lightgbm", "pytorch_dnn", "ridge", "xgboost")
+    assert model_families() == (
+        "lightgbm",
+        "pytorch_dnn",
+        "qlib_double_ensemble",
+        "qlib_gru",
+        "qlib_lstm",
+        "qlib_tabnet",
+        "qlib_tcn",
+        "qlib_transformer",
+        "ridge",
+        "xgboost",
+    )
 
 
 def test_ridge_is_a_deterministic_cpu_baseline():

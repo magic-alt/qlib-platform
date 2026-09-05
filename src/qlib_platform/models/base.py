@@ -18,11 +18,12 @@ class RuntimeResolution:
 
 
 class ModelAdapter(ABC):
-    """One model family's complete research and deployment lifecycle."""
+    """One model family's research lifecycle, with explicit deployment capability."""
 
     family: str
     allowed_devices: frozenset[str]
     parity_tolerance: float = 1e-6
+    deployment_capable: bool = True
 
     def validate_profile(self, profile: Any) -> None:
         if profile.device not in self.allowed_devices:

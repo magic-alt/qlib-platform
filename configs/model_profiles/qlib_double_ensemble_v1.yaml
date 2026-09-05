@@ -1,0 +1,12 @@
+name: qlib_double_ensemble_v1
+family: qlib_double_ensemble
+device: cpu
+device_index: 0
+model_kwargs:
+  base_model: gbm
+  loss: mse
+  num_models: 6
+  enable_sr: true
+  enable_fs: true
+  epochs: 100
+  early_stopping_rounds: 20

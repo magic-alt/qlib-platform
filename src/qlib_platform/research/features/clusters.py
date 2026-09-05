@@ -8,6 +8,15 @@ import pandas as pd
 from qlib_platform.research.features.taxonomy import FactorTaxonomy
 
 
+_CORRELATION_COLUMNS = [
+    "feature_a",
+    "feature_b",
+    "mean_rank_corr",
+    "abs_mean_rank_corr",
+    "valid_day_count",
+]
+
+
 def mean_daily_rank_correlation(
     features: pd.DataFrame,
     *,
@@ -40,7 +49,11 @@ def mean_daily_rank_correlation(
                     "valid_day_count": count,
                 }
             )
-    return pd.DataFrame(rows).sort_values(["feature_a", "feature_b"], kind="stable").reset_index(drop=True)
+    return (
+        pd.DataFrame(rows, columns=_CORRELATION_COLUMNS)
+        .sort_values(["feature_a", "feature_b"], kind="stable")
+        .reset_index(drop=True)
+    )
 
 
 class _UnionFind:
