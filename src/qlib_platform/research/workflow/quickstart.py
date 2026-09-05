@@ -253,9 +253,7 @@ def doctor(settings: Settings, args: argparse.Namespace) -> dict[str, Any]:
     }
     if source.status != "READY":
         payload["recommendedCommand"] = (
-            "tq-research baseline"
-            if settings.mode == "standalone"
-            else "tq-research prepare --source auto"
+            "tq-research baseline" if settings.mode == "standalone" else "tq-research prepare --source auto"
         )
         return payload
     dataset = _verify(settings, reference, args)
@@ -326,14 +324,11 @@ def _selected(args: argparse.Namespace) -> tuple[tuple[str, ...], tuple[tuple[st
         profiles.extend(
             (name, resource_path(MODEL_PRESETS[name]).expanduser().resolve()) for name in args.model
         )
-    profiles.extend(
-        (Path(raw).stem, Path(raw).expanduser().resolve()) for raw in args.model_profile
-    )
+    profiles.extend((Path(raw).stem, Path(raw).expanduser().resolve()) for raw in args.model_profile)
     if not profiles:
         if matrix:
             profiles.extend(
-                (name, resource_path(MODEL_PRESETS[name]).expanduser().resolve())
-                for name in MATRIX_MODELS
+                (name, resource_path(MODEL_PRESETS[name]).expanduser().resolve()) for name in MATRIX_MODELS
             )
         elif template is not None:
             profiles.append(
@@ -343,9 +338,7 @@ def _selected(args: argparse.Namespace) -> tuple[tuple[str, ...], tuple[tuple[st
                 )
             )
         else:
-            profiles.append(
-                ("lightgbm", resource_path(MODEL_PRESETS["lightgbm"]).expanduser().resolve())
-            )
+            profiles.append(("lightgbm", resource_path(MODEL_PRESETS["lightgbm"]).expanduser().resolve()))
 
     unique: list[tuple[str, Path]] = []
     seen: set[str] = set()
@@ -387,9 +380,7 @@ def _overlay(
             "versions_root": str(settings.qlib_versions_root),
         },
     )
-    payload["experiment"] = deep_merge(
-        payload.get("experiment", {}), {"alpha": {"pack": alpha}}
-    )
+    payload["experiment"] = deep_merge(payload.get("experiment", {}), {"alpha": {"pack": alpha}})
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
 
@@ -733,9 +724,7 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
             if not args.continue_on_error:
                 break
             continue
-        code, result, warnings = _execute(
-            list(job["command"]), verbose=args.verbose_child_output
-        )
+        code, result, warnings = _execute(list(job["command"]), verbose=args.verbose_child_output)
         _merge_warnings(job, warnings)
         result = _attach_summary(settings, job, result)
         job.update(status="SUCCEEDED" if code == 0 else "FAILED", exitCode=code, result=result)
@@ -760,9 +749,7 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
                 ]
                 if args.topn is not None:
                     bt.extend(["--topn", str(args.topn)])
-                bt_code, bt_result, bt_warnings = _execute(
-                    bt, verbose=args.verbose_child_output
-                )
+                bt_code, bt_result, bt_warnings = _execute(bt, verbose=args.verbose_child_output)
                 _merge_warnings(job, bt_warnings)
                 backtest_payload: dict[str, Any] = {
                     "exitCode": bt_code,
@@ -783,9 +770,7 @@ def run_plan(settings: Settings, args: argparse.Namespace, plan: dict[str, Any],
     plan["status"] = "SUCCEEDED" if failures == 0 else "PARTIAL" if args.continue_on_error else "FAILED"
     plan["observedWarnings"] = list(
         dict.fromkeys(
-            warning
-            for job in plan["jobs"]
-            for warning in [str(item) for item in job.get("warnings", [])]
+            warning for job in plan["jobs"] for warning in [str(item) for item in job.get("warnings", [])]
         )
     )
     _write_matrix(root, plan)
