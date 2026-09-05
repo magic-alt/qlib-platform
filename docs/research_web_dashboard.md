@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: research
+applies_to_commit: a0b6b38cd60db0f8866335e1f229db9729307a3a
+last_verified: 2026-09-05
+---
+
 # Research Web Dashboard
 
 The research dashboard is a read-only reporting layer over existing qlib-platform evidence. It does not retrain models, change gates, rewrite DatasetVersion identity, or authorize candidate promotion.
