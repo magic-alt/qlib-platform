@@ -307,7 +307,7 @@ def _screen(
     registry: FactorRegistry,
     policy: FactorEvaluationPolicy,
 ) -> pd.DataFrame:
-    correlation_lookup: dict[tuple[str, str], float] = {}
+    correlation_lookup: dict[tuple[str, ...], float] = {}
     for row in correlations.itertuples(index=False):
         correlation_lookup[tuple(sorted((str(row.feature_a), str(row.feature_b))))] = float(
             row.mean_rank_corr
