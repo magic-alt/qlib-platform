@@ -183,9 +183,11 @@ research:
   allow_zero_benchmark: false
   deal_price: open
   limit_threshold: 0.095
-  open_cost: 0.00035
-  close_cost: 0.00085
-  min_cost: 5
+  # Cash A-share account: 1 bp commission with no CNY 5 minimum, 0.1 bp
+  # transfer fee on both sides, plus 5 bp sell-side stamp duty.
+  open_cost: 0.00011
+  close_cost: 0.00061
+  min_cost: 0
   benchmark: SH000300
   signal_lag_days: 1
   trade_unit: 100
