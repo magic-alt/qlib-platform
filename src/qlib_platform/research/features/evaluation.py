@@ -108,9 +108,7 @@ def neutralize_cross_section(
             valid = np.isfinite(y) & np.isfinite(exposure_values).all(axis=1)
             residual = np.full(len(y), np.nan, dtype=float)
             if int(valid.sum()) >= max(min_cross_section, exposure_values.shape[1] + 2):
-                design = np.column_stack(
-                    [np.ones(int(valid.sum()), dtype=float), exposure_values[valid]]
-                )
+                design = np.column_stack([np.ones(int(valid.sum()), dtype=float), exposure_values[valid]])
                 beta, *_ = np.linalg.lstsq(design, y[valid], rcond=None)
                 residual[valid] = y[valid] - design @ beta
             keys = pd.MultiIndex.from_arrays(
@@ -149,16 +147,8 @@ def _daily_metrics(
                     "universe_count": universe,
                     "valid_count": valid,
                     "coverage": valid / universe if universe else float("nan"),
-                    "ic": (
-                        _safe_corr(pair["factor"], pair["label"], "pearson")
-                        if eligible
-                        else float("nan")
-                    ),
-                    "rank_ic": (
-                        _safe_corr(pair["factor"], pair["label"], "spearman")
-                        if eligible
-                        else float("nan")
-                    ),
+                    "ic": _safe_corr(pair["factor"], pair["label"], "pearson") if eligible else float("nan"),
+                    "rank_ic": _safe_corr(pair["factor"], pair["label"], "spearman") if eligible else float("nan"),
                 }
             )
     return pd.DataFrame(rows).sort_values(["date", "factor"], kind="stable").reset_index(drop=True)
@@ -187,10 +177,7 @@ def _rank_turnover(features: pd.DataFrame) -> dict[str, float]:
             value = float(difference[column].mean())
             if np.isfinite(value):
                 values[str(column)].append(value)
-    return {
-        name: (float(np.mean(items)) if items else float("nan"))
-        for name, items in values.items()
-    }
+    return {name: (float(np.mean(items)) if items else float("nan")) for name, items in values.items()}
 
 
 def _incremental_rank_ic(
@@ -239,10 +226,7 @@ def _incremental_rank_ic(
             combined_ic = float(combined.corr(joined["label"], method="spearman"))
             if np.isfinite(base_ic) and np.isfinite(combined_ic):
                 deltas[name].append(combined_ic - base_ic)
-    return {
-        name: (float(np.mean(items)) if items else float("nan"))
-        for name, items in deltas.items()
-    }
+    return {name: (float(np.mean(items)) if items else float("nan")) for name, items in deltas.items()}
 
 
 def _decay_table(
@@ -349,10 +333,7 @@ def _screen(
             or row.oriented_rank_ic_mean < policy.min_oriented_rank_ic
         ):
             reasons.append("oriented_rank_ic_below_minimum")
-        if (
-            not np.isfinite(row.oriented_rank_icir)
-            or row.oriented_rank_icir < policy.min_oriented_rank_icir
-        ):
+        if not np.isfinite(row.oriented_rank_icir) or row.oriented_rank_icir < policy.min_oriented_rank_icir:
             reasons.append("oriented_rank_icir_below_minimum")
         if not np.isfinite(row.rank_turnover) or row.rank_turnover > policy.max_rank_turnover:
             reasons.append("rank_turnover_above_maximum")
@@ -377,12 +358,8 @@ def _screen(
 
     result = summary.copy()
     result["decision"] = result["factor"].map(lambda name: decisions[str(name)][0])
-    result["decision_reasons"] = result["factor"].map(
-        lambda name: ",".join(decisions[str(name)][1])
-    )
-    result["max_abs_corr_to_admitted"] = result["factor"].map(
-        lambda name: decisions[str(name)][2]
-    )
+    result["decision_reasons"] = result["factor"].map(lambda name: ",".join(decisions[str(name)][1]))
+    result["max_abs_corr_to_admitted"] = result["factor"].map(lambda name: decisions[str(name)][2])
     return result.sort_values("factor", kind="stable").reset_index(drop=True)
 
 
@@ -572,10 +549,7 @@ def write_factor_evaluation(
         for name, frame in files.items():
             frame.to_parquet(building / name, index=False)
         _atomic_json(building / "factor_clusters.json", result.clusters)
-        checksums = {
-            name: sha256_file(building / name)
-            for name in [*files, "factor_clusters.json"]
-        }
+        checksums = {name: sha256_file(building / name) for name in [*files, "factor_clusters.json"]}
         manifest = {
             **identity,
             "evaluationId": evaluation_id,
