@@ -1,0 +1,39 @@
+name: P5 Institutional Risk Contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p5-risk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  institutional-risk-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Verify institutional risk analytics and existing portfolio risk model
+        run: >-
+          python -m pytest -q
+          tests/test_institutional_risk_platform.py
+          tests/test_portfolio_optimizer_risk_model.py
+      - name: Verify P5-A lint and typing contract
+        run: >-
+          python -m ruff check
+          src/qlib_platform/research/portfolio/risk_analytics.py
+          src/qlib_platform/research/portfolio/stress.py
+          tests/test_institutional_risk_platform.py
+      - run: python -m mypy src/qlib_platform/research/portfolio
