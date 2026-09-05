@@ -18,6 +18,7 @@ from qlib_platform.datasets.qlib_staging_contract import (
     validate_qlib_staging_files,
 )
 from qlib_platform.datasets.qlib_staging_repair import repair_transient_qlib_staging_release
+from qlib_platform.datasets.data_release import DATA_RELEASE_PROFILES
 from qlib_platform.releases import (
     FileReleaseStore,
     import_qlib_dataset,
@@ -293,6 +294,45 @@ def _recover_incompatible_staging(
     return result
 
 
+def _recover_from_alternate_release(
+    settings: Settings,
+    failed_release_id: str,
+) -> dict[str, Any] | None:
+    """Try older active standalone releases before rebuilding mutable raw inputs.
+
+    The standalone resolver intentionally selects the newest compatible release. If
+    that immutable release has a malformed staging contract, another active release
+    may still be independently valid and materializable. Each alternate is verified
+    through the normal materialization path; aliases move only after that path has
+    published or recovered a valid DatasetVersion.
+    """
+
+    store = FileReleaseStore(release_store_root(settings))
+    candidates = [
+        record
+        for record in store.list()
+        if record.data_release_id != failed_release_id
+        and (
+            "qlib_staging" in DATA_RELEASE_PROFILES.get(record.profile, frozenset())
+            or "qlib_dataset" in DATA_RELEASE_PROFILES.get(record.profile, frozenset())
+        )
+    ]
+    while candidates:
+        candidate = store.latest(candidates)
+        assert candidate is not None
+        candidates.remove(candidate)
+        recovered = _recover_selected_dataset_alias(settings, candidate.data_release_id)
+        try:
+            result = recovered or _materialize_selected_release(settings, candidate.data_release_id)
+        except QlibStagingContractError:
+            continue
+        result["recoveredFromIncompatibleRelease"] = True
+        result["recoveryReason"] = "qlib_staging_alternate_release"
+        result["failedDataReleaseId"] = failed_release_id
+        return result
+    return None
+
+
 def bootstrap(
     settings: Settings,
     *,
@@ -324,6 +364,9 @@ def bootstrap(
             except QlibStagingContractError as exc:
                 if settings.mode != "standalone":
                     raise
+                alternate = _recover_from_alternate_release(settings, resolved.reference)
+                if alternate is not None:
+                    return alternate
                 return _recover_incompatible_staging(settings, exc, start=start, end=end)
         if resolved.status == "IMPORT_REQUIRED":
             release, dataset = import_qlib_dataset(settings, resolved.path or settings.qlib_data_uri)
