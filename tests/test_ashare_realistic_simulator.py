@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from qlib_platform.backtesting.ashare_costs import execution_fees
+from qlib_platform.backtesting.ashare_rules import normalize_buy_quantity
 from qlib_platform.backtesting.ashare_simulator import (
     AShareMarketRules,
     infer_price_limit_pct,
@@ -54,6 +56,47 @@ def test_t_plus_one_blocks_same_day_sale_and_releases_next_session() -> None:
     assert int(result.positions.iloc[0]["quantity"]) == 500
 
 
+def test_default_fee_profile_matches_wanyi_mianwu_cash_account() -> None:
+    rules = AShareMarketRules()
+
+    assert rules.commission_bps == 1.0
+    assert rules.min_commission == 0.0
+    assert execution_fees(100_000.0, "BUY", rules) == 11.0
+    assert execution_fees(100_000.0, "SELL", rules) == 61.0
+
+
+def test_board_specific_buy_quantity_rules() -> None:
+    rules = AShareMarketRules()
+
+    assert normalize_buy_quantity("000001.SZ", 356, rules) == 300
+    assert normalize_buy_quantity("SH688981", 199, rules) == 0
+    assert normalize_buy_quantity("SH688981", 399, rules) == 399
+    assert normalize_buy_quantity("688981.SH", 401, rules) == 401
+
+
+def test_star_market_simulator_accepts_one_share_increments_above_minimum() -> None:
+    bars = pd.DataFrame(
+        [
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "688981.SH",
+                "open": 50.0,
+                "close": 50.5,
+                "prev_close": 49.0,
+                "volume": 100_000,
+                "board": "STAR",
+            }
+        ]
+    )
+    orders = pd.DataFrame(
+        [{"trade_date": "2026-01-05", "instrument": "688981.SH", "side": "BUY", "quantity": 399}]
+    )
+
+    result = simulate_ashare_orders(bars, orders, initial_cash=100_000)
+
+    assert int(result.fills.iloc[0]["filled_quantity"]) == 399
+
+
 def test_volume_participation_creates_partial_fill() -> None:
     bars = _bars().copy()
     bars.loc[0, "volume"] = 2_000
@@ -83,9 +126,29 @@ def test_limit_up_buy_is_rejected_fail_closed() -> None:
     assert result.rejections.iloc[0]["reason"] == "limit_up_no_buy_liquidity"
 
 
-def test_limit_inference_covers_st_growth_beijing_and_ipo() -> None:
+def test_limit_inference_covers_dated_st_growth_beijing_and_ipo_rules() -> None:
     rules = AShareMarketRules()
-    assert infer_price_limit_pct(board="MAIN", is_st=True, listing_days=20, rules=rules) == 0.05
+    assert (
+        infer_price_limit_pct(
+            board="MAIN",
+            is_st=True,
+            listing_days=20,
+            rules=rules,
+            trade_date="2026-07-03",
+        )
+        == 0.05
+    )
+    assert (
+        infer_price_limit_pct(
+            board="MAIN",
+            is_st=True,
+            listing_days=20,
+            rules=rules,
+            trade_date="2026-07-06",
+        )
+        == 0.10
+    )
+    assert infer_price_limit_pct(board="MAIN", is_st=True, listing_days=20, rules=rules) == 0.10
     assert infer_price_limit_pct(board="CHINEXT", is_st=True, listing_days=20, rules=rules) == 0.20
     assert infer_price_limit_pct(board="BSE", is_st=False, listing_days=20, rules=rules) == 0.30
     assert infer_price_limit_pct(board="STAR", is_st=False, listing_days=2, rules=rules) is None

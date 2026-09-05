@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: research
-applies_to_commit: 184ff32078dd6edf2c4c299d4208d4e13d0fb990
+applies_to_commit: 8037585f727dd0d1358b5c486ab0867655cd5d90
 last_verified: 2026-09-05
 ---
 
@@ -65,24 +65,64 @@ Constraints include target exposure, box weights, maximum turnover and arbitrary
 
 The versioned example profile is `configs/portfolio/alpha_optimizer_ashare_v1.yaml`.
 
-## P1: A-share realistic simulator
+## P1: A-share realistic simulator and Qlib execution contract
+
+`qlib_platform.backtesting.ashare_rules.AShareMarketRules` is the single canonical source for cash A-share market mechanics used by the research platform. New A-share rules must extend this object rather than creating a parallel rule model.
 
 `qlib_platform.backtesting.ashare_simulator` is a research simulator, not an OMS. It models:
 
-- T+1 position availability;
+- T+1 position availability with separate total and settled/available inventory;
 - suspension and zero-volume rejection;
 - authoritative daily limit-up/limit-down and locked-limit fields;
 - fallback board/ST/IPO price-limit inference when authoritative fields are unavailable;
-- buy-lot rounding;
+- board-aware buy-quantity rules;
 - cumulative daily participation caps and partial fills;
 - cash/position availability;
 - half-spread, slippage and square-root participation impact;
 - commissions, transfer fee and sell-side stamp tax;
 - per-order capacity and aggregate capacity-utilization diagnostics.
 
+### Cash-account fee assumptions
+
+The production-style research default models a `万一免五` account:
+
+| Fee component | Buy | Sell |
+| --- | ---: | ---: |
+| Brokerage commission | 1.0 bp | 1.0 bp |
+| Minimum brokerage commission | CNY 0 | CNY 0 |
+| Transfer fee | 0.1 bp | 0.1 bp |
+| Stamp duty | — | 5.0 bp |
+| Effective Qlib proportional cost | 1.1 bp | 6.1 bp |
+
+Accordingly, `configs/pipeline_tushare_dev.yaml` uses `open_cost: 0.00011`, `close_cost: 0.00061` and `min_cost: 0`. This is a broker/account assumption, not a universal brokerage tariff; live broker statements remain authoritative.
+
+The Microsoft Qlib Alpha158 reference template deliberately retains its upstream-style reference costs (`0.0005 / 0.0015 / CNY 5`) so reference comparisons are not silently rewritten by the production-style fee profile.
+
+### Buy-quantity rules
+
+The canonical raw-share sizing contract is:
+
+- ordinary Shanghai/Shenzhen shares and ChiNext: buy quantities are rounded down to 100-share lots;
+- STAR Market (`SH688*`, `SH689*`, or vendor-style `688xxx.SH` / `689xxx.SH`): minimum buy quantity is 200 shares, with one-share increments above that minimum;
+- full-position sells are not rounded through the buy-lot function, so residual holdings can be liquidated subject to T+1 and market tradability.
+
+The standalone simulator applies these raw-share rules directly. Qlib internally has one global `trade_unit`, so the formal Qlib portfolio path keeps `trade_unit: 100` as a conservative legal subset and adds `ashare_qlib.AShareQlibExchangeGuard`. The strategy adapter normalizes proposed buys before execution, and the guard validates the actual post-volume/post-cash-clipping fill before Qlib mutates the account. An illegal clipped buy therefore becomes a zero fill rather than an impossible transaction.
+
+### T+1 in both engines
+
+The standalone simulator remains the stronger inventory model: `SimulationState` tracks `total` and `available` separately and releases new buys on the next trading session.
+
+The formal Qlib backtest cannot replace Qlib's account type without forking the upstream engine, so `AShareQlibExchangeGuard` attaches to the exact `Exchange` instance shared by the strategy and executor. It tracks actual same-session buy fills and computes sellable inventory as:
+
+```text
+settled_available = current_total_position - same_session_buy_fills
+```
+
+This permits selling inventory that was already settled before the session while blocking sale of shares bought during the same session. It also rejects naked shorts/oversells before Qlib fill/account mutation. `hold_thresh >= 1` remains a strategy-level precondition, but it is not treated as the settlement ledger itself.
+
 For historical research, provide exchange/data-vendor daily limit fields whenever possible. Board-rule inference intentionally remains a fallback because price-limit and IPO regimes change over time.
 
-The simulator emits only simulated fills, rejections, account marks and research diagnostics. Broker submission, broker state, order replacement and live execution remain in the execution-plane repository.
+The simulator emits only simulated fills, rejections, account marks and research diagnostics. Broker submission, broker state, order replacement and live execution remain in the execution-plane repository. Margin financing/securities lending, ETFs with different settlement rules, convertible bonds, options, futures, block trades and after-hours fixed-price trading require separate execution contracts rather than exceptions to the cash-equity profile.
 
 ## P2: Experiment database and web research console
 
@@ -119,4 +159,4 @@ Ray/Dask are not imported unless selected. GPU resources are exposed as Ray reso
 
 ## Validation invariants
 
-Tests cover mismatched ensemble populations, OOF/temporal leakage, temporal meta cross-fit, PSD covariance, optimizer box/turnover/factor constraints, A-share T+1, partial fills, locked limits, transaction costs/impact/capacity, experiment catalog round-trips and comparison, console rendering, and serial-default parallel execution.
+Tests cover mismatched ensemble populations, OOF/temporal leakage, temporal meta cross-fit, PSD covariance, optimizer box/turnover/factor constraints, A-share T+1, settled-vs-same-day inventory, board-aware buy quantities, broker fee arithmetic, partial fills, locked limits, transaction costs/impact/capacity, Qlib post-clip legality, experiment catalog round-trips and comparison, console rendering, and serial-default parallel execution.

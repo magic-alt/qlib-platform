@@ -26,23 +26,23 @@ def resolve_strategy_policy(spec: object) -> StrategyPolicy:
 
 
 def build_qlib_strategy_config(policy: StrategyPolicy, *, signal: str = "<PRED>") -> dict[str, object]:
-    """Build the Qlib ``PortAnaRecord`` strategy block for an execution policy.
+    """Build a Qlib strategy block with the cash A-share execution guard.
 
-    The rank buffer runs through the formal ``RankBufferStrategy`` in this
-    repository so that the backtest, the decision replay and the audit share
-    one implementation.  TopkDropout keeps the Qlib-native strategy class.
+    Both supported policies run through local adapters so that the exact Qlib
+    Exchange instance shared with the executor receives the same T+1 and
+    board-size legality contract as the standalone A-share simulator.
     """
-    if isinstance(policy, RankBufferPolicy):
-        policy.validate()
-        return {
-            "class": "RankBufferStrategy",
-            "module_path": "qlib_platform.backtesting.qlib_strategies",
-            "kwargs": {"signal": signal, **asdict(policy)},
-        }
+
     policy.validate()
+    if policy.hold_thresh < 1:
+        raise ValueError("A-share cash strategy requires hold_thresh >= 1 for T+1")
     return {
-        "class": "TopkDropoutStrategy",
-        "module_path": "qlib.contrib.strategy",
+        "class": (
+            "AShareRankBufferStrategy"
+            if isinstance(policy, RankBufferPolicy)
+            else "AShareTopkDropoutStrategy"
+        ),
+        "module_path": "qlib_platform.backtesting.qlib_strategies",
         "kwargs": {"signal": signal, **asdict(policy)},
     }
 

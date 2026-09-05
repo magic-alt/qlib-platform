@@ -4,7 +4,12 @@ import numpy as np
 import pandas as pd
 
 from qlib_platform.backtesting.ashare_costs import execution_fees, impacted_fill_price
-from qlib_platform.backtesting.ashare_rules import AShareMarketRules, as_bool, resolve_limits
+from qlib_platform.backtesting.ashare_rules import (
+    AShareMarketRules,
+    as_bool,
+    normalize_buy_quantity,
+    resolve_limits,
+)
 from qlib_platform.backtesting.ashare_state import SimulationState
 
 
@@ -18,6 +23,37 @@ def _order_limit_allows(order: pd.Series, side: str, price: float) -> bool:
         return True
     limit = float(order["limit_price"])
     return not ((side == "BUY" and price > limit) or (side == "SELL" and price < limit))
+
+
+def _fit_buy_to_cash(
+    instrument: str,
+    quantity: int,
+    price: float,
+    cash: float,
+    rules: AShareMarketRules,
+) -> int:
+    """Return the largest legal buy quantity whose notional plus fees fits cash."""
+
+    upper = normalize_buy_quantity(instrument, quantity, rules)
+    if upper <= 0:
+        return 0
+    best = 0
+    low = 1
+    high = upper
+    while low <= high:
+        mid = (low + high) // 2
+        candidate = normalize_buy_quantity(instrument, mid, rules)
+        if candidate <= 0:
+            low = mid + 1
+            continue
+        notional = candidate * price
+        total_cash = notional + execution_fees(notional, "BUY", rules)
+        if total_cash <= cash + 1e-9:
+            best = max(best, candidate)
+            low = mid + 1
+        else:
+            high = mid - 1
+    return best
 
 
 def execute_order(
@@ -56,7 +92,7 @@ def execute_order(
     limit_up, limit_down = resolve_limits(row, rules)
     quantity = min(requested, remaining_capacity)
     if side == "BUY":
-        quantity = (quantity // rules.buy_lot_size) * rules.buy_lot_size
+        quantity = normalize_buy_quantity(instrument, quantity, rules)
     else:
         quantity = min(quantity, state.positions[instrument].available)
     if quantity <= 0:
@@ -79,12 +115,7 @@ def execute_order(
         return
 
     if side == "BUY":
-        while quantity > 0:
-            notional = quantity * price
-            fee = execution_fees(notional, side, rules)
-            if notional + fee <= state.cash + 1e-9:
-                break
-            quantity -= rules.buy_lot_size
+        quantity = _fit_buy_to_cash(instrument, quantity, price, state.cash, rules)
         if quantity <= 0:
             state.reject(order, "insufficient_cash", requested)
             return
