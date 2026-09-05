@@ -94,9 +94,7 @@ class QlibTorchResearchAdapter(_ResearchOnlyMixin, ModelAdapter):
         try:
             import torch
         except ImportError as exc:
-            raise RuntimeError(
-                f"{self.family} requires PyTorch; install the pytorch extra"
-            ) from exc
+            raise RuntimeError(f"{self.family} requires PyTorch; install the pytorch extra") from exc
 
         resolved = dict(versions)
         resolved["torch"] = str(torch.__version__)
@@ -105,9 +103,7 @@ class QlibTorchResearchAdapter(_ResearchOnlyMixin, ModelAdapter):
             return RuntimeResolution("cpu", None, resolved)
         if profile.device == "cuda":
             if not cuda_available:
-                raise RuntimeError(
-                    f"{self.family} requested CUDA but torch.cuda.is_available() is false"
-                )
+                raise RuntimeError(f"{self.family} requested CUDA but torch.cuda.is_available() is false")
             name = torch.cuda.get_device_name(profile.device_index)
             return RuntimeResolution(f"cuda:{profile.device_index}", None, resolved, str(name))
         if cuda_available:
