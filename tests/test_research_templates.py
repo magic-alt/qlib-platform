@@ -48,6 +48,7 @@ def test_official_template_pins_local_data_and_reference_protocol(tmp_path: Path
     assert child.data["research"]["backtest_account"] == 100_000_000
     assert child.data["research"]["open_cost"] == 0.0005
     assert child.data["research"]["close_cost"] == 0.0015
+    assert child.data["research"]["feature_store"]["enabled"] is False
     strategy = child.data["strategy"]["topk_dropout"]
     assert strategy["topk"] == 50
     assert strategy["n_drop"] == 5
@@ -72,4 +73,5 @@ def test_official_template_documents_local_data_deviations() -> None:
     assert template is not None
     assert template.alpha_pack == "qlib_alpha158_official_v1"
     assert any("local DatasetVersion" in note for note in template.parity_notes)
+    assert any("Feature-store reuse is disabled" in note for note in template.parity_notes)
     assert any("limit flags" in note for note in template.parity_notes)
