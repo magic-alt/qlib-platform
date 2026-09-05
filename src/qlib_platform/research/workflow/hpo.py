@@ -50,6 +50,8 @@ class SearchParameter:
     def suggest(self, trial: Any) -> object:
         if self.kind == "categorical":
             return trial.suggest_categorical(self.name, list(self.choices))
+        if self.low is None or self.high is None:
+            raise ValueError(f"{self.kind} parameter {self.name} requires low/high")
         if self.kind == "int":
             int_kwargs: dict[str, Any] = {"log": self.log}
             if self.step is not None:
@@ -226,7 +228,7 @@ def load_search_space_config(path: str | Path) -> tuple[dict[str, object], Searc
         raise ValueError("HPO search-space YAML root must be a mapping")
     if payload.get("schemaVersion") != "hpo_search_space_v1":
         raise ValueError(f"unsupported HPO search-space schema: {payload.get('schemaVersion')}")
-    metadata = {
+    metadata: dict[str, object] = {
         "name": str(payload.get("name") or "").strip(),
         "objectiveMetric": str(payload.get("objectiveMetric") or "rank_ic_mean").strip(),
         "direction": str(payload.get("direction") or "maximize").strip(),
