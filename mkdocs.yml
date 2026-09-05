@@ -99,6 +99,8 @@ nav:
       - Portfolio Policy: portfolio_v2_rank_buffer.md
       - Windows LightGBM GPU: windows_lightgbm_gpu.md
   - Research & ML:
+      - Research Baselines & Templates: research_baselines.md
+      - Research Web Dashboard: research_web_dashboard.md
       - Stability Diagnostics: alpha_research_stability.md
       - Model Lifecycle: model_lifecycle.md
       - Production Feedback: production_feedback.md

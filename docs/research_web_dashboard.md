@@ -1,13 +1,26 @@
 ---
 status: ACTIVE
 owner: research
-applies_to_commit: a0b6b38cd60db0f8866335e1f229db9729307a3a
+applies_to_commit: 3345aa189fc4ddf1f589671c30c42019cbc4e81e
 last_verified: 2026-09-05
 ---
 
 # Research Web Dashboard
 
 The research dashboard is a read-only reporting layer over existing qlib-platform evidence. It does not retrain models, change gates, rewrite DatasetVersion identity, or authorize candidate promotion.
+
+## Automatic quickstart report
+
+`run`, `baseline`, `matrix` and `plan` now render the dashboard automatically beside the matrix:
+
+```text
+data/output/quickstart/<RUN>/
+├── research_matrix.json
+├── research_matrix.md
+└── research_dashboard.html
+```
+
+The final quickstart JSON prints the dashboard path. Material child-process warning lines are persisted into `research_matrix.json` and therefore appear in the HTML evidence instead of existing only in terminal stderr.
 
 ## What it shows
 
@@ -25,7 +38,9 @@ A dashboard combines the full local research path in one self-contained HTML fil
 
 The HTML is self-contained: CSS is embedded and no CDN, JavaScript framework, analytics service, or network access is required.
 
-## Render the latest research run
+## Re-render the latest research run
+
+The explicit renderer remains useful for historical matrices or custom output paths.
 
 macOS / Linux:
 
@@ -39,19 +54,7 @@ Windows PowerShell:
 .\.venv\Scripts\python.exe scripts\render_research_dashboard.py --latest
 ```
 
-The renderer finds the newest:
-
-```text
-data/output/quickstart/*/research_matrix.json
-```
-
-and writes:
-
-```text
-data/output/quickstart/<RUN>/research_dashboard.html
-```
-
-Open that file directly in a browser.
+The renderer finds the newest `data/output/quickstart/*/research_matrix.json` and rewrites its sibling `research_dashboard.html`.
 
 ## Render a specific matrix
 
