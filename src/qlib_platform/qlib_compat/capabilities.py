@@ -29,7 +29,8 @@ class CapabilityResult:
 
 def default_manifest_path() -> Path:
     package_root = resources.files("qlib_platform.qlib_compat")
-    return Path(str(package_root.joinpath("manifests", "qlib-0.9.7.yaml")))
+    manifest = package_root.joinpath("manifests").joinpath("qlib-0.9.7.yaml")
+    return Path(str(manifest))
 
 
 def load_capability_manifest(path: str | Path | None = None) -> dict[str, Any]:
