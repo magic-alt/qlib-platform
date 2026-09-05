@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import re
+
 import pandas as pd
 
 
@@ -8,9 +11,11 @@ class AShareMarketRules:
         self,
         *,
         buy_lot_size: int = 100,
+        star_min_buy_size: int = 200,
+        star_buy_increment: int = 1,
         max_participation_rate: float = 0.05,
-        commission_bps: float = 3.0,
-        min_commission: float = 5.0,
+        commission_bps: float = 1.0,
+        min_commission: float = 0.0,
         sell_stamp_tax_bps: float = 5.0,
         transfer_fee_bps: float = 0.1,
         default_spread_bps: float = 4.0,
@@ -24,6 +29,8 @@ class AShareMarketRules:
         deal_price_column: str = "open",
     ) -> None:
         self.buy_lot_size = buy_lot_size
+        self.star_min_buy_size = star_min_buy_size
+        self.star_buy_increment = star_buy_increment
         self.max_participation_rate = max_participation_rate
         self.commission_bps = commission_bps
         self.min_commission = min_commission
@@ -43,6 +50,8 @@ class AShareMarketRules:
     def validate(self) -> None:
         if self.buy_lot_size <= 0:
             raise ValueError("buy_lot_size must be positive")
+        if self.star_min_buy_size <= 0 or self.star_buy_increment <= 0:
+            raise ValueError("STAR Market buy-size settings must be positive")
         if not 0 < self.max_participation_rate <= 1:
             raise ValueError("max_participation_rate must be in (0, 1]")
         costs = (
@@ -56,6 +65,46 @@ class AShareMarketRules:
         )
         if any(value < 0 for value in costs):
             raise ValueError("cost assumptions must be non-negative")
+
+
+def is_star_market(instrument: str) -> bool:
+    """Return whether an instrument identifier belongs to the SSE STAR Market.
+
+    Both Qlib-style ``SH688981`` identifiers and vendor-style ``688981.SH``
+    identifiers are accepted.  The helper intentionally stays narrow instead
+    of guessing a board from arbitrary metadata.
+    """
+
+    code = str(instrument).upper().strip()
+    return code.startswith(("SH688", "SH689")) or bool(re.fullmatch(r"68[89]\d{3}\.SH", code))
+
+
+def normalize_buy_quantity(instrument: str, quantity: float, rules: AShareMarketRules) -> int:
+    """Round a proposed raw-share buy quantity down to a legal A-share quantity.
+
+    Ordinary Shanghai/Shenzhen shares and ChiNext use 100-share buy lots.
+    STAR Market buys require at least 200 shares and then allow one-share
+    increments.  Returning zero means the proposed order is below the minimum
+    legal buy quantity after rounding.
+    """
+
+    if not math.isfinite(float(quantity)) or quantity <= 0:
+        return 0
+    raw = int(math.floor(float(quantity) + 1e-9))
+    if is_star_market(instrument):
+        if raw < rules.star_min_buy_size:
+            return 0
+        return rules.star_min_buy_size + (
+            (raw - rules.star_min_buy_size) // rules.star_buy_increment
+        ) * rules.star_buy_increment
+    return (raw // rules.buy_lot_size) * rules.buy_lot_size
+
+
+def is_legal_buy_quantity(instrument: str, quantity: float, rules: AShareMarketRules) -> bool:
+    if not math.isfinite(float(quantity)) or quantity <= 0:
+        return False
+    normalized = normalize_buy_quantity(instrument, quantity, rules)
+    return normalized > 0 and math.isclose(float(quantity), float(normalized), rel_tol=0.0, abs_tol=1e-8)
 
 
 def infer_price_limit_pct(
