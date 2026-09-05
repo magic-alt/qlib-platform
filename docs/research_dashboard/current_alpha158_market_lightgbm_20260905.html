@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>qlib-platform · Alpha158 Market + LightGBM · 2026-09-05</title>
+  <style>
+    :root { --bg:#07111f; --panel:#0d1b2a; --panel2:#10243a; --line:#213b56; --text:#e7eef7; --muted:#91a6bd; --green:#48d597; --red:#ff6b7a; --amber:#ffc857; --blue:#64b5f6; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:14px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:linear-gradient(180deg,#06101d,#091827 45%,#07111f); color:var(--text); }
+    main { max-width:1240px; margin:auto; padding:40px 24px 80px; }
+    h1 { margin:0 0 10px; font-size:38px; line-height:1.08; }
+    h2 { margin:0 0 18px; font-size:21px; }
+    h3 { margin:0 0 8px; font-size:15px; }
+    p { margin:8px 0; }
+    .eyebrow { color:var(--blue); font-size:12px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; }
+    .muted { color:var(--muted); }
+    .hero { padding:30px; border:1px solid var(--line); border-radius:20px; background:linear-gradient(135deg,#0f2740,#0b1726); box-shadow:0 18px 50px #0005; }
+    .badges { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .badge { padding:6px 10px; border:1px solid #244665; border-radius:999px; background:#112943; color:#bcd6ef; font-size:12px; }
+    .reject { border-color:#773745; background:#331a24; color:#ffd3d8; }
+    .section { margin-top:28px; }
+    .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:14px; }
+    .card { grid-column:span 4; padding:18px; border:1px solid var(--line); border-radius:14px; background:var(--panel); }
+    .wide { grid-column:span 6; }
+    .full { grid-column:1/-1; }
+    .label { color:var(--muted); font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+    .metric { font-size:27px; font-weight:750; letter-spacing:-.02em; }
+    .flow { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; }
+    .step { padding:14px 10px; border:1px solid var(--line); border-radius:12px; background:var(--panel2); text-align:center; }
+    .step strong { display:block; margin-bottom:5px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:#afc4d8; font-size:12px; font-weight:600; }
+    code, pre { font:12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre { padding:14px; overflow:auto; border:1px solid var(--line); border-radius:10px; background:#081522; color:#bdd2e8; }
+    .pass { color:var(--green); }
+    .fail { color:var(--red); }
+    .warn { color:var(--amber); }
+    ul, ol { margin:8px 0; padding-left:20px; }
+    li { margin:6px 0; }
+    .bar { height:7px; margin-top:7px; overflow:hidden; border-radius:999px; background:#17324b; }
+    .bar span { display:block; height:100%; background:var(--blue); }
+    .callout { padding:16px; border-left:3px solid var(--blue); border-radius:8px; background:#0a1a2a; }
+    .footer { margin-top:36px; color:var(--muted); font-size:12px; }
+    @media (max-width:900px) { .card, .wide { grid-column:1/-1; } .flow { grid-template-columns:repeat(2,1fr); } h1 { font-size:30px; } }
+    @media (max-width:520px) { main { padding:20px 14px 50px; } .flow { grid-template-columns:1fr; } .hero { padding:20px; } }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="eyebrow">qlib-platform · baseline research snapshot</div>
+    <h1>Alpha158 Market + LightGBM</h1>
+    <p class="muted">2026-09-05 fixed-split signal research and prediction backtest. This page records the exact baseline interpretation before moving into richer data, walk-forward validation and custom factor research.</p>
+    <div class="badges">
+      <span class="badge">Mode: fixed</span>
+      <span class="badge">Stage: signal</span>
+      <span class="badge">Device: CPU</span>
+      <span class="badge">Prediction backtest: SUCCEEDED</span>
+      <span class="badge reject">Gate: REJECT</span>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>1 · End-to-end research flow</h2>
+    <div class="flow">
+      <div class="step"><strong>Environment</strong><span class="muted">venv · config · runtime</span></div>
+      <div class="step"><strong>DatasetVersion</strong><span class="muted">immutable local Qlib data</span></div>
+      <div class="step"><strong>Alpha158 Market</strong><span class="muted">OHLCV-derived features</span></div>
+      <div class="step"><strong>LightGBM</strong><span class="muted">fit · early stop · predict</span></div>
+      <div class="step"><strong>Signal diagnostics</strong><span class="muted">IC · RankIC · stability</span></div>
+      <div class="step"><strong>Portfolio backtest</strong><span class="muted">benchmark · costs · drawdown</span></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>2 · Pre-research environment</h2>
+    <div class="grid">
+      <div class="card wide">
+        <h3>Data lineage</h3>
+        <table>
+          <tr><th>DatasetVersion</th><td><code>7dd03691aa17969560338868a11eb0cfdf44e38a290126ca0b3f3cbf25f2504f</code></td></tr>
+          <tr><th>Qlib provider path</th><td><code>data/qlib/versions/&lt;DatasetVersion&gt;</code></td></tr>
+          <tr><th>AlphaPack</th><td><code>alpha158_market_v1</code></td></tr>
+          <tr><th>Benchmark</th><td><code>SH000300</code></td></tr>
+          <tr><th>Feature cache</th><td><code>fs_6a5e9380aa1251129bbdef2737d708f55b63dc9f8482f65f286861152aefad64</code> · REUSED</td></tr>
+        </table>
+      </div>
+      <div class="card wide">
+        <h3>Runtime</h3>
+        <table>
+          <tr><th>Python</th><td>3.11 venv observed in run path</td></tr>
+          <tr><th>Qlib</th><td>0.9.7 project-pinned</td></tr>
+          <tr><th>LightGBM</th><td>4.6.0 project-pinned</td></tr>
+          <tr><th>Model profile</th><td><code>lightgbm_auto</code></td></tr>
+          <tr><th>Resolved device</th><td>CPU</td></tr>
+          <tr><th>Peak RSS</th><td>3730.7 MB</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:14px">
+      The feature cache was reused and the complete signal run took only 12.50 s. This is fast enough for systematic baseline matrices and factor ablation; compute is not the current research bottleneck.
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>3 · Machine-learning configuration</h2>
+    <div class="grid">
+      <div class="card wide">
+        <h3>Effective LightGBM research defaults</h3>
+        <table>
+          <tr><th>loss</th><td><code>mse</code></td></tr>
+          <tr><th>learning_rate</th><td><code>0.03</code></td></tr>
+          <tr><th>num_leaves</th><td><code>63</code></td></tr>
+          <tr><th>max_depth</th><td><code>8</code></td></tr>
+          <tr><th>colsample_bytree</th><td><code>0.8</code></td></tr>
+          <tr><th>subsample</th><td><code>0.8</code></td></tr>
+          <tr><th>lambda_l1</th><td><code>10.0</code></td></tr>
+          <tr><th>lambda_l2</th><td><code>50.0</code></td></tr>
+          <tr><th>max_bin</th><td><code>63</code></td></tr>
+          <tr><th>early_stopping_rounds</th><td><code>100</code></td></tr>
+          <tr><th>num_boost_round</th><td><code>2000</code></td></tr>
+        </table>
+      </div>
+      <div class="card wide">
+        <h3>Observed fit</h3>
+        <table>
+          <tr><th>Best iteration</th><td><code>112</code></td></tr>
+          <tr><th>Train L2 @ best</th><td><code>0.970966</code></td></tr>
+          <tr><th>Valid L2 @ best</th><td><code>0.992072</code></td></tr>
+          <tr><th>Training behavior</th><td>Validation loss improved early, then deteriorated after the best iteration: mild overfit controlled by early stopping.</td></tr>
+        </table>
+        <pre>bash scripts/run_local_research.sh run \
+  --alpha-pack alpha158_market_v1 \
+  --model lightgbm</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>4 · Signal diagnostics</h2>
+    <div class="grid">
+      <div class="card"><div class="label">IC</div><div class="metric">0.0164</div><div class="pass">mean gate passes</div></div>
+      <div class="card"><div class="label">RankIC</div><div class="metric">0.0417</div><div class="pass">mean gate passes</div></div>
+      <div class="card"><div class="label">ICIR</div><div class="metric">0.0790</div><div class="fail">stability gate fails</div></div>
+      <div class="card"><div class="label">RankICIR</div><div class="metric">0.2175</div><div class="fail">stability gate fails</div></div>
+      <div class="card"><div class="label">Long-Avg ann. return</div><div class="metric">57.69%</div><div class="muted">Sharpe 1.93</div></div>
+      <div class="card"><div class="label">Long-Short ann. return</div><div class="metric">17.51%</div><div class="muted">Sharpe 0.68</div></div>
+    </div>
+    <div class="card full" style="margin-top:14px">
+      <h3>Gate interpretation</h3>
+      <table>
+        <thead><tr><th>Check</th><th>Observed</th><th>Threshold</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>IC mean</td><td>0.0164</td><td>≥ 0.01</td><td class="pass">PASS</td></tr>
+          <tr><td>RankIC mean</td><td>0.0417</td><td>≥ 0.02</td><td class="pass">PASS</td></tr>
+          <tr><td>ICIR or RankICIR</td><td>0.0790 / 0.2175</td><td>either ≥ 0.50</td><td class="fail">FAIL</td></tr>
+          <tr><td>Long-short annualized</td><td>17.51%</td><td>≥ 5%</td><td class="pass">PASS</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout" style="margin-top:14px">
+      <strong>Core reading:</strong> the model can weakly rank stocks on average, but the ranking is not stable enough across days. RankIC is much stronger than Pearson IC, so the model is better at relative ordering than predicting return magnitude. This is a weak-alpha baseline, not a deployable signal.
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>5 · Portfolio economics</h2>
+    <div class="grid">
+      <div class="card"><div class="label">Benchmark ann. return</div><div class="metric">15.49%</div><div class="muted">IR 0.891 · MDD -10.74%</div></div>
+      <div class="card"><div class="label">Excess return · no cost</div><div class="metric fail">-4.01%</div><div class="muted">IR -0.281 · MDD -19.36%</div></div>
+      <div class="card"><div class="label">Excess return · with cost</div><div class="metric fail">-6.68%</div><div class="muted">IR -0.468 · MDD -21.68%</div></div>
+    </div>
+    <div class="grid" style="margin-top:14px">
+      <div class="card wide">
+        <h3>Economic interpretation</h3>
+        <ul>
+          <li>The score has diagnostic separation, but the realized constrained portfolio does not beat CSI300.</li>
+          <li>Using the same annualized arithmetic convention, gross strategy return is approximately 11.48% and net strategy return approximately 8.81% versus a 15.49% benchmark.</li>
+          <li>The difference between no-cost and after-cost excess return is about 2.67 percentage points per year: turnover and execution policy materially matter.</li>
+          <li>A high Long-Avg diagnostic is therefore not evidence that the production-like portfolio is economically viable.</li>
+        </ul>
+      </div>
+      <div class="card wide">
+        <h3>Why REJECT is correct</h3>
+        <ul>
+          <li>The mean RankIC hurdle is cleared, so the data is not devoid of signal.</li>
+          <li>The stability channel is far below the 0.50 promotion threshold.</li>
+          <li>Benchmark-relative portfolio economics are negative after costs.</li>
+          <li>The right response is better evidence and more robust alpha, not lowering the gate.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>6 · Runtime profile</h2>
+    <div class="grid">
+      <div class="card wide">
+        <h3>Signal run timing</h3>
+        <div>Feature store <span style="float:right">0.70 s</span><div class="bar"><span style="width:9.6%"></span></div></div>
+        <div style="margin-top:10px">Handler process <span style="float:right">3.74 s</span><div class="bar"><span style="width:51.2%"></span></div></div>
+        <div style="margin-top:10px">Training <span style="float:right">7.31 s</span><div class="bar"><span style="width:100%"></span></div></div>
+        <div style="margin-top:10px">Prediction <span style="float:right">0.18 s</span><div class="bar"><span style="width:2.5%"></span></div></div>
+        <div style="margin-top:10px">Signal analysis <span style="float:right">0.38 s</span><div class="bar"><span style="width:5.2%"></span></div></div>
+        <p class="muted">Total research phase time: 12.50 s · wall time 13.60 s</p>
+      </div>
+      <div class="card wide">
+        <h3>Prediction backtest timing</h3>
+        <div>Portfolio engine <span style="float:right">2.64 s</span><div class="bar"><span style="width:100%"></span></div></div>
+        <div style="margin-top:10px">Audit build <span style="float:right">1.24 s</span><div class="bar"><span style="width:47%"></span></div></div>
+        <div style="margin-top:10px">Quote query <span style="float:right">0.09 s</span><div class="bar"><span style="width:3.6%"></span></div></div>
+        <p class="muted">Total portfolio/audit phase time: 4.07 s · wall time 5.19 s · peak RSS 426.7 MB</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>7 · Data-quality watchlist</h2>
+    <div class="grid">
+      <div class="card wide">
+        <h3 class="warn">Observed warnings</h3>
+        <ul>
+          <li><code>$open field data contains nan</code></li>
+          <li><code>load calendar error: freq=day, future=True; return current calendar</code></li>
+          <li><code>RuntimeWarning: Mean of empty slice</code> appeared repeatedly during backtest.</li>
+        </ul>
+      </div>
+      <div class="card wide">
+        <h3>Required follow-up</h3>
+        <ul>
+          <li>Separate genuine suspension/untradable sessions from provider-side missing open prices.</li>
+          <li>Report OHLCV NaN ratio by date and instrument, valid-stock count per cross-section, label coverage and benchmark completeness.</li>
+          <li>Do not blindly fill missing open with close; that can create false executions.</li>
+          <li>Repair/verify future-calendar configuration before using the same path for forward-looking orchestration.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>8 · Next stock-research program</h2>
+    <div class="card full">
+      <ol>
+        <li><strong>Data QA first:</strong> resolve open-price and empty-cross-section warnings.</li>
+        <li><strong>Model baseline:</strong> hold <code>alpha158_market_v1</code> fixed and compare Ridge / LightGBM / XGBoost.</li>
+        <li><strong>Data ablation:</strong> Market → Daily → PIT → <code>multifactor_core_v1</code>.</li>
+        <li><strong>Walk-forward:</strong> replace single fixed split with rolling OOS and inspect fold RankIC, ICIR, worst fold and positive-fold ratio.</li>
+        <li><strong>Label horizon:</strong> compare 1D / 5D / 10D / 20D outcomes before assuming daily prediction is optimal.</li>
+        <li><strong>Own factors:</strong> pre-register Value, Profitability/Quality, Momentum, LowVol, Liquidity and Fundamental Momentum hypotheses.</li>
+        <li><strong>Incremental tests:</strong> compare Alpha158 versus Alpha158 + candidate factor; avoid keeping factors that only duplicate existing features.</li>
+        <li><strong>Portfolio layer last:</strong> tune TopK / n_drop / hold period only after stable alpha exists, then stress costs at 1× / 1.5× / 2×.</li>
+        <li><strong>Sealed holdout:</strong> use the final holdout once, only after feature/model/portfolio decisions are frozen.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>9 · Evidence identifiers</h2>
+    <div class="grid">
+      <div class="card wide">
+        <table>
+          <tr><th>Signal run</th><td><code>45cfa8b18cc444768216e0b817592c22</code></td></tr>
+          <tr><th>Backtest run</th><td><code>024de78c89dd4822b0ec080f8af0bb37</code></td></tr>
+          <tr><th>Quickstart matrix</th><td><code>20260905T041510Z-run/research_matrix.json</code></td></tr>
+        </table>
+      </div>
+      <div class="card wide">
+        <p class="muted">This snapshot is a dated research explanation. The authoritative evidence remains the immutable DatasetVersion, run manifests, predictions, portfolio artifacts and quickstart matrix on the machine that executed the research.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">qlib-platform research evidence · 2026-09-05 · REJECT is intentionally preserved as the baseline conclusion.</div>
+</main>
+</body>
+</html>
