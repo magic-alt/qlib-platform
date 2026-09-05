@@ -37,6 +37,16 @@ _DAILY_FIELDS = (
 )
 
 ALPHA_PACKS: dict[str, AlphaPackSpec] = {
+    "qlib_alpha158_official_v1": AlphaPackSpec(
+        "qlib_alpha158_official_v1",
+        1,
+        "QlibOfficialAlpha158",
+        _BASE_FIELDS,
+        (),
+        60,
+        "qlib_official_alpha158_v1",
+        ("technical",),
+    ),
     "alpha158_market_v1": AlphaPackSpec(
         "alpha158_market_v1",
         1,
@@ -164,6 +174,10 @@ def assert_alpha_pack_compatible(settings: Settings, pack: AlphaPackSpec) -> Non
 
 
 def handler_class(pack: AlphaPackSpec):
-    from qlib_platform.data import custom_handler
+    from qlib_platform.data import custom_handler, official_handler
 
-    return getattr(custom_handler, pack.handler_class)
+    for module in (custom_handler, official_handler):
+        candidate = getattr(module, pack.handler_class, None)
+        if candidate is not None:
+            return candidate
+    raise ValueError(f"alpha pack handler is not registered: {pack.handler_class}")
