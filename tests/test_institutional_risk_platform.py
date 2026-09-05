@@ -127,9 +127,7 @@ def test_stress_scenario_combines_factor_asset_and_benchmark_relative_shocks() -
     assert result.instrument_shocks.to_numpy() == pytest.approx(expected_shocks)
     assert result.portfolio_return == pytest.approx(float(weights.to_numpy() @ expected_shocks))
     assert result.benchmark_return == pytest.approx(float(benchmark.to_numpy() @ expected_shocks))
-    assert result.active_return == pytest.approx(
-        float((weights - benchmark).to_numpy() @ expected_shocks)
-    )
+    assert result.active_return == pytest.approx(float((weights - benchmark).to_numpy() @ expected_shocks))
     assert result.factor_return + result.asset_specific_return == pytest.approx(result.portfolio_return)
 
 
