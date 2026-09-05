@@ -76,10 +76,7 @@ def test_dashboard_interprets_unstable_ranking_signal(tmp_path: Path) -> None:
     assert job["decision"] == "REJECT"
     assert job["signal"]["rank_ic_mean"] == 0.041730
     assert any("day-to-day" in note for note in job["analysis"])
-    assert any(
-        row["label"] == "RankICIR" and row["passed"] is False
-        for row in job["gates"]
-    )
+    assert any(row["label"] == "RankICIR" and row["passed"] is False for row in job["gates"])
 
 
 def test_dashboard_is_self_contained_and_escapes_content(tmp_path: Path) -> None:
@@ -104,13 +101,7 @@ def test_write_dashboard_and_latest_resolution(tmp_path: Path) -> None:
         "name: lightgbm_auto\nfamily: lightgbm\n",
         encoding="utf-8",
     )
-    quickstart = (
-        tmp_path
-        / "data"
-        / "output"
-        / "quickstart"
-        / "20260905T041510Z-run"
-    )
+    quickstart = tmp_path / "data" / "output" / "quickstart" / "20260905T041510Z-run"
     quickstart.mkdir(parents=True)
     matrix = quickstart / "research_matrix.json"
     matrix.write_text(json.dumps(_matrix(profile)), encoding="utf-8")
