@@ -72,8 +72,8 @@ def normalize_qlib_buy_amount(
 class AShareQlibExchangeGuard:
     """Fail-closed A-share legality layer for Qlib's shared Exchange instance.
 
-    Qlib owns price/volume/cost calculation and account mutation.  This guard
-    adds the cash-equity constraints that the generic Exchange does not model:
+    Qlib owns price/volume/cost calculation and account mutation. This guard
+    adds cash-equity constraints that the generic Exchange does not model:
     same-session buys remain locked for T+1, sell requests cannot exceed settled
     inventory, and every non-zero buy fill must satisfy the canonical board-size
     rules in :class:`AShareMarketRules`.
@@ -153,13 +153,13 @@ class AShareQlibExchangeGuard:
         if bool(check_order(order)):
             if getattr(order, "direction") == Order.SELL:
                 self._validate_sell(order, trade_account, position)
-            elif getattr(order, "direction") == Order.BUY:
+            elif getattr(order, "direction") == Order.BUY and float(getattr(order, "amount")) > 0:
                 self._validate_requested_buy(order)
 
         kwargs: dict[str, Any] = {"trade_account": trade_account, "position": position}
         if dealt_order_amount is not None:
             kwargs["dealt_order_amount"] = dealt_order_amount
-        result = self._original_deal_order(order, **kwargs)
+        trade_val, trade_cost, trade_price = self._original_deal_order(order, **kwargs)
 
         if (
             trade_account is not None
@@ -168,7 +168,7 @@ class AShareQlibExchangeGuard:
         ):
             key = (_trade_date(order), str(getattr(order, "stock_id")))
             self.same_day_buys[key] += float(getattr(order, "deal_amount"))
-        return tuple(float(value) for value in result)
+        return float(trade_val), float(trade_cost), float(trade_price)
 
 
 def guard_qlib_exchange(
