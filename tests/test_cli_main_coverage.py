@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,7 +8,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-import qlib_platform.cli.main as cli_main
+cli_main = importlib.import_module("qlib_platform.cli.main")
 
 
 def _settings(tmp_path: Path) -> SimpleNamespace:
