@@ -77,16 +77,29 @@ def _settings(tmp_path: Path, *, kind: str = "tushare") -> SimpleNamespace:
         data={
             "data_source": {
                 "kind": kind,
-                "runtime": {"max_attempts": 2, "base_sleep_seconds": 0.1, "max_sleep_seconds": 1, "jitter_ratio": 0},
+                "runtime": {
+                    "max_attempts": 2,
+                    "base_sleep_seconds": 0.1,
+                    "max_sleep_seconds": 1,
+                    "jitter_ratio": 0,
+                },
                 "optional_endpoints": {"moneyflow": False},
                 "mysql": {"schema": "lean_canonical_v1"},
             }
         },
-        paths=SimpleNamespace(raw=tmp_path / "raw", metadata=tmp_path / "metadata", quality=tmp_path / "quality"),
+        paths=SimpleNamespace(
+            raw=tmp_path / "raw", metadata=tmp_path / "metadata", quality=tmp_path / "quality"
+        ),
     )
 
 
-def _binding(client: _Client, *, mysql: bool = False, overrides: dict[str, object] | None = None, operations: dict[str, object] | None = None) -> SimpleNamespace:
+def _binding(
+    client: _Client,
+    *,
+    mysql: bool = False,
+    overrides: dict[str, object] | None = None,
+    operations: dict[str, object] | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         name="lean_mysql" if mysql else "tushare",
         client=client,
@@ -96,7 +109,9 @@ def _binding(client: _Client, *, mysql: bool = False, overrides: dict[str, objec
     )
 
 
-def _result(frame: pd.DataFrame, *, succeeded: bool = True, status: str = "success", error: str | None = None) -> SimpleNamespace:
+def _result(
+    frame: pd.DataFrame, *, succeeded: bool = True, status: str = "success", error: str | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(data=frame, succeeded=succeeded, status=status, attempts=1, error=error)
 
 
@@ -122,7 +137,9 @@ def test_write_parquet_atomic_replaces_file(tmp_path) -> None:
 def test_extractor_init_applies_endpoint_overrides(monkeypatch, tmp_path) -> None:
     client = _Client()
     override = SimpleNamespace(required=True, enabled=False)
-    monkeypatch.setattr(ingestion, "create_data_source", lambda *args: _binding(client, overrides={"stock_st": override}))
+    monkeypatch.setattr(
+        ingestion, "create_data_source", lambda *args: _binding(client, overrides={"stock_st": override})
+    )
     extractor = ingestion.Extractor(_settings(tmp_path))
     by_name = {item.name: item for item in extractor.endpoints}
     assert by_name["daily"].required is True
@@ -145,7 +162,9 @@ def test_fetch_stock_master_calendar_and_open_dates(monkeypatch, tmp_path) -> No
     assert extractor.open_dates("2026-09-01", "2026-09-02") == ["20260901"]
 
 
-def test_fetch_day_handles_disabled_terminal_success_failure_and_required_empty(monkeypatch, tmp_path) -> None:
+def test_fetch_day_handles_disabled_terminal_success_failure_and_required_empty(
+    monkeypatch, tmp_path
+) -> None:
     client = _Client()
     monkeypatch.setattr(ingestion, "create_data_source", lambda *args: _binding(client))
     monkeypatch.setattr(ingestion, "validate_raw_day", lambda *_: {"passed": True})
@@ -182,7 +201,9 @@ def test_backfill_regular_and_mysql_preflight(monkeypatch, tmp_path) -> None:
     assert fetched == ["20260901", "20260902"]
 
     operations = {"preflight": lambda cfg, start, end: {"passed": False, "coverage_failures": ["gap"]}}
-    monkeypatch.setattr(ingestion, "create_data_source", lambda *args: _binding(client, mysql=True, operations=operations))
+    monkeypatch.setattr(
+        ingestion, "create_data_source", lambda *args: _binding(client, mysql=True, operations=operations)
+    )
     mysql = ingestion.Extractor(_settings(tmp_path, kind="lean_mysql"))
     monkeypatch.setattr(mysql, "open_dates", lambda *_: ["20260901", "20260902"])
     with pytest.raises(RuntimeError, match="coverage is incomplete"):
