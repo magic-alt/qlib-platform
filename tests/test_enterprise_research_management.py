@@ -93,9 +93,7 @@ def test_federated_config_rejects_unsafe_configuration() -> None:
     with pytest.raises(ValueError, match="issuer and audience"):
         FederatedIdentityConfig(issuer="", audience="qlib-platform")
     with pytest.raises(ValueError, match="username_claim"):
-        FederatedIdentityConfig(
-            issuer="https://id.example.test", audience="qlib-platform", username_claim=""
-        )
+        FederatedIdentityConfig(issuer="https://id.example.test", audience="qlib-platform", username_claim="")
     with pytest.raises(ValueError, match="clock_skew"):
         FederatedIdentityConfig(
             issuer="https://id.example.test", audience="qlib-platform", clock_skew_seconds=-1
@@ -142,15 +140,16 @@ def test_directory_mapper_supports_ldap_ad_normalization_and_disabled_fail_close
 def test_governance_store_and_policy_enforce_project_roles_and_resource_scope(tmp_path) -> None:
     governance = ResearchGovernanceStore(tmp_path / "governance.sqlite")
     project = governance.create_project(
-        "alpha-team", display_name="Alpha Team", owner_subject="alice", created_at_utc="2026-09-06T00:00:00+00:00"
+        "alpha-team",
+        display_name="Alpha Team",
+        owner_subject="alice",
+        created_at_utc="2026-09-06T00:00:00+00:00",
     )
     assert governance.get_project("alpha-team") == project
     assert governance.project_role("alpha-team", "alice") == "owner"
     governance.add_member("alpha-team", "bob", "researcher")
     governance.add_member("alpha-team", "carol", "viewer")
-    governance.bind_resource(
-        "experiment", "exp-1", project_id="alpha-team", owner_subject="alice"
-    )
+    governance.bind_resource("experiment", "exp-1", project_id="alpha-team", owner_subject="alice")
     policy = ResearchAccessPolicy(governance)
 
     assert policy.authorize(_principal("alice"), ResourceRef("experiment", "exp-1"), "manage")
