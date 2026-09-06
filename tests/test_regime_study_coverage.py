@@ -34,9 +34,7 @@ def test_json_and_base_manifest_validation(tmp_path) -> None:
         "status": {"featureDiagnostics": "PASS"},
         "selectionUsesFinalHoldout": False,
         "publishingAuthorized": False,
-        "artifacts": [
-            {"name": artifact.name, "path": artifact.name, "sha256": sha256_file(artifact)}
-        ],
+        "artifacts": [{"name": artifact.name, "path": artifact.name, "sha256": sha256_file(artifact)}],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     assert regime._validate_base_study(path)["status"]["featureDiagnostics"] == "PASS"
@@ -98,9 +96,7 @@ def test_load_benchmark_close_filters_csi300_and_validates(tmp_path) -> None:
     pd.DataFrame({"trade_date": ["20260901"]}).to_parquet(file, index=False)
     with pytest.raises(ValueError, match="requires trade_date and close"):
         regime._load_benchmark_close(_Release({"benchmark": [file]}))
-    pd.DataFrame(
-        {"trade_date": ["20260901", "20260901"], "close": [1.0, 2.0]}
-    ).to_parquet(file, index=False)
+    pd.DataFrame({"trade_date": ["20260901", "20260901"], "close": [1.0, 2.0]}).to_parquet(file, index=False)
     with pytest.raises(ValueError, match="duplicated"):
         regime._load_benchmark_close(_Release({"benchmark": [file]}))
 
@@ -164,9 +160,7 @@ def test_load_pit_industries_rejects_overlapping_intervals(tmp_path) -> None:
 
 
 def test_history_start_and_availability() -> None:
-    benchmark = pd.Series(
-        range(100), index=pd.date_range("2026-01-01", periods=100, freq="B"), dtype=float
-    )
+    benchmark = pd.Series(range(100), index=pd.date_range("2026-01-01", periods=100, freq="B"), dtype=float)
     evaluation = pd.date_range(benchmark.index[-10], periods=5, freq="B")
     spec = SimpleNamespace(
         dimensions={
