@@ -117,7 +117,9 @@ def test_normalize_symbol_converts_units_limits_and_paused_rows() -> None:
 
 
 def test_normalize_symbol_derives_limits_without_status_and_validates_base() -> None:
-    frame = _raw_symbol().drop(columns=["limit_status", "buy_lg_amount", "sell_lg_amount", "buy_elg_amount", "sell_elg_amount"])
+    frame = _raw_symbol().drop(
+        columns=["limit_status", "buy_lg_amount", "sell_lg_amount", "buy_elg_amount", "sell_elg_amount"]
+    )
     frame.loc[0, "close"] = frame.loc[0, "up_limit"]
     frame.loc[1, "close"] = frame.loc[1, "down_limit"]
     calendar = pd.date_range("2026-08-28", "2026-09-03", freq="D")
@@ -136,9 +138,9 @@ def test_normalize_symbol_derives_limits_without_status_and_validates_base() -> 
 def test_open_calendar_and_benchmark_staging_frame(tmp_path) -> None:
     settings = _settings(tmp_path)
     settings.paths.metadata.mkdir(parents=True)
-    pd.DataFrame(
-        {"cal_date": ["2026-09-01", "2026-09-02", "2026-09-03"], "is_open": [1, 0, 1]}
-    ).to_parquet(settings.paths.metadata / "trade_calendar.parquet", index=False)
+    pd.DataFrame({"cal_date": ["2026-09-01", "2026-09-02", "2026-09-03"], "is_open": [1, 0, 1]}).to_parquet(
+        settings.paths.metadata / "trade_calendar.parquet", index=False
+    )
     calendar = norm._load_open_calendar(settings)
     assert calendar.tolist() == [pd.Timestamp("2026-09-01"), pd.Timestamp("2026-09-03")]
 
@@ -164,9 +166,7 @@ def test_open_calendar_and_benchmark_staging_frame(tmp_path) -> None:
     (benchmark_dir / "SH000300.parquet").unlink()
     with pytest.raises(FileNotFoundError, match="benchmark data"):
         norm._benchmark_staging_frame(settings, calendar)
-    pd.DataFrame({"trade_date": ["2026-09-01"]}).to_parquet(
-        benchmark_dir / "SH000300.parquet", index=False
-    )
+    pd.DataFrame({"trade_date": ["2026-09-01"]}).to_parquet(benchmark_dir / "SH000300.parquet", index=False)
     with pytest.raises(ValueError, match="missing columns"):
         norm._benchmark_staging_frame(settings, calendar)
     pd.DataFrame({"trade_date": ["2026-09-01"], "close": [-1.0]}).to_parquet(
