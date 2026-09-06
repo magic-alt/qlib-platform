@@ -36,7 +36,7 @@ def test_mlflow_tracking_configuration_and_helpers(tmp_path, monkeypatch) -> Non
     monkeypatch.delenv("MLFLOW_DEFAULT_ARTIFACT_ROOT", raising=False)
     train_select._configure_mlflow_tracking(settings)
     assert os.environ["MLFLOW_TRACKING_URI"].startswith("sqlite:///")
-    assert os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"].endswith("models/mlruns")
+    assert Path(os.environ["MLFLOW_DEFAULT_ARTIFACT_ROOT"]).parts[-2:] == ("models", "mlruns")
     assert train_select._sqlite_tracking_uri(tmp_path / "x.db").startswith("sqlite:///")
     assert train_select._promotion_authorized("release", True)
     assert not train_select._promotion_authorized("release", False)
