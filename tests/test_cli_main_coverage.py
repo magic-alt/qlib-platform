@@ -32,7 +32,8 @@ def _settings(tmp_path: Path) -> SimpleNamespace:
 
 
 def _run(monkeypatch, settings: SimpleNamespace, **values: object) -> None:
-    args = SimpleNamespace(config="config.yaml", **values)
+    payload = {"config": "config.yaml", **values}
+    args = SimpleNamespace(**payload)
     monkeypatch.setattr(cli_main, "parser", lambda: SimpleNamespace(parse_args=lambda: args))
     monkeypatch.setattr(
         cli_main,
