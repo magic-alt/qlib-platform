@@ -57,9 +57,7 @@ def _run(name: str, command: list[str], *, root: Path) -> CheckResult:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Run the repository-wide qlib-platform certification suite."
-    )
+    parser = argparse.ArgumentParser(description="Run the repository-wide qlib-platform certification suite.")
     parser.add_argument("--root", default=".", help="repository root")
     parser.add_argument(
         "--coverage-threshold",
