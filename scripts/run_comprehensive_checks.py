@@ -100,7 +100,11 @@ def _parser() -> argparse.ArgumentParser:
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
-def _github_diff_base() -> str | None:
+def _github_diff_base(*, root: Path) -> str | None:
+    workspace = os.environ.get("GITHUB_WORKSPACE")
+    if not workspace or Path(workspace).expanduser().resolve() != root:
+        return None
+
     event_path = os.environ.get("GITHUB_EVENT_PATH")
     if not event_path:
         return None
@@ -220,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     if not (root / "pyproject.toml").is_file():
         raise SystemExit(f"not a qlib-platform repository root: {root}")
     for label, value in (
-        ("coverage target", args.coverage_threshold),
+        ("coverage threshold", args.coverage_threshold),
         ("coverage floor", args.coverage_floor),
         ("diff coverage threshold", args.diff_coverage_threshold),
     ):
@@ -305,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             coverage_percent = None
 
-    diff_base = args.diff_base or _github_diff_base()
+    diff_base = args.diff_base or _github_diff_base(root=root)
     diff_coverage_percent: float | None = None
     diff_covered_lines = 0
     diff_executable_lines = 0
@@ -329,6 +333,7 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "schemaVersion": 2,
         "passed": passed,
+        "coverageThreshold": float(args.coverage_threshold),
         "coverageFloor": float(args.coverage_floor),
         "coverageTarget": float(args.coverage_threshold),
         "coveragePercent": coverage_percent,
