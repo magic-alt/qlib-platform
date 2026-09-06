@@ -87,6 +87,12 @@ def _write_workflow(path: Path, provider: Path) -> None:
         f"""qlib_init:
     provider_uri: '{provider_text}'
     region: cn
+    exp_manager:
+        class: MLflowExpManager
+        module_path: qlib.workflow.expm
+        kwargs:
+            uri: '{{{{ QLIB_CONFORMANCE_TRACKING_URI }}}}'
+            default_exp_name: Experiment
 market: &market csi300
 benchmark: &benchmark SH000300
 data_handler_config: &data_handler_config
@@ -164,12 +170,13 @@ task:
 
 
 def _run(command: list[str], *, cwd: Path) -> None:
+    cwd.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["PYTHONHASHSEED"] = "0"
-    # Qlib 0.9.7 intentionally uses MLflow's local file tracking backend for qrun.
-    # MLflow 3.x puts that backend in maintenance mode unless this compatibility
-    # switch is explicit. Apply the same upstream-supported setting to both lanes.
-    env["MLFLOW_ALLOW_FILE_STORE"] = "true"
+    # Qlib 0.9.7 supports an explicit MLflow experiment manager. Use its SQL
+    # tracking backend so the conformance contract remains valid on current,
+    # security-supported MLflow releases without reviving the deprecated file store.
+    env["QLIB_CONFORMANCE_TRACKING_URI"] = f"sqlite:///{(cwd / 'tracking.db').as_posix()}"
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -213,8 +220,8 @@ def test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved(tmp_path: Path) -
     workflow = tmp_path / "workflow_alpha158_lightgbm.yaml"
     _write_workflow(workflow, provider)
 
-    upstream_runs = tmp_path / "upstream_mlruns"
-    platform_runs = tmp_path / "platform_mlruns"
+    upstream_runs = tmp_path / "upstream"
+    platform_runs = tmp_path / "platform"
 
     _run(
         [
@@ -222,12 +229,11 @@ def test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved(tmp_path: Path) -
             "-c",
             (
                 "import sys; from qlib.cli.run import workflow; "
-                "workflow(sys.argv[1], experiment_name='qlib-upstream-conformance', uri_folder=sys.argv[2])"
+                "workflow(sys.argv[1], experiment_name='qlib-upstream-conformance')"
             ),
             str(workflow),
-            str(upstream_runs),
         ],
-        cwd=tmp_path,
+        cwd=upstream_runs,
     )
     _run(
         [
@@ -238,10 +244,8 @@ def test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved(tmp_path: Path) -
             str(workflow),
             "--experiment-name",
             "qlib-platform-conformance",
-            "--uri-folder",
-            str(platform_runs),
         ],
-        cwd=tmp_path,
+        cwd=platform_runs,
     )
 
     required_artifacts = {
