@@ -51,10 +51,11 @@ class OptimizationConstraints:
 
 
 def _bound_array(value: float | np.ndarray, n_assets: int, *, name: str) -> np.ndarray:
-    if np.isscalar(value):
-        result = np.full(n_assets, float(value), dtype=float)
+    array: np.ndarray = np.asarray(value, dtype=float)
+    if array.ndim == 0:
+        result: np.ndarray = np.full(n_assets, float(array.item()), dtype=float)
     else:
-        result = np.asarray(value, dtype=float)
+        result = array
         if result.shape != (n_assets,):
             raise ValueError(f"{name} must be scalar or length n_assets")
     if not np.isfinite(result).all():
