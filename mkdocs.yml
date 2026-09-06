@@ -102,6 +102,9 @@ nav:
       - Research Baselines & Templates: research_baselines.md
       - Research Web Dashboard: research_web_dashboard.md
       - Professional Research Engines: professional_research_engines.md
+      - P5 Institutional Research Platform: p5_institutional_research_platform.md
+      - Qlib Native Compatibility: qlib_native_compatibility.md
+      - P4 Qlib Superset Contract: p4_qlib_superset_contract.md
       - Stability Diagnostics: alpha_research_stability.md
       - Model Lifecycle: model_lifecycle.md
       - Production Feedback: production_feedback.md
@@ -117,6 +120,7 @@ nav:
       - Incident Response: operations/incident-response.md
       - Testing & Certification: testing_and_certification.md
       - Research Infrastructure Certification: research_infrastructure_certification.md
+      - P0-P4 Repository Revalidation: p0_p4_repository_recertification.md
       - Troubleshooting: troubleshooting.md
   - Maintainers:
       - Repository Governance: maintainers/repository-governance.md
