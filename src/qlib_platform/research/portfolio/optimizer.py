@@ -44,7 +44,8 @@ def _risk_parity_seed(
     total = float(weights.sum())
     if not np.isfinite(weights).all() or total <= 0:
         raise ValueError("risk-parity solver did not produce valid positive weights")
-    return weights / total * target_exposure
+    result: np.ndarray = np.asarray(weights / total * target_exposure, dtype=float)
+    return result
 
 
 def _risk_parity_shares(weights: np.ndarray, covariance: np.ndarray) -> np.ndarray:
