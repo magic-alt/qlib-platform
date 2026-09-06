@@ -108,7 +108,7 @@ def test_normalize_symbol_converts_units_limits_and_paused_rows() -> None:
     assert result.loc[0, "turnover_rate"] == pytest.approx(0.05)
     assert result.loc[0, "total_share"] == pytest.approx(100_000.0)
     assert result.loc[0, "total_mv"] == pytest.approx(1_000_000.0)
-    assert result.loc[0, "buy_lg_amount"] == pytest.approx(10_000.0)
+    assert result.loc[0, "net_mf_amount"] == pytest.approx(7000.0)
     assert result.loc[0, "is_limit_up"] == 1.0
     assert result.loc[1, "is_limit_down"] == 1.0
     assert result.loc[0, "big_net_amount"] == pytest.approx(7000.0)
