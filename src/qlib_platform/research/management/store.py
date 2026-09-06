@@ -90,9 +90,7 @@ class ResearchGovernanceStore:
             connection.execute(
                 "INSERT INTO research_projects VALUES(?,?,?,?)", (identifier, name, owner, created)
             )
-            connection.execute(
-                "INSERT INTO project_members VALUES(?,?,?)", (identifier, owner, "owner")
-            )
+            connection.execute("INSERT INTO project_members VALUES(?,?,?)", (identifier, owner, "owner"))
         return ResearchProject(identifier, name, owner, created)
 
     def get_project(self, project_id: str) -> ResearchProject | None:
