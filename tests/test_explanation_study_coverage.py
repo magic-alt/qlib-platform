@@ -32,9 +32,7 @@ def test_json_default_and_prediction_normalization() -> None:
     with pytest.raises(ValueError, match="MultiIndex"):
         explanation._normalize_prediction(pd.DataFrame({"score": [1]}), "bad")
     with pytest.raises(ValueError, match="one score"):
-        explanation._normalize_prediction(
-            pd.DataFrame({"a": [1, 2], "b": [3, 4]}, index=_index()), "bad"
-        )
+        explanation._normalize_prediction(pd.DataFrame({"a": [1, 2], "b": [3, 4]}, index=_index()), "bad")
 
 
 def test_prediction_equality_checks_keys_and_scores() -> None:
@@ -74,9 +72,7 @@ def test_stable_lock_and_fold_plan_validation() -> None:
     with pytest.raises(ValueError, match="no fold plan"):
         explanation._rolling_fold_plan({"splitSpec": {"folds": None}})
     with pytest.raises(ValueError, match="invalid rolling fold"):
-        explanation._rolling_fold_plan(
-            {"splitSpec": {"folds": [{"key": "x"}, {"key": "x"}]}}
-        )
+        explanation._rolling_fold_plan({"splitSpec": {"folds": [{"key": "x"}, {"key": "x"}]}})
     with pytest.raises(ValueError, match="no rolling folds"):
         explanation._rolling_fold_plan(
             {"splitSpec": {"folds": [{"key": "final_holdout", "final_holdout": True}]}}
@@ -129,9 +125,7 @@ def _shap_frame() -> pd.DataFrame:
 
 def test_shap_importance_and_interaction_aggregation() -> None:
     shap = _shap_frame()
-    aggregate = explanation._aggregate_shap(
-        shap, ["model", "feature"], "ALL_OOS", minimum_sessions=5
-    )
+    aggregate = explanation._aggregate_shap(shap, ["model", "feature"], "ALL_OOS", minimum_sessions=5)
     assert aggregate["rank"].tolist() == [1, 2]
     assert aggregate["sample_status"].eq("SUFFICIENT").all()
     insufficient = explanation._aggregate_shap(
@@ -242,12 +236,15 @@ def test_materialize_bundle_is_content_addressed_and_reusable(tmp_path) -> None:
     assert manifest["schemaVersion"] == explanation.EXPLANATION_STUDY_SCHEMA
     assert manifest["selectionUsesFinalHoldout"] is False
     assert manifest["executionIsolation"]["modelTrainCalls"] == 0
-    assert explanation._materialize_bundle(
-        tmp_path,
-        contract=contract,
-        frames=frames,
-        summary=summary,
-        regime_status="PASS",
-    ) == manifest_path
+    assert (
+        explanation._materialize_bundle(
+            tmp_path,
+            contract=contract,
+            frames=frames,
+            summary=summary,
+            regime_status="PASS",
+        )
+        == manifest_path
+    )
     report = manifest_path.parent / "model_explanation_report.md"
     assert "Publishing Authorized: false" in report.read_text(encoding="utf-8")
