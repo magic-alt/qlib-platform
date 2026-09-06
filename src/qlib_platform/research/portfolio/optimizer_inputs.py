@@ -81,10 +81,6 @@ def benchmark_vector(
         raise ValueError("benchmark_weights contains invalid values")
     if abs(float(benchmark.sum()) - constraints.target_exposure) > 1e-6:
         raise ValueError("benchmark_weights must sum to target_exposure")
-    if bool(np.any(benchmark < constraints.min_weight - 1e-10)) or bool(
-        np.any(benchmark > constraints.max_weight + 1e-10)
-    ):
-        raise ValueError("benchmark_weights must satisfy optimizer weight bounds")
     return benchmark
 
 
