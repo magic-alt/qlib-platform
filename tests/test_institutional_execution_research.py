@@ -137,9 +137,7 @@ def test_latency_penalty_increases_adverse_slippage() -> None:
         _bars(),
         config=ExecutionModelConfig(max_participation_rate=1.0, latency_ms=2_000, latency_bps_per_second=5.0),
     )
-    assert float(delayed.summary["weighted_slippage_bps"]) > float(
-        baseline.summary["weighted_slippage_bps"]
-    )
+    assert float(delayed.summary["weighted_slippage_bps"]) > float(baseline.summary["weighted_slippage_bps"])
 
 
 def test_canceled_and_rejected_children_do_not_fill() -> None:
