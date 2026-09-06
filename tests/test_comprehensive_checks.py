@@ -24,15 +24,11 @@ def test_comprehensive_runner_executes_all_checks_and_reads_coverage(tmp_path, m
             coverage_arg = next(str(item) for item in command if str(item).startswith("--cov-report=json:"))
             coverage_path = Path(coverage_arg.split(":", 1)[1])
             coverage_path.parent.mkdir(parents=True, exist_ok=True)
-            coverage_path.write_text(
-                json.dumps({"totals": {"percent_covered": 87.25}}), encoding="utf-8"
-            )
+            coverage_path.write_text(json.dumps({"totals": {"percent_covered": 87.25}}), encoding="utf-8")
         return _completed(command)
 
     monkeypatch.setattr(checks.subprocess, "run", fake_run)
-    result = checks.main(
-        ["--root", str(tmp_path), "--coverage-threshold", "85", "--output", str(output)]
-    )
+    result = checks.main(["--root", str(tmp_path), "--coverage-threshold", "85", "--output", str(output)])
     assert result == 0
     assert len(commands) == 7
     payload = json.loads(output.read_text(encoding="utf-8"))
@@ -79,16 +75,19 @@ def test_comprehensive_runner_fail_fast_stops_after_first_failure(tmp_path, monk
         return _completed(command, return_code=2)
 
     monkeypatch.setattr(checks.subprocess, "run", fake_run)
-    assert checks.main(
-        [
-            "--root",
-            str(tmp_path),
-            "--output",
-            str(output),
-            "--skip-governance",
-            "--fail-fast",
-        ]
-    ) == 1
+    assert (
+        checks.main(
+            [
+                "--root",
+                str(tmp_path),
+                "--output",
+                str(output),
+                "--skip-governance",
+                "--fail-fast",
+            ]
+        )
+        == 1
+    )
     assert len(commands) == 1
 
 
