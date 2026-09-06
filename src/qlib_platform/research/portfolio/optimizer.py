@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
-
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 
 from qlib_platform.research.portfolio.optimizer_constraints import (
@@ -31,11 +28,11 @@ def _risk_parity_seed(
     target_exposure: float,
     max_iterations: int,
     tolerance: float,
-) -> npt.NDArray[np.float64]:
+) -> list[float]:
     diagonal = np.diag(covariance)
     if bool(np.any(diagonal <= 1e-14)):
         raise ValueError("risk-parity covariance must have strictly positive diagonal variance")
-    weights: npt.NDArray[np.float64] = np.ones(len(budgets), dtype=np.float64)
+    weights = np.ones(len(budgets), dtype=np.float64)
     for _ in range(max_iterations):
         before = weights.copy()
         for position in range(len(weights)):
@@ -49,7 +46,7 @@ def _risk_parity_seed(
         raise ValueError("risk-parity solver did not produce valid positive weights")
     weights /= total
     weights *= target_exposure
-    return cast(npt.NDArray[np.float64], weights)
+    return [float(value) for value in weights]
 
 
 def _risk_parity_shares(weights: np.ndarray, covariance: np.ndarray) -> np.ndarray:
@@ -128,12 +125,15 @@ def optimize_alpha_portfolio(
 
     if resolved_config.objective == "risk_parity":
         assert risk_budgets_values is not None
-        initial = _risk_parity_seed(
-            optimization_covariance,
-            risk_budgets_values,
-            target_exposure=resolved_constraints.target_exposure,
-            max_iterations=min(2_000, resolved_config.max_iterations),
-            tolerance=resolved_config.tolerance,
+        initial = np.asarray(
+            _risk_parity_seed(
+                optimization_covariance,
+                risk_budgets_values,
+                target_exposure=resolved_constraints.target_exposure,
+                max_iterations=min(2_000, resolved_config.max_iterations),
+                tolerance=resolved_config.tolerance,
+            ),
+            dtype=float,
         )
     elif resolved_config.objective == "benchmark_relative" and benchmark is not None:
         initial = benchmark.copy()
