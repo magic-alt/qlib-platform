@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -47,7 +49,7 @@ def _risk_parity_seed(
         raise ValueError("risk-parity solver did not produce valid positive weights")
     weights /= total
     weights *= target_exposure
-    return weights
+    return cast(npt.NDArray[np.float64], weights)
 
 
 def _risk_parity_shares(weights: np.ndarray, covariance: np.ndarray) -> np.ndarray:
