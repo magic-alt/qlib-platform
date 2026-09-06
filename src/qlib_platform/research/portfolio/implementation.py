@@ -21,13 +21,13 @@ def _lot_vector(lot_sizes: int | pd.Series, instruments: pd.Index) -> np.ndarray
         return np.full(len(instruments), lot_sizes, dtype=np.int64)
     if not lot_sizes.index.equals(instruments):
         raise ValueError("lot_sizes must exactly match target-weight index")
-    numeric = pd.to_numeric(lot_sizes, errors="coerce").to_numpy(dtype=float)
+    numeric: np.ndarray = np.asarray(pd.to_numeric(lot_sizes, errors="coerce"), dtype=float)
     if not np.isfinite(numeric).all() or bool(np.any(numeric <= 0)):
         raise ValueError("lot_sizes must contain finite positive values")
-    rounded = np.rint(numeric)
+    rounded: np.ndarray = np.rint(numeric).astype(np.int64)
     if not np.allclose(numeric, rounded):
         raise ValueError("lot_sizes must contain integer share counts")
-    return rounded.astype(np.int64)
+    return rounded
 
 
 def round_weights_to_lots(
