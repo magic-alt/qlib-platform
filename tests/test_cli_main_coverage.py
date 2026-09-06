@@ -352,25 +352,104 @@ def test_research_diagnostic_dispatch(monkeypatch, tmp_path, capsys) -> None:
 
     alpha_path = _study_manifest(tmp_path, {"studyId": "a", "featureCount": 10, "rollingOosSessions": 100})
     monkeypatch.setattr(alpha, "run_alpha_diagnose", lambda *args, **kwargs: alpha_path)
-    _run(monkeypatch, settings, command="alpha-diagnose", acceptance="a", walk_forward="w", feature_snapshot="f", taxonomy="t", output=None)
+    _run(
+        monkeypatch,
+        settings,
+        command="alpha-diagnose",
+        acceptance="a",
+        walk_forward="w",
+        feature_snapshot="f",
+        taxonomy="t",
+        output=None,
+    )
     assert json.loads(capsys.readouterr().out)["featureCount"] == 10
 
-    regime_path = _study_manifest(tmp_path, {"studyId": "r", "status": {"regimeDiagnostics": "PASS"}, "availability": {"x": {}}})
+    regime_path = _study_manifest(
+        tmp_path, {"studyId": "r", "status": {"regimeDiagnostics": "PASS"}, "availability": {"x": {}}}
+    )
     monkeypatch.setattr(regime, "run_regime_diagnose", lambda *args, **kwargs: regime_path)
-    _run(monkeypatch, settings, command="regime-diagnose", base_study="b", acceptance="a", walk_forward="w", ridge_predictions="r", lightgbm_predictions="l", feature_snapshot="f", taxonomy="t", regimes="g", output=None)
+    _run(
+        monkeypatch,
+        settings,
+        command="regime-diagnose",
+        base_study="b",
+        acceptance="a",
+        walk_forward="w",
+        ridge_predictions="r",
+        lightgbm_predictions="l",
+        feature_snapshot="f",
+        taxonomy="t",
+        regimes="g",
+        output=None,
+    )
     assert json.loads(capsys.readouterr().out)["regimeDiagnostics"] == "PASS"
 
-    attribution_path = _study_manifest(tmp_path, {"studyId": "t", "status": {"failureAttribution": "PASS"}, "primaryAlphaLossSource": "model"})
+    attribution_path = _study_manifest(
+        tmp_path,
+        {"studyId": "t", "status": {"failureAttribution": "PASS"}, "primaryAlphaLossSource": "model"},
+    )
     monkeypatch.setattr(attribution, "run_attribution_diagnose", lambda *args, **kwargs: attribution_path)
-    _run(monkeypatch, settings, command="attribution-diagnose", regime_study="r", acceptance="a", walk_forward="w", ridge_predictions="r", lightgbm_predictions="l", portfolio_run=[], attribution="x", output=None)
+    _run(
+        monkeypatch,
+        settings,
+        command="attribution-diagnose",
+        regime_study="r",
+        acceptance="a",
+        walk_forward="w",
+        ridge_predictions="r",
+        lightgbm_predictions="l",
+        portfolio_run=[],
+        attribution="x",
+        output=None,
+    )
     assert json.loads(capsys.readouterr().out)["failureAttribution"] == "PASS"
 
-    explanation_path = _study_manifest(tmp_path, {"studyId": "e", "status": {"modelExplanation": "PASS", "regimeConditioning": "PASS"}, "primaryMechanism": "main_effects"})
+    explanation_path = _study_manifest(
+        tmp_path,
+        {
+            "studyId": "e",
+            "status": {"modelExplanation": "PASS", "regimeConditioning": "PASS"},
+            "primaryMechanism": "main_effects",
+        },
+    )
     monkeypatch.setattr(explanation, "run_explanation_diagnose", lambda *args, **kwargs: explanation_path)
-    _run(monkeypatch, settings, command="explanation-diagnose", base_study="b", regime_study="r", attribution_study="t", acceptance="a", ridge_walk_forward="rw", lightgbm_walk_forward="lw", xgboost_walk_forward="xw", feature_snapshot="f", taxonomy="t", model_artifact_root=["m"], explanation="e", output=None)
+    _run(
+        monkeypatch,
+        settings,
+        command="explanation-diagnose",
+        base_study="b",
+        regime_study="r",
+        attribution_study="t",
+        acceptance="a",
+        ridge_walk_forward="rw",
+        lightgbm_walk_forward="lw",
+        xgboost_walk_forward="xw",
+        feature_snapshot="f",
+        taxonomy="t",
+        model_artifact_root=["m"],
+        explanation="e",
+        output=None,
+    )
     assert json.loads(capsys.readouterr().out)["modelExplanation"] == "PASS"
 
-    synthesis_path = _study_manifest(tmp_path, {"studyId": "s", "status": {"phase1Completion": "PASS", "regimeDiagnostics": "PASS"}, "primaryRecommendation": "diagnose"})
+    synthesis_path = _study_manifest(
+        tmp_path,
+        {
+            "studyId": "s",
+            "status": {"phase1Completion": "PASS", "regimeDiagnostics": "PASS"},
+            "primaryRecommendation": "diagnose",
+        },
+    )
     monkeypatch.setattr(synthesis, "run_research_synthesis", lambda *args, **kwargs: synthesis_path)
-    _run(monkeypatch, settings, command="research-synthesize", feature_study="f", regime_study="r", attribution_study="a", explanation_study="e", synthesis="s", output=None)
+    _run(
+        monkeypatch,
+        settings,
+        command="research-synthesize",
+        feature_study="f",
+        regime_study="r",
+        attribution_study="a",
+        explanation_study="e",
+        synthesis="s",
+        output=None,
+    )
     assert json.loads(capsys.readouterr().out)["phase1Completion"] == "PASS"
