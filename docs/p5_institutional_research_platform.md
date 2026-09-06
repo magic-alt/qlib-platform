@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: d0faf1120c11baefdb6b6921590fcd56f432e442
+applies_to_commit: 34dc33f6a2a56d87f9e67a2291809a4c52d0c158
 last_verified: 2026-09-06
 ---
 
@@ -75,7 +75,7 @@ checks. No typing or quality gate was weakened.
 
 ## P5-C — Execution Research
 
-P5-C is **execution research**, not OMS ownership. The active implementation scope is:
+P5-C is **execution research**, not OMS ownership. Implemented capability includes:
 
 - intraday bar research contracts and arrival/VWAP/TWAP/end benchmarks;
 - deterministic VWAP, TWAP and POV schedule research;
@@ -93,21 +93,31 @@ Order submission, cancellation, replacement, broker-state writes, execution ledg
 enforcement remain out of this repository and belong to the execution platform. Research fills are
 expected/deterministic simulation evidence, not broker commands or authoritative exchange fills.
 
+P5-C was merged by PR #101 at `34dc33f6a2a56d87f9e67a2291809a4c52d0c158` after its dedicated
+execution contract and the full P5-A/P5-B/repository compatibility, security, docs and release gates
+completed successfully.
+
 ## P5-D — Enterprise Research Management
 
-P5-D will institutionalize multi-user research governance and access management around the existing
-ExperimentStore, evidence and artifact systems. Planned capabilities include:
+P5-D institutionalizes multi-user research governance and access management around the existing
+ExperimentStore, evidence and artifact systems. The active implementation scope includes:
 
-- OIDC/OAuth2 integration surfaces;
-- SSO and LDAP/Active Directory adapters;
-- role-based and resource-scoped access control;
-- immutable audit events for research/admin actions;
-- service-account and API-token lifecycle contracts;
-- experiment/project ownership and authorization boundaries;
-- policy-driven access to governed data and research artifacts.
+- OIDC/OAuth2 verified-claims integration surfaces;
+- SSO and LDAP/Active Directory normalized directory adapters;
+- deny-by-default role-based and resource-scoped research access control;
+- project/member ownership and governed experiment/dataset/artifact bindings;
+- tamper-evident immutable-audit API for research/admin evidence;
+- hash-only service-account/API-token issue, expiry, rotation and revocation contracts;
+- an authorization/audit façade that delegates to the existing ExperimentStore;
+- policy-driven access to governed research evidence without a second registry;
+- a portable comprehensive repository checker and repository-wide 85% unit-test coverage gate.
 
-Authentication/authorization must not be confused with model promotion authorization or execution
-permissions.
+Authentication/authorization is explicitly separate from model promotion authorization and
+execution permissions. The P5-D research policy refuses promotion, execution, broker and OMS
+permission namespaces even for a platform admin.
+
+See [P5-D Enterprise Research Management](p5_enterprise_research_management.md) for the detailed
+responsibility and certification contract.
 
 ## Cross-cutting acceptance rules
 
@@ -129,7 +139,7 @@ Every P5 workstream must:
   `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58`.
 - P5-A: **COMPLETE / MERGED** at `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6`.
 - P5-B: **COMPLETE / MERGED** at `d0faf1120c11baefdb6b6921590fcd56f432e442`.
-- P5-C: **IN PROGRESS**.
-- P5-D: **NOT STARTED**.
+- P5-C: **COMPLETE / MERGED** at `34dc33f6a2a56d87f9e67a2291809a4c52d0c158`.
+- P5-D: **IN PROGRESS** from the P5-C merged baseline.
 - Active research program remains Phase 3-D diagnosis-only; P5 does not change research
   authorization state.
