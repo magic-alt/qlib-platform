@@ -31,7 +31,9 @@ def _allocate_integer(total: int, weights: list[float]) -> list[int]:
     return allocated
 
 
-def _schedule_frame(order: ParentOrder, window: pd.DataFrame, quantities: list[int], strategy: str) -> pd.DataFrame:
+def _schedule_frame(
+    order: ParentOrder, window: pd.DataFrame, quantities: list[int], strategy: str
+) -> pd.DataFrame:
     if len(window) != len(quantities):
         raise ValueError("schedule quantities must align with the intraday window")
     remaining = order.quantity
