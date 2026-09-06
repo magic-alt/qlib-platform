@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: a74e568b0f1660da9bbbc6ed8ff6203c001f1e58
+applies_to_commit: 0b88ee912d5a5ef9135b5113a32d886e9da1e0a6
 last_verified: 2026-09-06
 ---
 
@@ -11,13 +11,14 @@ This page is the single source of truth for fast-changing governance state. Froz
 
 | Field | Current governed value |
 | --- | --- |
-| Documentation audit base | `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58` (2026-09-06); P0–P4 repository revalidation base |
-| Reviewed code baseline | `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58` |
+| Documentation audit base | `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6` (2026-09-06); P5-A merged baseline |
+| Reviewed code baseline | `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6` |
 | Reviewed baseline date | 2026-09-06 |
 | Certified infrastructure baseline | `4f5c5d5` |
 | Certification date | 2026-08-17 |
-| Post-baseline certification | `P0_P4_REPOSITORY_REVALIDATED`; see [P0–P4 Repository Revalidation](p0_p4_repository_recertification.md) |
-| Active infrastructure program | P5-A / Institutional Risk Platform |
+| P0–P4 repository revalidation | `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58`; see [P0–P4 Repository Revalidation](p0_p4_repository_recertification.md) |
+| P5-A acceptance | `COMPLETE / MERGED`; PR #99, merge `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6` |
+| Active infrastructure program | P5-B / Institutional Portfolio Construction |
 | Active research program | Phase 3-D / `ashare_alpha_stability_phase3_v1` |
 | Permitted Phase 3 scope | P3-D00 through P3-D04 diagnostics |
 | Formal candidates | Disallowed |
@@ -32,12 +33,13 @@ This page is the single source of truth for fast-changing governance state. Froz
 
 ## How to read the baselines
 
-- **Documentation audit base** identifies the repository tree against which the active documentation and P0–P4 revalidation were checked.
-- **Reviewed code baseline** is the latest explicitly reviewed repository baseline recorded by the governance process.
+- **Documentation audit base** identifies the repository tree against which active documentation and the current infrastructure program are checked.
+- **Reviewed code baseline** is the latest explicitly reviewed and merged repository baseline recorded by the governance process.
 - **Certified infrastructure baseline** remains the frozen commit covered by the 2026-08-17 full research-infrastructure certificate.
-- **Post-baseline certification** records the narrower repository-level revalidation performed after subsequent material engineering work.
+- **P0–P4 repository revalidation** is the narrower repository-level revalidation completed before P5 started.
+- **P5-A acceptance** records the risk-platform workstream that was validated through its dedicated contract and full repository CI before merge.
 
-These values deliberately distinguish historical full acceptance from current repository revalidation.
+These values deliberately distinguish historical full acceptance, repository revalidation and later additive P5 workstreams.
 
 ## Certification interpretation
 
@@ -45,7 +47,7 @@ These values deliberately distinguish historical full acceptance from current re
 
 `P0_P4_REPOSITORY_REVALIDATED` applies to `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58` and the narrower scope defined by [P0–P4 Repository Revalidation](p0_p4_repository_recertification.md). It records successful repository/compatibility/security/cross-platform revalidation and does not pretend that the historical full-walk-forward acceptance campaign was rerun.
 
-P5 infrastructure work starts from this revalidated P0–P4 repository baseline. Each P5 workstream must add its own deterministic tests and CI evidence and must not inherit an unsupported production or research-quality claim.
+P5-A was subsequently merged at `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6` after its dedicated risk contract and full repository CI completed successfully. P5-B starts from that merged baseline and must establish its own deterministic portfolio-construction contract before it is complete.
 
 Weak research results are still attributed first to alpha, regime, model or portfolio research when no certified invariant produces contradictory evidence. This attribution policy is not a substitute for revalidating material behavioral changes.
 
@@ -59,7 +61,9 @@ Phase 3-D remains diagnosis-only:
 - no P2-R01 through P2-R03;
 - no candidate creation, model selection or automatic confirmatory hypothesis.
 
-The P5 infrastructure program does not alter those restrictions. P5-A may add deterministic risk measurement, decomposition and stress-analysis infrastructure, but it must not consume the final holdout or change research-selection state.
+The P5 infrastructure program does not alter those restrictions. P5-B may add benchmark-relative optimization, portfolio risk budgets, transaction-cost constraints and implementation transforms, but it must not consume the final holdout or change research-selection state.
+
+P5-B also does not move broker/OMS authority into this repository. Continuous target weights and A-share round-lot research outputs remain research-side portfolio construction; authoritative order state and live hard-risk enforcement remain execution-platform responsibilities.
 
 Do not run `stability-diagnose` merely to validate documentation. It writes an immutable evidence directory and requires explicit authorization of the exact output.
 

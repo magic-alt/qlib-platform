@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: a74e568b0f1660da9bbbc6ed8ff6203c001f1e58
+applies_to_commit: 0b88ee912d5a5ef9135b5113a32d886e9da1e0a6
 last_verified: 2026-09-06
 ---
 
@@ -23,7 +23,7 @@ The agreed order is fixed:
 P5-A turns the existing covariance/factor-risk primitives into a benchmark-aware portfolio risk
 surface suitable for institutional research.
 
-Required capability:
+Implemented capability:
 
 - absolute portfolio variance/volatility;
 - benchmark-relative active weights and tracking error;
@@ -35,26 +35,38 @@ Required capability:
 - fail-closed instrument/factor alignment, finite-value, symmetry and PSD validation;
 - dedicated deterministic tests and CI contract.
 
+P5-A was merged by PR #99 at `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6` after the full
+repository CI, P5 risk contract, Qlib capability contract, macOS, dependency review, CodeQL, docs
+and release checks completed successfully.
+
 P5-A is research infrastructure only. It does not create candidates, select models, use the final
 holdout, publish research artifacts, or enforce live hard-risk limits.
 
 ## P5-B — Portfolio Construction
 
-P5-B will extend the existing optimizer rather than create a parallel optimizer stack. Planned
-institutional capabilities are:
+P5-B extends the existing optimizer rather than creating a parallel optimizer stack. The active
+implementation scope is:
 
-- mean-variance and benchmark-relative objectives;
+- existing alpha/risk mean-variance objective preserved as the default profile;
+- benchmark-relative alpha/active-risk objective;
 - explicit tracking-error budgets;
-- minimum-variance and risk-parity portfolios;
-- robust optimization / covariance and alpha uncertainty controls;
-- turnover and transaction-cost budgets;
-- sector/factor active-exposure constraints;
-- cardinality, minimum-position and A-share lot-size implementation constraints;
-- benchmark-relative and long-only policy profiles;
-- deterministic feasibility diagnostics and optimization audit evidence.
+- minimum-variance portfolios;
+- risk-parity portfolios with explicit risk budgets;
+- robust alpha uncertainty haircut and covariance diagonal buffering;
+- turnover and total transaction-cost budgets;
+- absolute and benchmark-relative sector/factor exposure constraints;
+- cardinality and minimum-position constraints with fail-closed feasibility checks;
+- A-share round-lot implementation from continuous weights using price/NAV snapshots;
+- continuous target weights retained separately from executable target shares/weights;
+- deterministic feasibility, alignment and regression tests.
 
 The existing `OptimizationConstraints`, `OptimizationConfig`, `optimize_alpha_portfolio` and
-`optimized_target_portfolio` remain the migration path.
+`optimized_target_portfolio` remain the migration path. P5-B adds capability to those APIs rather
+than introducing a second portfolio-construction framework.
+
+The round-lot layer is deliberately downstream of continuous optimization. Share-lot sizing is not
+mathematically meaningful without a portfolio NAV and price snapshot, and therefore is represented
+as an implementation transform rather than a fake continuous weight constraint.
 
 ## P5-C — Execution Research
 
@@ -105,8 +117,8 @@ Every P5 workstream must:
 
 - P0–P4 repository baseline: **REVALIDATED** at
   `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58`.
-- P5-A: **IN PROGRESS**.
-- P5-B: **NOT STARTED**.
+- P5-A: **COMPLETE / MERGED** at `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6`.
+- P5-B: **IN PROGRESS**.
 - P5-C: **NOT STARTED**.
 - P5-D: **NOT STARTED**.
 - Active research program remains Phase 3-D diagnosis-only; P5 does not change research

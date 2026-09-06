@@ -1,10 +1,15 @@
 """Research portfolio construction, risk models, and implementation policy."""
 
+from qlib_platform.research.portfolio.implementation import (
+    LotSizedPortfolio,
+    round_weights_to_lots,
+)
 from qlib_platform.research.portfolio.optimizer import optimize_alpha_portfolio
 from qlib_platform.research.portfolio.optimizer_constraints import OptimizationConstraints
 from qlib_platform.research.portfolio.optimizer_target import optimized_target_portfolio
 from qlib_platform.research.portfolio.optimizer_types import (
     OptimizationConfig,
+    OptimizationObjective,
     OptimizationResult,
 )
 from qlib_platform.research.portfolio.risk_analytics import (
@@ -31,8 +36,10 @@ from qlib_platform.research.portfolio.stress import (
 __all__ = [
     "BarraLikeRiskModel",
     "FactorRiskBreakdown",
+    "LotSizedPortfolio",
     "OptimizationConfig",
     "OptimizationConstraints",
+    "OptimizationObjective",
     "OptimizationResult",
     "RiskBreakdown",
     "StressResult",
@@ -47,5 +54,6 @@ __all__ = [
     "optimize_alpha_portfolio",
     "optimized_target_portfolio",
     "portfolio_risk",
+    "round_weights_to_lots",
     "tracking_risk",
 ]

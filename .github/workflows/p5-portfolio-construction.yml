@@ -1,0 +1,54 @@
+name: P5 Institutional Portfolio Contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p5-portfolio-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  institutional-portfolio-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Verify institutional portfolio construction and risk regressions
+        run: >-
+          python -m pytest -q
+          tests/test_institutional_portfolio_construction.py
+          tests/test_portfolio_optimizer_risk_model.py
+          tests/test_institutional_risk_platform.py
+      - name: Verify P5-B lint contract
+        run: >-
+          python -m ruff check
+          src/qlib_platform/research/portfolio/implementation.py
+          src/qlib_platform/research/portfolio/optimizer.py
+          src/qlib_platform/research/portfolio/optimizer_constraints.py
+          src/qlib_platform/research/portfolio/optimizer_inputs.py
+          src/qlib_platform/research/portfolio/optimizer_target.py
+          src/qlib_platform/research/portfolio/optimizer_types.py
+          tests/test_institutional_portfolio_construction.py
+      - name: Verify P5-B formatting contract
+        run: >-
+          python -m ruff format --check
+          src/qlib_platform/research/portfolio/implementation.py
+          src/qlib_platform/research/portfolio/optimizer.py
+          src/qlib_platform/research/portfolio/optimizer_constraints.py
+          src/qlib_platform/research/portfolio/optimizer_inputs.py
+          src/qlib_platform/research/portfolio/optimizer_target.py
+          src/qlib_platform/research/portfolio/optimizer_types.py
+          tests/test_institutional_portfolio_construction.py
+      - run: python -m mypy src/qlib_platform/research/portfolio

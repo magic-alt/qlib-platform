@@ -63,12 +63,49 @@ def current_vector(
     return current
 
 
+def benchmark_vector(
+    benchmark_weights: pd.Series | None,
+    instruments: pd.Index,
+    constraints: OptimizationConstraints,
+    *,
+    required: bool,
+) -> np.ndarray | None:
+    if benchmark_weights is None:
+        if required:
+            raise ValueError("benchmark_weights are required for benchmark-relative optimization")
+        return None
+    if not benchmark_weights.index.equals(instruments):
+        raise ValueError("benchmark_weights must exactly match alpha index")
+    benchmark: np.ndarray = pd.to_numeric(benchmark_weights, errors="coerce").to_numpy(dtype=float)
+    if not np.isfinite(benchmark).all() or (benchmark < -1e-12).any():
+        raise ValueError("benchmark_weights contains invalid values")
+    if abs(float(benchmark.sum()) - constraints.target_exposure) > 1e-6:
+        raise ValueError("benchmark_weights must sum to target_exposure")
+    return benchmark
+
+
+def risk_budget_vector(risk_budgets: pd.Series | None, instruments: pd.Index) -> np.ndarray:
+    if risk_budgets is None:
+        return np.full(len(instruments), 1.0 / len(instruments), dtype=float)
+    if not risk_budgets.index.equals(instruments):
+        raise ValueError("risk_budgets must exactly match alpha index")
+    values: np.ndarray = pd.to_numeric(risk_budgets, errors="coerce").to_numpy(dtype=float)
+    if not np.isfinite(values).all() or (values <= 0).any():
+        raise ValueError("risk_budgets must be finite and strictly positive")
+    total = float(values.sum())
+    if total <= 0:
+        raise ValueError("risk_budgets must have positive total")
+    return values / total
+
+
 def exposure_matrix(
     exposures: pd.DataFrame | None,
     instruments: pd.Index,
     constraints: OptimizationConstraints,
 ) -> tuple[np.ndarray | None, list[str]]:
     if exposures is None:
+        if constraints.factor_bounds or constraints.active_factor_bounds:
+            raise ValueError("factor exposures are required for factor constraints")
         return None, []
     if not exposures.index.equals(instruments):
         raise ValueError("factor exposures must exactly match alpha index")
@@ -76,7 +113,7 @@ def exposure_matrix(
     if frame.isna().any().any():
         raise ValueError("factor exposures contain invalid values")
     columns = [str(column) for column in frame.columns]
-    unknown = set(constraints.factor_bounds) - set(columns)
+    unknown = (set(constraints.factor_bounds) | set(constraints.active_factor_bounds)) - set(columns)
     if unknown:
         raise ValueError(f"factor bounds reference unknown exposures: {sorted(unknown)}")
     values: np.ndarray = frame.to_numpy(dtype=float)
