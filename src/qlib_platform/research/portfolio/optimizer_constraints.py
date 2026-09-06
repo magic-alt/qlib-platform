@@ -44,9 +44,10 @@ class OptimizationConstraints:
                 raise ValueError("min_position_weight must be in (0, max_weight]")
             if self.min_position_weight < self.min_weight:
                 raise ValueError("min_position_weight cannot be below min_weight")
-        for factor, bounds in {**self.factor_bounds, **self.active_factor_bounds}.items():
-            if len(bounds) != 2 or not np.isfinite(bounds).all() or bounds[0] > bounds[1]:
-                raise ValueError(f"invalid exposure bounds for factor {factor!r}")
+        for bounds_by_factor in (self.factor_bounds, self.active_factor_bounds):
+            for factor, bounds in bounds_by_factor.items():
+                if len(bounds) != 2 or not np.isfinite(bounds).all() or bounds[0] > bounds[1]:
+                    raise ValueError(f"invalid exposure bounds for factor {factor!r}")
 
 
 def _bound_array(value: float | np.ndarray, n_assets: int, *, name: str) -> np.ndarray:
