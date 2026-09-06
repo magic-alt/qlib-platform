@@ -63,25 +63,25 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--coverage-threshold",
         type=float,
-        default=77.9,
-        help="blocking repository-wide coverage floor; ratchet upward as coverage improves",
+        default=85.0,
+        help="repository-wide coverage target; CI ratchets the blocking floor toward this value",
     )
     parser.add_argument(
-        "--coverage-target",
+        "--coverage-floor",
         type=float,
-        default=85.0,
-        help="repository-wide coverage target reported for convergence tracking",
+        default=77.9,
+        help="blocking repository-wide coverage floor; raise this value as coverage improves",
     )
     parser.add_argument(
         "--diff-coverage-threshold",
         type=float,
         default=85.0,
-        help="minimum coverage for changed executable production lines when --diff-base is supplied",
+        help="minimum coverage for changed executable production lines",
     )
     parser.add_argument(
         "--diff-base",
         default=None,
-        help="git base SHA/ref for changed-line coverage; omitted for local runs without a comparison base",
+        help="git base SHA/ref for changed-line coverage; auto-detected from GitHub Actions when omitted",
     )
     parser.add_argument(
         "--output",
@@ -100,7 +100,54 @@ def _parser() -> argparse.ArgumentParser:
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
+def _github_diff_base() -> str | None:
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path:
+        return None
+    try:
+        payload = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    pull_request = payload.get("pull_request")
+    if isinstance(pull_request, dict):
+        base = pull_request.get("base")
+        if isinstance(base, dict):
+            sha = base.get("sha")
+            if isinstance(sha, str) and sha and not set(sha) <= {"0"}:
+                return sha
+
+    before = payload.get("before")
+    if isinstance(before, str) and before and not set(before) <= {"0"}:
+        return before
+    return None
+
+
+def _ensure_commit(*, root: Path, ref: str) -> None:
+    present = subprocess.run(
+        ["git", "cat-file", "-e", f"{ref}^{{commit}}"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+    )
+    if present.returncode == 0:
+        return
+    fetched = subprocess.run(
+        ["git", "fetch", "--no-tags", "--depth=1", "origin", ref],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if fetched.returncode != 0:
+        detail = fetched.stderr.strip() or fetched.stdout.strip()
+        raise RuntimeError(f"cannot fetch diff base {ref!r}: {detail}")
+
+
 def _changed_lines(*, root: Path, diff_base: str) -> dict[str, set[int]]:
+    _ensure_commit(root=root, ref=diff_base)
     completed = subprocess.run(
         [
             "git",
@@ -173,14 +220,14 @@ def main(argv: list[str] | None = None) -> int:
     if not (root / "pyproject.toml").is_file():
         raise SystemExit(f"not a qlib-platform repository root: {root}")
     for label, value in (
-        ("coverage threshold", args.coverage_threshold),
-        ("coverage target", args.coverage_target),
+        ("coverage target", args.coverage_threshold),
+        ("coverage floor", args.coverage_floor),
         ("diff coverage threshold", args.diff_coverage_threshold),
     ):
         if not 0 < value <= 100:
             raise SystemExit(f"{label} must be in (0, 100]")
-    if args.coverage_threshold > args.coverage_target:
-        raise SystemExit("coverage threshold cannot exceed coverage target")
+    if args.coverage_floor > args.coverage_threshold:
+        raise SystemExit("coverage floor cannot exceed coverage target")
 
     python = sys.executable
     validation_dir = root / "artifacts" / "validation"
@@ -232,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
                 "--cov=src/qlib_platform",
                 "--cov-report=term-missing",
                 f"--cov-report=json:{coverage_json}",
-                f"--cov-fail-under={args.coverage_threshold:g}",
+                f"--cov-fail-under={args.coverage_floor:g}",
             ],
         )
     )
@@ -252,18 +299,21 @@ def main(argv: list[str] | None = None) -> int:
             parsed = json.loads(coverage_json.read_text(encoding="utf-8"))
             if isinstance(parsed, dict):
                 coverage_payload = parsed
-                coverage_percent = float(parsed["totals"]["percent_covered"])
+                totals = parsed.get("totals")
+                if isinstance(totals, dict):
+                    coverage_percent = float(totals["percent_covered"])
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             coverage_percent = None
 
+    diff_base = args.diff_base or _github_diff_base()
     diff_coverage_percent: float | None = None
     diff_covered_lines = 0
     diff_executable_lines = 0
     diff_gate_passed = True
     diff_error: str | None = None
-    if args.diff_base and coverage_payload is not None:
+    if diff_base and coverage_payload is not None:
         try:
-            changed = _changed_lines(root=root, diff_base=args.diff_base)
+            changed = _changed_lines(root=root, diff_base=diff_base)
             diff_coverage_percent, diff_covered_lines, diff_executable_lines = _diff_coverage(
                 coverage_payload=coverage_payload,
                 changed_lines=changed,
@@ -279,16 +329,16 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "schemaVersion": 2,
         "passed": passed,
-        "coverageThreshold": float(args.coverage_threshold),
-        "coverageTarget": float(args.coverage_target),
+        "coverageFloor": float(args.coverage_floor),
+        "coverageTarget": float(args.coverage_threshold),
         "coveragePercent": coverage_percent,
         "coverageGapToTarget": (
-            max(0.0, float(args.coverage_target) - coverage_percent)
+            max(0.0, float(args.coverage_threshold) - coverage_percent)
             if coverage_percent is not None
             else None
         ),
         "diffCoverage": {
-            "base": args.diff_base,
+            "base": diff_base,
             "threshold": float(args.diff_coverage_threshold),
             "percent": diff_coverage_percent,
             "coveredExecutableLines": diff_covered_lines,
@@ -308,9 +358,9 @@ def main(argv: list[str] | None = None) -> int:
     if coverage_percent is not None:
         print(
             f"Repository coverage: {coverage_percent:.2f}% "
-            f"(floor {args.coverage_threshold:.2f}%, target {args.coverage_target:.2f}%)"
+            f"(floor {args.coverage_floor:.2f}%, target {args.coverage_threshold:.2f}%)"
         )
-    if args.diff_base:
+    if diff_base:
         if diff_error:
             print(f"Changed-line coverage: FAIL ({diff_error})")
         elif diff_coverage_percent is None:
