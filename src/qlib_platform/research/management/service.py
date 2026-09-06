@@ -153,13 +153,12 @@ class ResearchManagementService:
             )
             raise PermissionError("service token issue requires account owner or admin")
         token = self.tokens.issue_token(account_id, scopes=scopes, ttl=ttl)
-        token_id = token.split(".", 1)[0].removeprefix("qpt_")
         self.audit.append(
             actor_subject=actor.subject,
             action="service-token.issue",
             resource_kind="project",
             resource_id="enterprise-auth",
             outcome="SUCCEEDED",
-            metadata={"account_id": account_id, "token_id": token_id, "scopes": list(scopes)},
+            metadata={"account_id": account_id, "scopes": list(scopes)},
         )
         return token
