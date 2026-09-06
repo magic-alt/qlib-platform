@@ -11,7 +11,7 @@ def _workflow(path: str) -> dict:
     return payload
 
 
-def test_main_ci_uses_single_repository_wide_85_percent_gate() -> None:
+def test_main_ci_uses_85_percent_target_with_forward_coverage_ratchet() -> None:
     workflow = _workflow(".github/workflows/ci.yml")
     quality = workflow["jobs"]["quality"]
     rendered = "\n".join(str(step.get("run", "")) for step in quality["steps"])
@@ -19,6 +19,14 @@ def test_main_ci_uses_single_repository_wide_85_percent_gate() -> None:
     assert "scripts/run_comprehensive_checks.py" in rendered
     assert "--coverage-threshold 85" in rendered
     assert "--cov-fail-under=60" not in rendered
+
+    runner = Path("scripts/run_comprehensive_checks.py").read_text(encoding="utf-8")
+    assert '"--coverage-floor"' in runner
+    assert "default=77.9" in runner
+    assert '"--diff-coverage-threshold"' in runner
+    assert "default=85.0" in runner
+    assert "_github_diff_base" in runner
+    assert "_diff_coverage" in runner
 
 
 def test_main_ci_exposes_stable_required_status_context() -> None:
