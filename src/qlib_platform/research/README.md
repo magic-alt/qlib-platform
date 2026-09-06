@@ -10,9 +10,12 @@
 - `evaluation/`: candidate statistics, selection, promotion gates, and walk-forward acceptance.
 - `diagnostics/`: stability, decay, regimes, attribution, explanation, and portability analysis.
 - `studies/`: alpha, regime, attribution, explanation, and synthesis study composition.
-- `portfolio/`: bounded portfolio overlays.
+- `portfolio/`: institutional risk analytics and portfolio construction overlays.
+- `execution/`: intraday execution benchmarks, deterministic schedule/fill research, implementation-shortfall attribution, broker-event analytics, and accounting reconciliation adapters.
 - `reporting/`: synthesis payloads and research summaries.
 - `artifacts/`: immutable research artifact I/O.
 - `interfaces/`: research-facing interface helpers.
+
+`execution/` is a research package only. It must not submit, cancel or replace live orders; own broker/OMS state; maintain authoritative execution ledgers; or enforce live hard-risk policy. Those responsibilities remain in the separate execution platform.
 
 Runtime Python identifiers and implementation-hash paths use the responsibility-oriented layout. Historical stage identifiers may remain inside immutable artifact schema values or governance state where changing them would break lineage. They must not be used as Python module boundaries, import paths, filenames, or CLI command names.
