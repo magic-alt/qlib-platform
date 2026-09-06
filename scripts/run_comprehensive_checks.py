@@ -88,8 +88,10 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("coverage threshold must be in (0, 100]")
 
     python = sys.executable
-    coverage_json = root / "artifacts" / "validation" / "coverage.json"
-    project_audit = root / "artifacts" / "validation" / "project_audit.json"
+    validation_dir = root / "artifacts" / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    coverage_json = validation_dir / "coverage.json"
+    project_audit = validation_dir / "project_audit.json"
     checks: list[tuple[str, list[str]]] = [
         ("ruff-lint", [python, "-m", "ruff", "check", "src", "tests", "scripts"]),
         ("ruff-format", [python, "-m", "ruff", "format", "--check", "src", "tests", "scripts"]),
