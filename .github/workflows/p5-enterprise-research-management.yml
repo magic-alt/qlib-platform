@@ -34,8 +34,7 @@ jobs:
           tests/test_institutional_risk_platform.py
           tests/test_institutional_portfolio_construction.py
           tests/test_institutional_execution_research.py
-          tests/test_portfolio_optimizer.py
-          tests/test_risk_model.py
+          tests/test_portfolio_optimizer_risk_model.py
           tests/test_local_auth.py
       - name: Verify P5-D unit coverage
         run: >-
