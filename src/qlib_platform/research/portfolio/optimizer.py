@@ -38,9 +38,7 @@ def _risk_parity_seed(
         for position in range(len(weights)):
             cross = float(covariance[position] @ weights - diagonal[position] * weights[position])
             discriminant = cross**2 + 4.0 * diagonal[position] * budgets[position]
-            weights[position] = (
-                -cross + float(np.sqrt(max(0.0, discriminant)))
-            ) / (2.0 * diagonal[position])
+            weights[position] = (-cross + float(np.sqrt(max(0.0, discriminant)))) / (2.0 * diagonal[position])
         if float(np.max(np.abs(weights - before))) <= tolerance:
             break
     total = float(weights.sum())
@@ -163,27 +161,15 @@ def optimize_alpha_portfolio(
                 assert benchmark is not None
                 risk_vector = weights - benchmark
                 alpha_gradient = -effective_alpha
-                risk_gradient = 2.0 * resolved_config.risk_aversion * (
-                    optimization_covariance @ risk_vector
-                )
+                risk_gradient = 2.0 * resolved_config.risk_aversion * (optimization_covariance @ risk_vector)
             elif resolved_config.objective == "minimum_variance":
                 alpha_gradient = np.zeros_like(effective_alpha)
                 risk_gradient = 2.0 * (optimization_covariance @ weights)
             else:
                 alpha_gradient = -effective_alpha
-                risk_gradient = 2.0 * resolved_config.risk_aversion * (
-                    optimization_covariance @ weights
-                )
-            gradient = (
-                alpha_gradient
-                + risk_gradient
-                + linear * np.sign(delta)
-                + 2.0 * impact * delta
-            )
-            raw_candidate = (
-                weights
-                - resolved_config.step_size / np.sqrt(iteration + 1.0) * gradient
-            )
+                risk_gradient = 2.0 * resolved_config.risk_aversion * (optimization_covariance @ weights)
+            gradient = alpha_gradient + risk_gradient + linear * np.sign(delta) + 2.0 * impact * delta
+            raw_candidate = weights - resolved_config.step_size / np.sqrt(iteration + 1.0) * gradient
 
         candidate = project_constraints(
             raw_candidate,
@@ -202,12 +188,7 @@ def optimize_alpha_portfolio(
         if resolved_config.objective == "risk_parity":
             assert risk_budgets_values is not None
             share_error = float(
-                np.max(
-                    np.abs(
-                        _risk_parity_shares(weights, optimization_covariance)
-                        - risk_budgets_values
-                    )
-                )
+                np.max(np.abs(_risk_parity_shares(weights, optimization_covariance) - risk_budgets_values))
             )
             if weight_change <= resolved_config.tolerance and share_error <= max(
                 resolved_config.tolerance,
