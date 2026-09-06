@@ -29,6 +29,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_enterprise_research_management.py
+          tests/test_research_management_service.py
           tests/test_comprehensive_checks.py
           tests/test_institutional_risk_platform.py
           tests/test_institutional_portfolio_construction.py
@@ -40,6 +41,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_enterprise_research_management.py
+          tests/test_research_management_service.py
           tests/test_local_auth.py
           --cov=src/qlib_platform/auth
           --cov=src/qlib_platform/research/management
@@ -51,6 +53,7 @@ jobs:
           src/qlib_platform/auth
           src/qlib_platform/research/management
           tests/test_enterprise_research_management.py
+          tests/test_research_management_service.py
           tests/test_comprehensive_checks.py
           scripts/run_comprehensive_checks.py
       - name: Verify P5-D formatting contract
@@ -59,6 +62,7 @@ jobs:
           src/qlib_platform/auth
           src/qlib_platform/research/management
           tests/test_enterprise_research_management.py
+          tests/test_research_management_service.py
           tests/test_comprehensive_checks.py
           scripts/run_comprehensive_checks.py
       - name: Verify P5-D typing contract
