@@ -49,12 +49,13 @@ def _risk_parity_seed(
     return [float(value) for value in weights]
 
 
-def _risk_parity_shares(weights: np.ndarray, covariance: np.ndarray) -> np.ndarray:
+def _risk_parity_shares(weights: np.ndarray, covariance: np.ndarray) -> list[float]:
     component_variance = weights * (covariance @ weights)
     total_variance = float(component_variance.sum())
     if total_variance <= 1e-18 or bool(np.any(component_variance <= 0)):
         raise ValueError("risk parity requires strictly positive component risk contributions")
-    return component_variance / total_variance
+    normalized = component_variance / total_variance
+    return [float(value) for value in normalized]
 
 
 def optimize_alpha_portfolio(
@@ -157,7 +158,7 @@ def optimize_alpha_portfolio(
     for iteration in range(resolved_config.max_iterations):
         if resolved_config.objective == "risk_parity":
             assert risk_budgets_values is not None
-            shares = _risk_parity_shares(weights, optimization_covariance)
+            shares = np.asarray(_risk_parity_shares(weights, optimization_covariance), dtype=float)
             ratio = np.sqrt(risk_budgets_values / np.maximum(shares, 1e-15))
             raw_candidate = weights * ratio
         else:
@@ -192,9 +193,8 @@ def optimize_alpha_portfolio(
         weights = candidate
         if resolved_config.objective == "risk_parity":
             assert risk_budgets_values is not None
-            share_error = float(
-                np.max(np.abs(_risk_parity_shares(weights, optimization_covariance) - risk_budgets_values))
-            )
+            shares = np.asarray(_risk_parity_shares(weights, optimization_covariance), dtype=float)
+            share_error = float(np.max(np.abs(shares - risk_budgets_values)))
             if weight_change <= resolved_config.tolerance and share_error <= max(
                 resolved_config.tolerance,
                 1e-6,
@@ -258,7 +258,8 @@ def optimize_alpha_portfolio(
         objective = -robust_variance - linear_cost - impact_cost
     elif resolved_config.objective == "risk_parity":
         assert risk_budgets_values is not None
-        share_error = _risk_parity_shares(weights, optimization_covariance) - risk_budgets_values
+        shares = np.asarray(_risk_parity_shares(weights, optimization_covariance), dtype=float)
+        share_error = shares - risk_budgets_values
         objective = -float(share_error @ share_error) - linear_cost - impact_cost
     else:
         robust_variance = float(weights @ optimization_covariance @ weights)
