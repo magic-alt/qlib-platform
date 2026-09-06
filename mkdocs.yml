@@ -103,6 +103,7 @@ nav:
       - Research Web Dashboard: research_web_dashboard.md
       - Professional Research Engines: professional_research_engines.md
       - P5 Institutional Research Platform: p5_institutional_research_platform.md
+      - P5-C Execution Research: p5_execution_research.md
       - Qlib Native Compatibility: qlib_native_compatibility.md
       - P4 Qlib Superset Contract: p4_qlib_superset_contract.md
       - Stability Diagnostics: alpha_research_stability.md
