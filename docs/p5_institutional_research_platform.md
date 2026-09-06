@@ -1,7 +1,7 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 0b88ee912d5a5ef9135b5113a32d886e9da1e0a6
+applies_to_commit: d0faf1120c11baefdb6b6921590fcd56f432e442
 last_verified: 2026-09-06
 ---
 
@@ -44,8 +44,8 @@ holdout, publish research artifacts, or enforce live hard-risk limits.
 
 ## P5-B — Portfolio Construction
 
-P5-B extends the existing optimizer rather than creating a parallel optimizer stack. The active
-implementation scope is:
+P5-B extends the existing optimizer rather than creating a parallel optimizer stack. Implemented
+capability includes:
 
 - existing alpha/risk mean-variance objective preserved as the default profile;
 - benchmark-relative alpha/active-risk objective;
@@ -68,20 +68,30 @@ The round-lot layer is deliberately downstream of continuous optimization. Share
 mathematically meaningful without a portfolio NAV and price snapshot, and therefore is represented
 as an implementation transform rather than a fake continuous weight constraint.
 
+P5-B was merged by PR #100 at `d0faf1120c11baefdb6b6921590fcd56f432e442`. Its final immutable
+PR head passed the P5-A risk contract, P5-B portfolio contract, full repository CI including Linux,
+Windows and coverage, Qlib capability contract, macOS, dependency review, CodeQL, docs and release
+checks. No typing or quality gate was weakened.
+
 ## P5-C — Execution Research
 
-P5-C is **execution research**, not OMS ownership. Planned research capabilities include:
+P5-C is **execution research**, not OMS ownership. The active implementation scope is:
 
-- intraday bar/tick research datasets and execution benchmarks;
-- VWAP, TWAP and POV schedule simulation;
-- queue/fill probability and partial-fill research models;
-- spread/market-impact and capacity models;
-- latency, cancel/reject and broker-fill analysis;
-- implementation-shortfall and arrival-price attribution;
-- reconciliation against research portfolio accounting.
+- intraday bar research contracts and arrival/VWAP/TWAP/end benchmarks;
+- deterministic VWAP, TWAP and POV schedule research;
+- queue/capacity expected-fill and partial-fill models;
+- spread/market-impact and latency assumptions;
+- cancel/reject and externally supplied broker-event analytics;
+- implementation-shortfall and arrival/VWAP attribution;
+- reconciliation against the existing certified research portfolio accounting audit.
+
+The execution-research implementation lives in the responsibility-oriented
+`qlib_platform.research.execution` package. It reuses `backtesting.execution_audit` for accounting
+reconciliation instead of creating another execution ledger or accounting engine.
 
 Order submission, cancellation, replacement, broker-state writes, execution ledgers and hard-risk
-enforcement remain out of this repository and belong to the execution platform.
+enforcement remain out of this repository and belong to the execution platform. Research fills are
+expected/deterministic simulation evidence, not broker commands or authoritative exchange fills.
 
 ## P5-D — Enterprise Research Management
 
@@ -118,8 +128,8 @@ Every P5 workstream must:
 - P0–P4 repository baseline: **REVALIDATED** at
   `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58`.
 - P5-A: **COMPLETE / MERGED** at `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6`.
-- P5-B: **IN PROGRESS**.
-- P5-C: **NOT STARTED**.
+- P5-B: **COMPLETE / MERGED** at `d0faf1120c11baefdb6b6921590fcd56f432e442`.
+- P5-C: **IN PROGRESS**.
 - P5-D: **NOT STARTED**.
 - Active research program remains Phase 3-D diagnosis-only; P5 does not change research
   authorization state.
