@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: research-platform
+applies_to_commit: d0faf1120c11baefdb6b6921590fcd56f432e442
 last_verified: 2026-09-06
 ---
 
