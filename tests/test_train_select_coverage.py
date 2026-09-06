@@ -77,9 +77,9 @@ def test_official_calendar_local_and_next_trade_date(tmp_path) -> None:
     settings = _settings(tmp_path)
     settings.paths.metadata.mkdir(parents=True)
     path = settings.paths.metadata / "trade_calendar.parquet"
-    pd.DataFrame(
-        {"cal_date": ["2026-09-01", "2026-09-02", "2026-09-03"], "is_open": [1, 0, 1]}
-    ).to_parquet(path, index=False)
+    pd.DataFrame({"cal_date": ["2026-09-01", "2026-09-02", "2026-09-03"], "is_open": [1, 0, 1]}).to_parquet(
+        path, index=False
+    )
     calendar = train_select._official_calendar(settings)
     assert calendar.tolist() == [pd.Timestamp("2026-09-01"), pd.Timestamp("2026-09-03")]
     assert train_select._next_trade_date(settings, "2026-09-01") == "2026-09-03"
@@ -125,14 +125,10 @@ def test_load_local_benchmark_series_validates_and_computes_returns(tmp_path) ->
     pd.DataFrame(columns=["trade_date", "close"]).to_parquet(path, index=False)
     with pytest.raises(ValueError, match="contains no rows"):
         train_select._load_local_benchmark_series(settings, "SH000300", calendar)
-    pd.DataFrame(
-        {"trade_date": ["20260901", "20260901"], "close": [1.0, 2.0]}
-    ).to_parquet(path, index=False)
+    pd.DataFrame({"trade_date": ["20260901", "20260901"], "close": [1.0, 2.0]}).to_parquet(path, index=False)
     with pytest.raises(ValueError, match="duplicate benchmark"):
         train_select._load_local_benchmark_series(settings, "SH000300", calendar)
-    pd.DataFrame(
-        {"trade_date": ["20260901", "20260902"], "close": [1.0, 2.0]}
-    ).to_parquet(path, index=False)
+    pd.DataFrame({"trade_date": ["20260901", "20260902"], "close": [1.0, 2.0]}).to_parquet(path, index=False)
     with pytest.raises(ValueError, match="does not cover"):
         train_select._load_local_benchmark_series(settings, "SH000300", calendar)
 
@@ -155,7 +151,5 @@ def test_default_splits_from_data_uses_thresholds_and_rejects_short_history(monk
 
 
 def test_research_label_horizon_delegates_timing(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(
-        train_select, "label_timing_from_settings", lambda _: SimpleNamespace(horizon_days=5)
-    )
+    monkeypatch.setattr(train_select, "label_timing_from_settings", lambda _: SimpleNamespace(horizon_days=5))
     assert train_select._research_label_horizon_days(_settings(tmp_path)) == 5
