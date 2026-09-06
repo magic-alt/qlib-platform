@@ -28,9 +28,7 @@ def analyze_broker_events(events: pd.DataFrame) -> dict[str, float | int]:
 
     requested = float(frame["requested_quantity"].sum())
     filled = float(frame["filled_quantity"].sum())
-    partial_mask = (frame["filled_quantity"] > 0) & (
-        frame["filled_quantity"] < frame["requested_quantity"]
-    )
+    partial_mask = (frame["filled_quantity"] > 0) & (frame["filled_quantity"] < frame["requested_quantity"])
     result: dict[str, float | int] = {
         "event_count": int(len(frame)),
         "order_count": int(frame["order_id"].nunique()),
@@ -63,7 +61,12 @@ def analyze_broker_events(events: pd.DataFrame) -> dict[str, float | int]:
                 raise ValueError("side must be BUY or SELL when slippage fields are supplied")
             reference = float(row["reference_price"])
             fill_price = float(row["fill_price"])
-            if not math.isfinite(reference) or not math.isfinite(fill_price) or reference <= 0 or fill_price <= 0:
+            if (
+                not math.isfinite(reference)
+                or not math.isfinite(fill_price)
+                or reference <= 0
+                or fill_price <= 0
+            ):
                 raise ValueError("reference_price and fill_price must be finite and positive")
             direction = 1.0 if side == "BUY" else -1.0
             slippage_values.append(direction * (fill_price - reference) / reference * 10_000.0)
