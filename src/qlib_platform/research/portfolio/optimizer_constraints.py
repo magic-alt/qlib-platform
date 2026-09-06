@@ -183,16 +183,12 @@ def project_constraints(
         upper=upper,
     )
 
-    needs_benchmark = constraints.max_tracking_error is not None or bool(
-        constraints.active_factor_bounds
-    )
+    needs_benchmark = constraints.max_tracking_error is not None or bool(constraints.active_factor_bounds)
     if needs_benchmark and benchmark is None:
         raise ValueError("benchmark_weights are required for active-risk constraints")
     if constraints.max_tracking_error is not None and covariance is None:
         raise ValueError("covariance is required for tracking-error constraints")
-    if constraints.max_trade_cost is not None and (
-        linear_costs is None or impact_coefficients is None
-    ):
+    if constraints.max_trade_cost is not None and (linear_costs is None or impact_coefficients is None):
         raise ValueError("cost vectors are required for max_trade_cost")
 
     benchmark_factor_values: dict[str, float] = {}
@@ -262,9 +258,7 @@ def project_constraints(
                             upper=upper,
                         )
                     except ValueError as exc:
-                        raise ValueError(
-                            f"active factor bound for {factor!r} is infeasible"
-                        ) from exc
+                        raise ValueError(f"active factor bound for {factor!r} is infeasible") from exc
         if constraints.max_tracking_error is not None:
             assert benchmark is not None
             assert covariance is not None
@@ -333,9 +327,7 @@ def apply_position_constraints(
     min_required = int(np.ceil(constraints.target_exposure / constraints.max_weight - 1e-12))
     max_allowed = constraints.max_positions or len(weights)
     if constraints.min_position_weight is not None:
-        max_by_minimum = int(
-            np.floor(constraints.target_exposure / constraints.min_position_weight + 1e-12)
-        )
+        max_by_minimum = int(np.floor(constraints.target_exposure / constraints.min_position_weight + 1e-12))
         max_allowed = min(max_allowed, max_by_minimum)
     if max_allowed < min_required:
         raise ValueError("position constraints cannot satisfy target exposure")
