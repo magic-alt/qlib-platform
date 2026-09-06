@@ -9,9 +9,16 @@ from qlib_platform.releases import capabilities
 
 
 def test_manifest_governance_level_prefers_policy_and_profiles() -> None:
-    assert capabilities.manifest_governance_level({"policies": {"governanceLevel": "certified"}}) == "certified"
-    assert capabilities.manifest_governance_level({"profile": capabilities.QLIB_IMPORT_PROFILE}) == "exploratory"
-    assert capabilities.manifest_governance_level({"profile": capabilities.MARKET_IMPORT_PROFILE}) == "exploratory"
+    assert (
+        capabilities.manifest_governance_level({"policies": {"governanceLevel": "certified"}}) == "certified"
+    )
+    assert (
+        capabilities.manifest_governance_level({"profile": capabilities.QLIB_IMPORT_PROFILE}) == "exploratory"
+    )
+    assert (
+        capabilities.manifest_governance_level({"profile": capabilities.MARKET_IMPORT_PROFILE})
+        == "exploratory"
+    )
     assert capabilities.manifest_governance_level({"profile": "research"}) == "research"
 
 
@@ -92,7 +99,9 @@ def test_data_release_id_from_bundle_validation(tmp_path) -> None:
     path.write_text(json.dumps({"artifacts": []}))
     with pytest.raises(capabilities.ReleaseCapabilityError, match="no artifacts"):
         capabilities.data_release_id_from_bundle(path)
-    path.write_text(json.dumps({"artifacts": [{"dataReleaseId": release_id}, {"dataReleaseId": "ds_" + "b" * 64}]}))
+    path.write_text(
+        json.dumps({"artifacts": [{"dataReleaseId": release_id}, {"dataReleaseId": "ds_" + "b" * 64}]})
+    )
     with pytest.raises(capabilities.ReleaseCapabilityError, match="exactly one"):
         capabilities.data_release_id_from_bundle(path)
     path.write_text(json.dumps({"artifacts": [{"dataReleaseId": "bad"}]}))
