@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 from qlib_platform.research.portfolio.optimizer_constraints import (
@@ -28,11 +29,11 @@ def _risk_parity_seed(
     target_exposure: float,
     max_iterations: int,
     tolerance: float,
-) -> np.ndarray:
+) -> npt.NDArray[np.float64]:
     diagonal = np.diag(covariance)
     if bool(np.any(diagonal <= 1e-14)):
         raise ValueError("risk-parity covariance must have strictly positive diagonal variance")
-    weights = np.ones(len(budgets), dtype=float)
+    weights: npt.NDArray[np.float64] = np.ones(len(budgets), dtype=np.float64)
     for _ in range(max_iterations):
         before = weights.copy()
         for position in range(len(weights)):
