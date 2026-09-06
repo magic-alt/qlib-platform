@@ -21,8 +21,16 @@ def _settings(tmp_path: Path) -> SimpleNamespace:
         qlib_versions_root=root / "versions",
         qlib_dataset_ref="current",
         registry_path=root / "registry.sqlite",
-        paths=SimpleNamespace(root=root, staging_full=root / "full", staging_update=root / "update", staging_repair=root / "repair"),
-        data={"qlib": {"export": {"backup_keep": 1, "max_workers": 2, "copy_on_write_update": True}}, "universe": {"instruments": "all"}},
+        paths=SimpleNamespace(
+            root=root,
+            staging_full=root / "full",
+            staging_update=root / "update",
+            staging_repair=root / "repair",
+        ),
+        data={
+            "qlib": {"export": {"backup_keep": 1, "max_workers": 2, "copy_on_write_update": True}},
+            "universe": {"instruments": "all"},
+        },
     )
 
 
@@ -70,7 +78,9 @@ def test_smoke_subprocess_parses_marker_and_errors(monkeypatch, tmp_path) -> Non
     marker = "__TQ_SMOKE_RESULT__="
 
     def success(*args: object, **kwargs: object) -> SimpleNamespace:
-        return SimpleNamespace(returncode=0, stdout=f"noise\n{marker}{json.dumps({'calendar_count': 3})}\n", stderr="")
+        return SimpleNamespace(
+            returncode=0, stdout=f"noise\n{marker}{json.dumps({'calendar_count': 3})}\n", stderr=""
+        )
 
     monkeypatch.setattr(qlib_export.subprocess, "run", success)
     assert qlib_export._smoke_test_dataset_subprocess(tmp_path)["calendar_count"] == 3
