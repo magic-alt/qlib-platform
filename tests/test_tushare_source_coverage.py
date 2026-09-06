@@ -28,7 +28,8 @@ def _client(monkeypatch, results: list[object], *, retry: RetryPolicy | None = N
     client = tushare_source.TushareClient(
         "token",
         calls_per_minute=100,
-        retry_policy=retry or RetryPolicy(max_attempts=2, base_sleep_seconds=0.01, max_sleep_seconds=0.02, jitter_ratio=0),
+        retry_policy=retry
+        or RetryPolicy(max_attempts=2, base_sleep_seconds=0.01, max_sleep_seconds=0.02, jitter_ratio=0),
     )
     monkeypatch.setattr(client.limiter, "acquire", lambda: None)
     return client, pro
