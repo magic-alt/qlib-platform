@@ -166,6 +166,10 @@ task:
 def _run(command: list[str], *, cwd: Path) -> None:
     env = os.environ.copy()
     env["PYTHONHASHSEED"] = "0"
+    # Qlib 0.9.7 intentionally uses MLflow's local file tracking backend for qrun.
+    # MLflow 3.x puts that backend in maintenance mode unless this compatibility
+    # switch is explicit. Apply the same upstream-supported setting to both lanes.
+    env["MLFLOW_ALLOW_FILE_STORE"] = "true"
     completed = subprocess.run(
         command,
         cwd=cwd,
