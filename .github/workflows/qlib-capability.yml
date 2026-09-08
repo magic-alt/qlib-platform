@@ -35,6 +35,23 @@ jobs:
           tests/test_qlib_recorder_federation.py
           tests/test_qlib_packaging_contract.py
 
+  qlib-real-alpha158-conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QLIB_REAL_CONFORMANCE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install -c constraints/ci.txt -e '.[dev,qlib]'
+      - name: Run real Qlib 0.9.7 Alpha158 LightGBM qrun parity
+        run: python -m pytest -q -s tests/test_qlib_real_conformance.py
+
   qlib-model-zoo-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -72,3 +89,41 @@ jobs:
       - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
       - name: Verify fail-closed upstream exception remains explicit
         run: python -m pytest -q tests/test_qlib_capability_manifest.py tests/test_qlib_packaging_contract.py
+
+  qlib-required:
+    name: qlib-required
+    if: always()
+    needs:
+      - qlib-core-contract
+      - qlib-real-alpha158-conformance
+      - qlib-model-zoo-contract
+      - qlib-upstream-exception-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CORE_RESULT: ${{ needs.qlib-core-contract.result }}
+      REAL_E2E_RESULT: ${{ needs.qlib-real-alpha158-conformance.result }}
+      MODEL_ZOO_RESULT: ${{ needs.qlib-model-zoo-contract.result }}
+      EXCEPTION_RESULT: ${{ needs.qlib-upstream-exception-contract.result }}
+    steps:
+      - name: Enforce Qlib compatibility results
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for entry in \
+            "qlib-core-contract=$CORE_RESULT" \
+            "qlib-real-alpha158-conformance=$REAL_E2E_RESULT" \
+            "qlib-model-zoo-contract=$MODEL_ZOO_RESULT" \
+            "qlib-upstream-exception-contract=$EXCEPTION_RESULT"; do
+            name="${entry%%=*}"
+            result="${entry#*=}"
+            printf '%-36s %s\n' "$name" "$result"
+            if [[ "$result" != "success" ]]; then
+              failed=1
+            fi
+          done
+          if [[ "$failed" -ne 0 ]]; then
+            echo "Qlib compatibility certification failed." >&2
+            exit 1
+          fi

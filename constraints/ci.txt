@@ -10,6 +10,10 @@ matplotlib==3.10.9
 reportlab==4.5.1
 pypdf==6.16.2
 pyqlib==0.9.7
+# Qlib 0.9.7 leaves MLflow unbounded. CI certifies the currently resolved
+# secure release while the real-conformance workflow uses Qlib's supported
+# SQL tracking backend instead of the deprecated filesystem backend.
+mlflow==3.16.0
 lightgbm==4.6.0
 xgboost==2.1.4
 optuna==4.9.0

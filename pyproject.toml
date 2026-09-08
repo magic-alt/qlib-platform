@@ -95,6 +95,12 @@ addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["src"]
 
+[tool.coverage.run]
+# pytest-cov 7 delegates Python subprocess measurement to coverage.py.
+# CLI and clean-machine tests are part of the real repository test surface,
+# so include their executed source lines in the repository-wide gate.
+patch = ["subprocess"]
+
 [tool.ruff]
 line-length = 110
 target-version = "py310"
