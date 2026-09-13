@@ -45,19 +45,54 @@ def register_data_source(
     aliases: tuple[str, ...] = (),
     replace: bool = False,
 ) -> None:
-    """Register a source adapter without changing the ingestion pipeline."""
+    """Register a source adapter without changing the ingestion pipeline.
+
+    Registration is transactional at the registry level: every name and alias is
+    validated against a copy first, then both maps are committed together. A
+    failed registration therefore cannot leave a factory or an early alias
+    behind for later resolution attempts.
+    """
 
     canonical = _normalize(name)
     if not canonical:
         raise ValueError("data source name must not be empty")
-    if canonical in _FACTORIES and not replace:
+
+    raw_aliases = tuple(_normalize(alias) for alias in aliases)
+    if any(not alias for alias in raw_aliases):
+        raise ValueError("data source aliases must not be empty")
+    # Legacy spellings may intentionally normalize to the same registry key
+    # (for example ``lean-platform`` and ``lean_platform``). Collapse those
+    # equivalents before validation while preserving first-seen order.
+    normalized_aliases = tuple(dict.fromkeys(raw_aliases))
+    if canonical in normalized_aliases:
+        raise ValueError("data source alias must not duplicate the canonical name")
+
+    next_factories = dict(_FACTORIES)
+    next_aliases = dict(_ALIASES)
+
+    if canonical in next_factories and not replace:
         raise ValueError(f"data source already registered: {canonical}")
-    _FACTORIES[canonical] = factory
-    for alias in aliases:
-        normalized = _normalize(alias)
-        if normalized in _ALIASES and _ALIASES[normalized] != canonical and not replace:
-            raise ValueError(f"data source alias already registered: {normalized}")
-        _ALIASES[normalized] = canonical
+    if canonical in next_aliases and next_aliases[canonical] != canonical:
+        raise ValueError(f"data source name conflicts with existing alias: {canonical}")
+
+    if replace:
+        # Replacing a provider also replaces its alias set. Stale aliases must
+        # not continue to resolve to a factory that no longer advertises them.
+        next_aliases = {alias: target for alias, target in next_aliases.items() if target != canonical}
+
+    for alias in normalized_aliases:
+        if alias in next_factories and alias != canonical:
+            raise ValueError(f"data source alias conflicts with registered source: {alias}")
+        existing = next_aliases.get(alias)
+        if existing is not None and existing != canonical and not replace:
+            raise ValueError(f"data source alias already registered: {alias}")
+        next_aliases[alias] = canonical
+
+    next_factories[canonical] = factory
+    _FACTORIES.clear()
+    _FACTORIES.update(next_factories)
+    _ALIASES.clear()
+    _ALIASES.update(next_aliases)
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
