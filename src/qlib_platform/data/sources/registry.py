@@ -78,9 +78,7 @@ def register_data_source(
     if replace:
         # Replacing a provider also replaces its alias set. Stale aliases must
         # not continue to resolve to a factory that no longer advertises them.
-        next_aliases = {
-            alias: target for alias, target in next_aliases.items() if target != canonical
-        }
+        next_aliases = {alias: target for alias, target in next_aliases.items() if target != canonical}
 
     for alias in normalized_aliases:
         if alias in next_factories and alias != canonical:
