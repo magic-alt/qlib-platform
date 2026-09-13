@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
+import pytest
 
+import qlib_platform.data.sources.registry as registry_module
 from qlib_platform.data.ingestion import Extractor
 from qlib_platform.data.sources import (
     DataSourceBinding,
@@ -89,3 +91,74 @@ def test_source_aliases_resolve_to_one_adapter(tmp_path):
 
     assert binding.name == kind
     assert binding.client is client
+
+
+def test_registration_rolls_back_when_late_alias_conflicts():
+    first = "unit_atomic_first"
+    second = "unit_atomic_second"
+    shared = "unit_atomic_shared"
+    fresh = "unit_atomic_fresh"
+    client = _FakeClient()
+
+    register_data_source(
+        first,
+        lambda settings, retry: DataSourceBinding(name=first, client=client),
+        aliases=(shared,),
+        replace=True,
+    )
+    before_factories = dict(registry_module._FACTORIES)
+    before_aliases = dict(registry_module._ALIASES)
+
+    with pytest.raises(ValueError, match="alias already registered"):
+        register_data_source(
+            second,
+            lambda settings, retry: DataSourceBinding(name=second, client=client),
+            aliases=(fresh, shared),
+        )
+
+    assert registry_module._FACTORIES == before_factories
+    assert registry_module._ALIASES == before_aliases
+    assert second not in registry_module._FACTORIES
+    assert fresh not in registry_module._ALIASES
+
+
+def test_replace_refreshes_alias_set_without_leaving_stale_aliases(tmp_path):
+    kind = "unit_replace_provider"
+    old_alias = "unit_replace_old"
+    new_alias = "unit_replace_new"
+    client = _FakeClient()
+
+    register_data_source(
+        kind,
+        lambda settings, retry: DataSourceBinding(name=kind, client=client),
+        aliases=(old_alias,),
+        replace=True,
+    )
+    register_data_source(
+        kind,
+        lambda settings, retry: DataSourceBinding(name=kind, client=client),
+        aliases=(new_alias,),
+        replace=True,
+    )
+
+    assert old_alias not in registry_module._ALIASES
+    assert registry_module._ALIASES[new_alias] == kind
+    assert create_data_source(_Settings(tmp_path, new_alias), RetryPolicy()).name == kind
+
+
+def test_registration_rejects_normalized_alias_collisions_without_mutation():
+    kind = "unit_duplicate_alias_provider"
+    client = _FakeClient()
+    before_factories = dict(registry_module._FACTORIES)
+    before_aliases = dict(registry_module._ALIASES)
+
+    with pytest.raises(ValueError, match="unique after normalization"):
+        register_data_source(
+            kind,
+            lambda settings, retry: DataSourceBinding(name=kind, client=client),
+            aliases=("same-alias", "same_alias"),
+            replace=True,
+        )
+
+    assert registry_module._FACTORIES == before_factories
+    assert registry_module._ALIASES == before_aliases
