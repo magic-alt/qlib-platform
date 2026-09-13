@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -12,21 +13,56 @@ from qlib_platform.artifacts.institutional_artifacts import (
 )
 
 
+_DATA_RELEASE_ID = re.compile(r"^ds_[0-9a-f]{64}$")
+
+
 def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _validated_data_release_id(value: object, *, source: str) -> str | None:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    if not _DATA_RELEASE_ID.fullmatch(candidate):
+        raise ValueError(f"Invalid DataRelease identity from {source}: expected ds_<64 lowercase hex>")
+    return candidate
+
+
 def resolve_data_release_id(manifest: Mapping[str, Any], override: str | None) -> str:
-    candidates = [
-        override,
-        _mapping(manifest.get("dataset")).get("dataReleaseId"),
-        _mapping(_mapping(manifest.get("dataset")).get("semantic_contract")).get("data_release_id"),
-        _mapping(_mapping(manifest.get("canonicalConfig")).get("dataset")).get("dataset_id"),
+    """Resolve exactly one canonical DataRelease without silently repairing conflicts."""
+
+    embedded_sources = (
+        ("dataset.dataReleaseId", _mapping(manifest.get("dataset")).get("dataReleaseId")),
+        (
+            "dataset.semantic_contract.data_release_id",
+            _mapping(_mapping(manifest.get("dataset")).get("semantic_contract")).get("data_release_id"),
+        ),
+        (
+            "canonicalConfig.dataset.dataset_id",
+            _mapping(_mapping(manifest.get("canonicalConfig")).get("dataset")).get("dataset_id"),
+        ),
+    )
+    embedded = [
+        (source, candidate)
+        for source, raw_value in embedded_sources
+        if (candidate := _validated_data_release_id(raw_value, source=source)) is not None
     ]
-    for value in candidates:
-        candidate = str(value or "").strip()
-        if candidate.startswith("ds_") and len(candidate) == 67:
-            return candidate
+    identities = {candidate for _, candidate in embedded}
+    if len(identities) > 1:
+        detail = ", ".join(f"{source}={candidate}" for source, candidate in embedded)
+        raise ValueError(f"Research manifest has conflicting DataRelease identities: {detail}")
+
+    manifest_identity = next(iter(identities), None)
+    override_identity = _validated_data_release_id(override, source="--data-release-id")
+    if override_identity and manifest_identity and override_identity != manifest_identity:
+        raise ValueError(
+            "--data-release-id conflicts with the DataRelease identity declared by the research manifest"
+        )
+    if override_identity:
+        return override_identity
+    if manifest_identity:
+        return manifest_identity
     raise ValueError("Research manifest is not bound to a DataRelease; supply --data-release-id")
 
 
