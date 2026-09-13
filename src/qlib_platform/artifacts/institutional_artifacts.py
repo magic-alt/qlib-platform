@@ -106,6 +106,14 @@ def export_research_bundle(
         if not value.strip():
             raise ValueError(f"{name} is required")
 
+    # Validate the complete target payload before creating the output directory
+    # or writing any upstream artifacts. Invalid v2 input must fail without
+    # leaving a partial producer bundle that could later be mistaken for valid
+    # handoff evidence.
+    target_payload = _target_payload(targets)
+    canonical_targets = target_payload["targets"]
+    targets_sha = hashlib.sha256(_canonical_bytes(canonical_targets)).hexdigest()
+
     root = Path(output_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     artifacts: list[dict[str, Any]] = []
@@ -192,9 +200,6 @@ def export_research_bundle(
         strategy_policy_id=policy_id,
         dated=True,
     )
-    target_payload = _target_payload(targets)
-    canonical_targets = target_payload["targets"]
-    targets_sha = hashlib.sha256(_canonical_bytes(canonical_targets)).hexdigest()
     target_id = publish(
         ResearchArtifactType.TARGET_PORTFOLIO,
         target_payload,
