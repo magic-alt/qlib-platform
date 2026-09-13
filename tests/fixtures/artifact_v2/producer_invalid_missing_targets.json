@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "2.0",
+  "externalRunId": "fixture-invalid-missing-targets",
+  "runKind": "walk_forward",
+  "dataset": {
+    "semantic_contract": {
+      "data_release_id": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "model": {
+    "fingerprint": "model-fixture-v2",
+    "family": "lightgbm"
+  },
+  "canonicalConfig": {
+    "strategy": {
+      "topk": 30
+    },
+    "portfolio": {
+      "max_exposure": 0.9
+    },
+    "promotion": {
+      "min_icir": 0.5
+    }
+  },
+  "promotion": {
+    "status": "PROMOTED",
+    "decision": "PASS"
+  },
+  "metrics": {
+    "icir": 0.51
+  }
+}

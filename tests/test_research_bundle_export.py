@@ -8,6 +8,9 @@ import pytest
 from qlib_platform.artifacts.research_bundle_export import export_manifest_as_v2_bundle
 
 
+FIXTURES = Path(__file__).parent / "fixtures" / "artifact_v2"
+
+
 def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
     source = tmp_path / "manifest.json"
     source.write_text(
@@ -62,3 +65,63 @@ def test_conversion_requires_promotable_targets(tmp_path: Path):
             container_digest="sha256:" + "b" * 64,
             data_release_id="ds_" + "a" * 64,
         )
+
+
+def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
+    output = tmp_path / "v2"
+    path = export_manifest_as_v2_bundle(
+        FIXTURES / "producer_valid.json",
+        output,
+        git_commit="fixture-commit",
+        container_digest="sha256:" + "b" * 64,
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schemaVersion"] == "2.0"
+    assert payload["importType"] == "QLIB_RESEARCH_BUNDLE"
+    assert payload["externalRunId"] == "fixture-run-v2"
+    assert [item["artifactType"] for item in payload["artifacts"]] == [
+        "MODEL_RELEASE",
+        "STRATEGY_POLICY",
+        "SIGNAL_SNAPSHOT",
+        "TARGET_PORTFOLIO",
+        "VALIDATION_RESULT",
+    ]
+    assert {item["dataReleaseId"] for item in payload["artifacts"]} == {"ds_" + "a" * 64}
+    assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
+    assert payload["rootArtifactIds"] == [payload["artifacts"][-1]["artifactId"]]
+
+    uploads = json.loads(path.with_name("qlib_research_bundle.v2.uploads.json").read_text(encoding="utf-8"))[
+        "uploads"
+    ]
+    assert len(uploads) == 5
+    for artifact in payload["artifacts"]:
+        object_key = artifact["payloadRef"]["objectKey"]
+        assert object_key in uploads
+        assert Path(uploads[object_key]).is_file()
+
+
+@pytest.mark.parametrize(
+    ("fixture", "message"),
+    [
+        ("producer_invalid_missing_targets.json", "latestTargets"),
+        ("producer_invalid_same_day_trade.json", "trade_date must be after"),
+        ("producer_invalid_gross_exposure.json", "gross exposure"),
+    ],
+)
+def test_frozen_v2_negative_fixtures_fail_without_partial_bundle(
+    tmp_path: Path,
+    fixture: str,
+    message: str,
+):
+    output = tmp_path / fixture.removesuffix(".json")
+
+    with pytest.raises(ValueError, match=message):
+        export_manifest_as_v2_bundle(
+            FIXTURES / fixture,
+            output,
+            git_commit="fixture-commit",
+            container_digest="sha256:" + "b" * 64,
+        )
+
+    assert not output.exists()
