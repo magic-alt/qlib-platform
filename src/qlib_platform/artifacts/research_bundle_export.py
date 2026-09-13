@@ -25,9 +25,7 @@ def _validated_data_release_id(value: object, *, source: str) -> str | None:
     if not candidate:
         return None
     if not _DATA_RELEASE_ID.fullmatch(candidate):
-        raise ValueError(
-            f"Invalid DataRelease identity from {source}: expected ds_<64 lowercase hex>"
-        )
+        raise ValueError(f"Invalid DataRelease identity from {source}: expected ds_<64 lowercase hex>")
     return candidate
 
 
@@ -38,15 +36,11 @@ def resolve_data_release_id(manifest: Mapping[str, Any], override: str | None) -
         ("dataset.dataReleaseId", _mapping(manifest.get("dataset")).get("dataReleaseId")),
         (
             "dataset.semantic_contract.data_release_id",
-            _mapping(_mapping(manifest.get("dataset")).get("semantic_contract")).get(
-                "data_release_id"
-            ),
+            _mapping(_mapping(manifest.get("dataset")).get("semantic_contract")).get("data_release_id"),
         ),
         (
             "canonicalConfig.dataset.dataset_id",
-            _mapping(_mapping(manifest.get("canonicalConfig")).get("dataset")).get(
-                "dataset_id"
-            ),
+            _mapping(_mapping(manifest.get("canonicalConfig")).get("dataset")).get("dataset_id"),
         ),
     )
     embedded = [
