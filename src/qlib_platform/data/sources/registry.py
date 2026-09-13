@@ -57,11 +57,13 @@ def register_data_source(
     if not canonical:
         raise ValueError("data source name must not be empty")
 
-    normalized_aliases = tuple(_normalize(alias) for alias in aliases)
-    if any(not alias for alias in normalized_aliases):
+    raw_aliases = tuple(_normalize(alias) for alias in aliases)
+    if any(not alias for alias in raw_aliases):
         raise ValueError("data source aliases must not be empty")
-    if len(set(normalized_aliases)) != len(normalized_aliases):
-        raise ValueError("data source aliases must be unique after normalization")
+    # Legacy spellings may intentionally normalize to the same registry key
+    # (for example ``lean-platform`` and ``lean_platform``). Collapse those
+    # equivalents before validation while preserving first-seen order.
+    normalized_aliases = tuple(dict.fromkeys(raw_aliases))
     if canonical in normalized_aliases:
         raise ValueError("data source alias must not duplicate the canonical name")
 
