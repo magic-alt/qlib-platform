@@ -87,17 +87,13 @@ def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
         "TARGET_PORTFOLIO",
         "VALIDATION_RESULT",
     ]
-    assert {item["dataReleaseId"] for item in payload["artifacts"]} == {
-        "ds_" + "a" * 64
-    }
-    assert {item["promotionStatus"] for item in payload["artifacts"]} == {
-        "RESEARCH_PROMOTED"
-    }
+    assert {item["dataReleaseId"] for item in payload["artifacts"]} == {"ds_" + "a" * 64}
+    assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
     assert payload["rootArtifactIds"] == [payload["artifacts"][-1]["artifactId"]]
 
-    uploads = json.loads(
-        path.with_name("qlib_research_bundle.v2.uploads.json").read_text(encoding="utf-8")
-    )["uploads"]
+    uploads = json.loads(path.with_name("qlib_research_bundle.v2.uploads.json").read_text(encoding="utf-8"))[
+        "uploads"
+    ]
     assert len(uploads) == 5
     for artifact in payload["artifacts"]:
         object_key = artifact["payloadRef"]["objectKey"]
