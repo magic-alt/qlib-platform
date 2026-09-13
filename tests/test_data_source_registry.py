@@ -146,19 +146,18 @@ def test_replace_refreshes_alias_set_without_leaving_stale_aliases(tmp_path):
     assert create_data_source(_Settings(tmp_path, new_alias), RetryPolicy()).name == kind
 
 
-def test_registration_rejects_normalized_alias_collisions_without_mutation():
-    kind = "unit_duplicate_alias_provider"
+def test_equivalent_legacy_aliases_collapse_after_normalization(tmp_path):
+    kind = "unit_normalized_alias_provider"
     client = _FakeClient()
-    before_factories = dict(registry_module._FACTORIES)
-    before_aliases = dict(registry_module._ALIASES)
 
-    with pytest.raises(ValueError, match="unique after normalization"):
-        register_data_source(
-            kind,
-            lambda settings, retry: DataSourceBinding(name=kind, client=client),
-            aliases=("same-alias", "same_alias"),
-            replace=True,
-        )
+    register_data_source(
+        kind,
+        lambda settings, retry: DataSourceBinding(name=kind, client=client),
+        aliases=("unit-normalized-alias", "unit_normalized_alias"),
+        replace=True,
+    )
 
-    assert registry_module._FACTORIES == before_factories
-    assert registry_module._ALIASES == before_aliases
+    assert registry_module._ALIASES["unit_normalized_alias"] == kind
+    assert create_data_source(
+        _Settings(tmp_path, "unit-normalized-alias"), RetryPolicy()
+    ).name == kind
