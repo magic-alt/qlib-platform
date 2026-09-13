@@ -5,10 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.artifacts.research_bundle_export import export_manifest_as_v2_bundle
+from qlib_platform.artifacts.research_bundle_export import (
+    export_manifest_as_v2_bundle,
+    resolve_data_release_id,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "artifact_v2"
+DATA_RELEASE_A = "ds_" + "a" * 64
+DATA_RELEASE_B = "ds_" + "b" * 64
 
 
 def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
@@ -19,7 +24,7 @@ def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
                 "schemaVersion": "2.0",
                 "externalRunId": "run-1",
                 "runKind": "walk_forward",
-                "dataset": {"semantic_contract": {"data_release_id": "ds_" + "a" * 64}},
+                "dataset": {"semantic_contract": {"data_release_id": DATA_RELEASE_A}},
                 "model": {"fingerprint": "model-1", "family": "lightgbm"},
                 "canonicalConfig": {
                     "strategy": {"topk": 30},
@@ -63,8 +68,71 @@ def test_conversion_requires_promotable_targets(tmp_path: Path):
             tmp_path / "v2",
             git_commit="abc123",
             container_digest="sha256:" + "b" * 64,
-            data_release_id="ds_" + "a" * 64,
+            data_release_id=DATA_RELEASE_A,
         )
+
+
+def test_release_resolution_accepts_one_identity_repeated_across_sources():
+    manifest = {
+        "dataset": {
+            "dataReleaseId": DATA_RELEASE_A,
+            "semantic_contract": {"data_release_id": DATA_RELEASE_A},
+        },
+        "canonicalConfig": {"dataset": {"dataset_id": DATA_RELEASE_A}},
+    }
+
+    assert resolve_data_release_id(manifest, None) == DATA_RELEASE_A
+    assert resolve_data_release_id(manifest, DATA_RELEASE_A) == DATA_RELEASE_A
+
+
+def test_release_override_only_fills_missing_identity():
+    assert resolve_data_release_id({}, DATA_RELEASE_A) == DATA_RELEASE_A
+
+
+@pytest.mark.parametrize(
+    "release_id",
+    [
+        "ds_" + "g" * 64,
+        "ds_" + "A" * 64,
+        "ds_short",
+    ],
+)
+def test_release_resolution_rejects_malformed_identity(release_id: str):
+    with pytest.raises(ValueError, match="expected ds_<64 lowercase hex>"):
+        resolve_data_release_id({"dataset": {"dataReleaseId": release_id}}, None)
+
+
+def test_conflicting_manifest_release_id_fails_without_partial_bundle(tmp_path: Path):
+    manifest = json.loads((FIXTURES / "producer_valid.json").read_text(encoding="utf-8"))
+    manifest["dataset"]["dataReleaseId"] = DATA_RELEASE_B
+    source = tmp_path / "manifest.json"
+    source.write_text(json.dumps(manifest), encoding="utf-8")
+    output = tmp_path / "v2"
+
+    with pytest.raises(ValueError, match="conflicting DataRelease identities"):
+        export_manifest_as_v2_bundle(
+            source,
+            output,
+            git_commit="fixture-commit",
+            container_digest="sha256:" + "c" * 64,
+        )
+
+    assert not output.exists()
+
+
+def test_conflicting_override_fails_without_partial_bundle(tmp_path: Path):
+    output = tmp_path / "v2"
+
+    with pytest.raises(ValueError, match="--data-release-id conflicts"):
+        export_manifest_as_v2_bundle(
+            FIXTURES / "producer_valid.json",
+            output,
+            git_commit="fixture-commit",
+            container_digest="sha256:" + "c" * 64,
+            data_release_id=DATA_RELEASE_B,
+        )
+
+    assert not output.exists()
 
 
 def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
@@ -87,7 +155,7 @@ def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
         "TARGET_PORTFOLIO",
         "VALIDATION_RESULT",
     ]
-    assert {item["dataReleaseId"] for item in payload["artifacts"]} == {"ds_" + "a" * 64}
+    assert {item["dataReleaseId"] for item in payload["artifacts"]} == {DATA_RELEASE_A}
     assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
     assert payload["rootArtifactIds"] == [payload["artifacts"][-1]["artifactId"]]
 
