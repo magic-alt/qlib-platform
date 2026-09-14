@@ -177,9 +177,7 @@ def test_adjustment_mode_is_negotiated_instead_of_silently_reinterpreted():
 
 
 def test_adjustment_factor_is_an_explicit_canonical_dataset():
-    raw = pd.DataFrame(
-        {"ts_code": ["600000.SH"], "trade_date": ["20260910"], "adj_factor": [1.2345]}
-    )
+    raw = pd.DataFrame({"ts_code": ["600000.SH"], "trade_date": ["20260910"], "adj_factor": [1.2345]})
     source = TushareSemanticDataSource(_StubClient({"adj_factor": FetchResult(raw, "success", 1)}))
     request = DatasetRequest("adjustment_factor", start="2026-09-10", end="2026-09-10")
 
@@ -258,9 +256,7 @@ def test_local_file_checksum_drift_fails_closed(tmp_path):
         }
     )
 
-    envelope = source.fetch_dataset(
-        DatasetRequest("equity_daily", start="2026-09-10", end="2026-09-10")
-    )
+    envelope = source.fetch_dataset(DatasetRequest("equity_daily", start="2026-09-10", end="2026-09-10"))
 
     assert envelope.status == "conflict"
     assert envelope.error_class == "checksum_mismatch"
