@@ -231,8 +231,7 @@ def require_usable(envelope: FetchEnvelope, request: DatasetRequest) -> Canonica
     failure = validate_canonical_batch(envelope.batch, request)
     if failure is not None:
         raise DataSourceContractError(
-            f"provider {envelope.provider!r} returned {failure!r} canonical data "
-            f"for {request.dataset_kind!r}"
+            f"provider {envelope.provider!r} returned {failure!r} canonical data for {request.dataset_kind!r}"
         )
     return envelope.batch
 
