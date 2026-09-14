@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 from qlib_platform.data.sources.base import DataSourceClient, RetryPolicy
 
 if TYPE_CHECKING:
+    from qlib_platform.data.sources.semantic import SemanticDataSource
     from qlib_platform.settings import Settings
 
 
@@ -23,6 +24,7 @@ class DataSourceBinding:
 
     name: str
     client: DataSourceClient
+    semantic_source: SemanticDataSource | None = None
     endpoint_overrides: Mapping[str, EndpointOverride] = field(default_factory=dict)
     capabilities: frozenset[str] = field(default_factory=frozenset)
     operations: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
@@ -111,6 +113,7 @@ def _optional_endpoints(settings: "Settings") -> Mapping[str, Any]:
 
 def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
     from qlib_platform.data.sources.tushare import TushareClient
+    from qlib_platform.data.sources.tushare_semantic import TushareSemanticDataSource
 
     source_cfg = _mapping(settings.data.get("data_source"))
     legacy = _mapping(settings.data.get("tushare"))
@@ -127,7 +130,11 @@ def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSou
         calls_per_minute=calls,
         retry_policy=retry_policy,
     )
-    return DataSourceBinding(name="tushare", client=client)
+    return DataSourceBinding(
+        name="tushare",
+        client=client,
+        semantic_source=TushareSemanticDataSource(client),
+    )
 
 
 def _mysql_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
