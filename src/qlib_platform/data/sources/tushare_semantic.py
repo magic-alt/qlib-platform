@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import replace
 
 import pandas as pd
 
@@ -10,8 +11,11 @@ from qlib_platform.data.sources.semantic import (
     DatasetCapability,
     DatasetRequest,
     FetchEnvelope,
+    PaginationCursor,
+    PaginationPolicy,
     SourceCapabilities,
     canonical_coverage,
+    collect_paginated,
     frame_sha256,
     validate_canonical_batch,
 )
@@ -28,6 +32,7 @@ _MASTER_FIELDS = (
     "act_name,act_ent_type"
 )
 _CALENDAR_FIELDS = "exchange,cal_date,is_open,pretrade_date"
+_PAGINATED_DATASETS = frozenset({"equity_daily", "equity_daily_basic", "adjustment_factor"})
 
 
 class TushareSemanticDataSource:
@@ -63,14 +68,78 @@ class TushareSemanticDataSource:
         }
         return handlers[request.dataset_kind](request)
 
-    def _fetch_daily(self, request: DatasetRequest) -> FetchEnvelope:
+    def fetch_dataset_paginated(
+        self,
+        request: DatasetRequest,
+        *,
+        policy: PaginationPolicy | None = None,
+        cursor: PaginationCursor | None = None,
+    ) -> FetchEnvelope:
+        """Fetch one semantic dataset using bounded TuShare offset/limit paging.
+
+        A returned resume cursor only identifies the next provider offset. The
+        caller remains responsible for durably retaining already accepted pages.
+        """
+
+        try:
+            self.capabilities.negotiate(request)
+        except Exception as exc:
+            return FetchEnvelope("tushare", "unsupported", 1, error_class="unsupported", error=str(exc))
+        if request.dataset_kind not in _PAGINATED_DATASETS:
+            return FetchEnvelope(
+                "tushare",
+                "unsupported",
+                1,
+                error_class="pagination_unsupported",
+                error=f"paginated fetch is not enabled for {request.dataset_kind!r}",
+            )
+        page_request = replace(request, require_complete=False)
+        return collect_paginated(
+            provider="tushare",
+            request=request,
+            policy=policy,
+            cursor=cursor,
+            page_fetcher=lambda offset, limit: self._fetch_page(
+                page_request,
+                offset=offset,
+                limit=limit,
+            ),
+        )
+
+    def _fetch_page(self, request: DatasetRequest, *, offset: int, limit: int) -> FetchEnvelope:
+        transport_params: dict[str, object] = {"offset": offset, "limit": limit}
+        if request.dataset_kind == "equity_daily":
+            return self._fetch_daily(request, transport_params=transport_params, allow_empty=True)
+        if request.dataset_kind == "equity_daily_basic":
+            return self._fetch_daily_basic(request, transport_params=transport_params, allow_empty=True)
+        if request.dataset_kind == "adjustment_factor":
+            return self._fetch_adjustment_factor(request, transport_params=transport_params, allow_empty=True)
+        return FetchEnvelope(
+            "tushare",
+            "unsupported",
+            1,
+            error_class="pagination_unsupported",
+            error=f"paginated fetch is not enabled for {request.dataset_kind!r}",
+        )
+
+    def _fetch_daily(
+        self,
+        request: DatasetRequest,
+        *,
+        transport_params: Mapping[str, object] | None = None,
+        allow_empty: bool = False,
+    ) -> FetchEnvelope:
+        params: dict[str, object] = dict(_date_params(request))
+        params.update(transport_params or {})
         result = self._client.fetch(
             "daily",
             fields=_DAILY_FIELDS,
             required=False,
-            **_date_params(request),
+            **params,
         )
         if result.status != "success":
+            if allow_empty and result.status == "empty":
+                return _empty_envelope(result)
             return _failure_envelope(result, request)
         required = {"ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount"}
         missing = required - set(result.data.columns)
@@ -109,14 +178,24 @@ class TushareSemanticDataSource:
             attempts=result.attempts,
         )
 
-    def _fetch_daily_basic(self, request: DatasetRequest) -> FetchEnvelope:
+    def _fetch_daily_basic(
+        self,
+        request: DatasetRequest,
+        *,
+        transport_params: Mapping[str, object] | None = None,
+        allow_empty: bool = False,
+    ) -> FetchEnvelope:
+        params: dict[str, object] = dict(_date_params(request))
+        params.update(transport_params or {})
         result = self._client.fetch(
             "daily_basic",
             fields=_BASIC_FIELDS,
             required=False,
-            **_date_params(request),
+            **params,
         )
         if result.status != "success":
+            if allow_empty and result.status == "empty":
+                return _empty_envelope(result)
             return _failure_envelope(result, request)
         required = {
             "ts_code",
@@ -168,14 +247,24 @@ class TushareSemanticDataSource:
             attempts=result.attempts,
         )
 
-    def _fetch_adjustment_factor(self, request: DatasetRequest) -> FetchEnvelope:
+    def _fetch_adjustment_factor(
+        self,
+        request: DatasetRequest,
+        *,
+        transport_params: Mapping[str, object] | None = None,
+        allow_empty: bool = False,
+    ) -> FetchEnvelope:
+        params: dict[str, object] = dict(_date_params(request))
+        params.update(transport_params or {})
         result = self._client.fetch(
             "adj_factor",
             fields=_ADJ_FIELDS,
             required=False,
-            **_date_params(request),
+            **params,
         )
         if result.status != "success":
+            if allow_empty and result.status == "empty":
+                return _empty_envelope(result)
             return _failure_envelope(result, request)
         required = {"ts_code", "trade_date", "adj_factor"}
         missing = required - set(result.data.columns)
@@ -348,6 +437,17 @@ def _success_envelope(
         source_hash=frame_sha256(raw),
         entitlement="granted",
         error_class=failure,
+    )
+
+
+def _empty_envelope(result: FetchResult) -> FetchEnvelope:
+    return FetchEnvelope(
+        "tushare",
+        "empty",
+        result.attempts,
+        provider_revision="tushare-pro",
+        source_hash=frame_sha256(result.data),
+        entitlement="granted",
     )
 
 
