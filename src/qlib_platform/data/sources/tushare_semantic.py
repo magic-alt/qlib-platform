@@ -310,9 +310,7 @@ def _select_fields(frame: pd.DataFrame, request: DatasetRequest) -> pd.DataFrame
     if not request.fields:
         return frame.reset_index(drop=True)
     identity = [
-        column
-        for column in ("instrument", "trading_date", "event_time", "available_at")
-        if column in frame
+        column for column in ("instrument", "trading_date", "event_time", "available_at") if column in frame
     ]
     selected = list(dict.fromkeys([*identity, *request.fields]))
     if set(selected) - set(frame.columns):
