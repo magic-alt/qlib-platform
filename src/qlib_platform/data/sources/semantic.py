@@ -436,15 +436,15 @@ def collect_paginated(
 
     batch = _merge_pages(pages, request)
     failure = validate_canonical_batch(batch, request)
-    error: str | None = None
+    result_error: str | None = None
     if start_offset > 0 and failure is None:
         failure = "resume_prefix_required"
-        error = "resumed pagination segment requires the caller's durable prefix before validation"
+        result_error = "resumed pagination segment requires the caller's durable prefix before validation"
     elif not terminal and failure is None:
         failure = "incomplete"
-        error = "pagination limit reached before a terminal page"
+        result_error = "pagination limit reached before a terminal page"
     elif terminal and failure == "incomplete":
-        error = "terminal page sequence does not satisfy required dataset coverage"
+        result_error = "terminal page sequence does not satisfy required dataset coverage"
     status = "incomplete" if failure == "resume_prefix_required" else failure or "success"
     next_cursor = None
     if not terminal:
@@ -467,7 +467,7 @@ def collect_paginated(
         source_hash=_combined_hash(hashes),
         entitlement=entitlement,
         error_class=failure,
-        error=error,
+        error=result_error,
         pagination=evidence,
     )
 
