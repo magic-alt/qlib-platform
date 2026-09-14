@@ -285,9 +285,7 @@ def test_semantic_bridge_owns_required_daily_but_delegates_optional_endpoints(tm
 
     assert daily.succeeded is True
     assert daily.data["ts_code"].tolist() == ["600000.SH"]
-    assert fallback.calls == [
-        ("moneyflow", {"fields": None, "required": False, "trade_date": "20260910"})
-    ]
+    assert fallback.calls == [("moneyflow", {"fields": None, "required": False, "trade_date": "20260910"})]
     assert optional.data["fallback"].tolist() == [1]
     canonical_manifest = bridge.canonical_store.read_manifest("equity_daily", "20260910")
     assert canonical_manifest["status"] == "success"
