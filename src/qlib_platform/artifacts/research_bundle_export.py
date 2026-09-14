@@ -14,6 +14,7 @@ from qlib_platform.artifacts.institutional_artifacts import (
 
 
 _DATA_RELEASE_ID = re.compile(r"^ds_[0-9a-f]{64}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
@@ -26,6 +27,15 @@ def _validated_data_release_id(value: object, *, source: str) -> str | None:
         return None
     if not _DATA_RELEASE_ID.fullmatch(candidate):
         raise ValueError(f"Invalid DataRelease identity from {source}: expected ds_<64 lowercase hex>")
+    return candidate
+
+
+def _validated_universe_release_id(value: object, *, source: str) -> str | None:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    if any(character.isspace() for character in candidate):
+        raise ValueError(f"Invalid UniverseRelease identity from {source}: whitespace is not allowed")
     return candidate
 
 
@@ -66,6 +76,29 @@ def resolve_data_release_id(manifest: Mapping[str, Any], override: str | None) -
     raise ValueError("Research manifest is not bound to a DataRelease; supply --data-release-id")
 
 
+def resolve_universe_release_id(manifest: Mapping[str, Any]) -> str | None:
+    """Resolve one UniverseRelease identity from all supported manifest locations."""
+
+    dataset = _mapping(manifest.get("dataset"))
+    semantic_contract = _mapping(dataset.get("semantic_contract"))
+    canonical_dataset = _mapping(_mapping(manifest.get("canonicalConfig")).get("dataset"))
+    embedded_sources = (
+        ("dataset.universeReleaseId", dataset.get("universeReleaseId")),
+        ("dataset.semantic_contract.universe_release_id", semantic_contract.get("universe_release_id")),
+        ("canonicalConfig.dataset.universe_release_id", canonical_dataset.get("universe_release_id")),
+    )
+    embedded = [
+        (source, candidate)
+        for source, raw_value in embedded_sources
+        if (candidate := _validated_universe_release_id(raw_value, source=source)) is not None
+    ]
+    identities = {candidate for _, candidate in embedded}
+    if len(identities) > 1:
+        detail = ", ".join(f"{source}={candidate}" for source, candidate in embedded)
+        raise ValueError(f"Research manifest has conflicting UniverseRelease identities: {detail}")
+    return next(iter(identities), None)
+
+
 def _promotion_status(manifest: Mapping[str, Any]) -> ResearchPromotionStatus:
     value = str(_mapping(manifest.get("promotion")).get("status") or "").upper()
     return {
@@ -87,7 +120,11 @@ def export_manifest_as_v2_bundle(
     data_release_id: str | None = None,
 ) -> Path:
     source = Path(manifest_path).expanduser().resolve()
-    manifest = json.loads(source.read_text(encoding="utf-8"))
+    source_bytes = source.read_bytes()
+    source_manifest_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    if not _SHA256.fullmatch(source_manifest_sha256):
+        raise RuntimeError("source manifest SHA-256 computation returned an invalid digest")
+    manifest = json.loads(source_bytes)
     if not isinstance(manifest, Mapping):
         raise ValueError("Research manifest must be a JSON object")
     latest = _mapping(manifest.get("latestTargets"))
@@ -109,7 +146,8 @@ def export_manifest_as_v2_bundle(
         run_kind=str(manifest.get("runKind") or "research"),
         name=str(manifest.get("name") or "") or None,
         data_release_id=resolve_data_release_id(manifest, data_release_id),
-        universe_release_id=str(_mapping(manifest.get("dataset")).get("universeReleaseId") or "") or None,
+        universe_release_id=resolve_universe_release_id(manifest),
+        source_manifest_sha256=source_manifest_sha256,
         git_commit=git_commit,
         container_digest=container_digest,
         as_of_time=str(manifest.get("finishedAt") or f"{signal_date}T23:59:59+08:00"),
@@ -127,6 +165,6 @@ def export_manifest_as_v2_bundle(
         validation={
             "metrics": dict(_mapping(manifest.get("metrics"))),
             "promotion": dict(_mapping(manifest.get("promotion"))),
-            "sourceManifestSha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "sourceManifestSha256": source_manifest_sha256,
         },
     )
