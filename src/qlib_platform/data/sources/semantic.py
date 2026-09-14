@@ -153,6 +153,8 @@ class PaginationCursor:
             raise ValueError("pagination cursor provider must not be empty")
         if not self.dataset_kind.strip():
             raise ValueError("pagination cursor dataset_kind must not be empty")
+        if not self.request_fingerprint.strip():
+            raise ValueError("pagination cursor request_fingerprint must not be empty")
         if self.next_offset < 0:
             raise ValueError("pagination cursor next_offset must not be negative")
 
@@ -295,9 +297,9 @@ def collect_paginated(
 ) -> FetchEnvelope:
     """Collect bounded canonical pages and return explicit resume evidence on interruption.
 
-    The cursor resumes provider fetching at ``next_offset`` only. Persisting already
-    accepted pages belongs to the caller's storage boundary; this function never
-    claims a partial page set is a complete dataset.
+    A cursor resumes provider fetching at ``next_offset`` only. Persisting already
+    accepted pages belongs to the caller's storage boundary, so a resumed tail is
+    always marked incomplete until that caller combines it with its durable prefix.
     """
 
     resolved_policy = policy or PaginationPolicy()
@@ -404,15 +406,23 @@ def collect_paginated(
             break
 
     if not pages:
-        status = "incomplete" if request.require_complete else "empty"
+        status = "incomplete" if request.require_complete or start_offset > 0 else "empty"
+        error_class = None
+        error = None
+        if start_offset > 0:
+            error_class = "resume_prefix_required"
+            error = "resumed pagination segment requires the caller's durable prefix"
+        elif status == "incomplete":
+            error_class = "required_data_empty"
+            error = "required paginated dataset returned no rows"
         return FetchEnvelope(
             provider,
             status,
             max(attempts, 1),
             provider_revision=provider_revision,
             entitlement=entitlement,
-            error_class=None if status == "empty" else "required_data_empty",
-            error=None if status == "empty" else "required paginated dataset returned no rows",
+            error_class=error_class,
+            error=error,
             pagination=PaginationEvidence(
                 fingerprint,
                 start_offset,
@@ -426,13 +436,18 @@ def collect_paginated(
 
     batch = _merge_pages(pages, request)
     failure = validate_canonical_batch(batch, request)
-    if failure is not None:
-        terminal = terminal and failure != "incomplete"
-    if not terminal and failure is None:
+    error: str | None = None
+    if start_offset > 0 and failure is None:
+        failure = "resume_prefix_required"
+        error = "resumed pagination segment requires the caller's durable prefix before validation"
+    elif not terminal and failure is None:
         failure = "incomplete"
-    status = failure or "success"
+        error = "pagination limit reached before a terminal page"
+    elif terminal and failure == "incomplete":
+        error = "terminal page sequence does not satisfy required dataset coverage"
+    status = "incomplete" if failure == "resume_prefix_required" else failure or "success"
     next_cursor = None
-    if not terminal or status in {"incomplete", "rate_limited", "timeout", "provider_error"}:
+    if not terminal:
         next_cursor = PaginationCursor(provider, request.dataset_kind, fingerprint, offset)
     evidence = PaginationEvidence(
         fingerprint,
@@ -452,7 +467,7 @@ def collect_paginated(
         source_hash=_combined_hash(hashes),
         entitlement=entitlement,
         error_class=failure,
-        error="pagination limit reached before a terminal page" if not terminal else None,
+        error=error,
         pagination=evidence,
     )
 
