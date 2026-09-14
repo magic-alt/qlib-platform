@@ -27,22 +27,73 @@ def _context() -> ResearchBundleContext:
     )
 
 
+def _export(output: Path, *, signals: list[dict], targets: list[dict]) -> Path:
+    return export_research_bundle(
+        output,
+        context=_context(),
+        promotion_status=ResearchPromotionStatus.CANDIDATE,
+        model={},
+        strategy_policy={},
+        signals=signals,
+        targets=targets,
+        validation={},
+    )
+
+
 @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
 def test_nonfinite_signal_score_fails_before_bundle_creation(tmp_path: Path, invalid: float):
     output = tmp_path / "bundle"
 
     with pytest.raises(ValueError, match="Invalid signal score"):
-        export_research_bundle(
+        _export(
             output,
-            context=_context(),
-            promotion_status=ResearchPromotionStatus.CANDIDATE,
-            model={},
-            strategy_policy={},
             signals=[{"instrument": "SH600000", "score": invalid}],
             targets=[{"instrument": "SH600000", "targetWeight": 0.1, "score": 0.5}],
-            validation={},
         )
 
+    assert not output.exists()
+
+
+def test_malformed_signal_fails_before_bundle_creation(tmp_path: Path):
+    output = tmp_path / "bundle"
+
+    with pytest.raises(ValueError, match="Invalid signal instrument"):
+        _export(
+            output,
+            signals=[{"instrument": "600000", "score": 0.5}],
+            targets=[{"instrument": "SH600000", "targetWeight": 0.1, "score": 0.5}],
+        )
+    assert not output.exists()
+
+    with pytest.raises(ValueError, match="Invalid signal score"):
+        _export(
+            output,
+            signals=[{"instrument": "SH600000", "score": "not-a-number"}],
+            targets=[{"instrument": "SH600000", "targetWeight": 0.1, "score": 0.5}],
+        )
+    assert not output.exists()
+
+
+def test_duplicate_signal_and_malformed_target_weight_fail_before_writes(tmp_path: Path):
+    output = tmp_path / "bundle"
+
+    with pytest.raises(ValueError, match="Duplicate signal instrument"):
+        _export(
+            output,
+            signals=[
+                {"instrument": "SH600000", "score": 0.5},
+                {"instrument": "sh600000", "score": 0.4},
+            ],
+            targets=[{"instrument": "SH600000", "targetWeight": 0.1, "score": 0.5}],
+        )
+    assert not output.exists()
+
+    with pytest.raises(ValueError, match="Invalid target weight"):
+        _export(
+            output,
+            signals=[],
+            targets=[{"instrument": "SH600000", "targetWeight": "bad", "score": 0.5}],
+        )
     assert not output.exists()
 
 
@@ -53,15 +104,10 @@ def test_valid_signal_payload_preserves_order_and_extra_fields(tmp_path: Path):
         {"instrument": "SH600000", "score": 0.8, "rank": 1, "source": "alpha158"},
     ]
 
-    manifest_path = export_research_bundle(
+    manifest_path = _export(
         output,
-        context=_context(),
-        promotion_status=ResearchPromotionStatus.CANDIDATE,
-        model={},
-        strategy_policy={},
         signals=signals,
         targets=[{"instrument": "SH600000", "targetWeight": 0.1, "score": 0.8}],
-        validation={},
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     signal_artifact = next(
