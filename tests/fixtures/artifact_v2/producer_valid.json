@@ -3,8 +3,10 @@
   "externalRunId": "fixture-run-v2",
   "runKind": "walk_forward",
   "dataset": {
+    "universeReleaseId": "universe-csi300-fixture-v2",
     "semantic_contract": {
-      "data_release_id": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "data_release_id": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "universe_release_id": "universe-csi300-fixture-v2"
     }
   },
   "model": {

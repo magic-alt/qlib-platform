@@ -2,7 +2,7 @@
 status: ACTIVE
 owner: architecture
 applies_to_commit: 4f3f4369b6e55186967bc726bb8dd87fff0e5d70
-last_verified: 2026-08-31
+last_verified: 2026-09-14
 ---
 
 # Artifact Contract v2
@@ -25,7 +25,7 @@ MODEL_RELEASE
     -> VALIDATION_RESULT
 ```
 
-Each artifact belongs to one graph, has explicit parents, carries a payload reference/checksum and is bound to the same immutable DataRelease. `VALIDATION_RESULT` closes the research validation graph; `TARGET_PORTFOLIO` is the only artifact with execution-semantic handoff meaning.
+Each artifact belongs to one graph, has explicit parents, carries a payload reference/checksum and is bound to the same immutable DataRelease. Current producer exports also preserve one `universeReleaseId` across the graph when the source manifest declares it and bind every artifact to the exact source research-manifest bytes through `metadata.sourceManifestSha256`. These lineage values participate in artifact identity so a universe/source-manifest change cannot silently reuse a prior artifact ID. `VALIDATION_RESULT` closes the research validation graph; `TARGET_PORTFOLIO` is the only artifact with execution-semantic handoff meaning.
 
 ## Ownership
 
@@ -42,10 +42,13 @@ A bundle must be rejected when:
 - artifact schema or a required parent is missing;
 - payload SHA-256 differs from the declared checksum;
 - graph artifacts bind different DataRelease IDs;
-- source research-manifest lineage is absent or mismatched;
+- graph artifacts declare conflicting UniverseRelease IDs;
+- source research-manifest lineage is absent or mismatched for the current producer profile;
 - promotion state exceeds qlib ownership;
 - a lower-capability release is used for a handoff it does not authorize;
 - `MODEL_TOPK`, simulated orders or audit rows are substituted for `TARGET_PORTFOLIO`.
+
+The producer resolves `dataReleaseId` and `universeReleaseId` independently from all supported source-manifest locations and rejects conflicting declarations instead of selecting one by precedence. `--data-release-id` may only fill a missing DataRelease identity or repeat the already-declared identity; it cannot override a conflicting manifest. The source-manifest SHA-256 is computed from the exact bytes read for export, copied into every artifact metadata envelope and the validation payload, and must be revalidated independently by the consumer.
 
 The local exporter currently carries DatasetVersion/FeatureSnapshot/PredictionSnapshot lineage through the source research manifest rather than separate v2 nodes. Consumers must not invent or infer missing graph nodes.
 
