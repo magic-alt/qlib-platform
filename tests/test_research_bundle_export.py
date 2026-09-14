@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,12 +9,15 @@ import pytest
 from qlib_platform.artifacts.research_bundle_export import (
     export_manifest_as_v2_bundle,
     resolve_data_release_id,
+    resolve_universe_release_id,
 )
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "artifact_v2"
 DATA_RELEASE_A = "ds_" + "a" * 64
 DATA_RELEASE_B = "ds_" + "b" * 64
+UNIVERSE_RELEASE_A = "universe-csi300-fixture-v2"
+UNIVERSE_RELEASE_B = "universe-csi300-conflict-v2"
 
 
 def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
@@ -24,7 +28,13 @@ def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
                 "schemaVersion": "2.0",
                 "externalRunId": "run-1",
                 "runKind": "walk_forward",
-                "dataset": {"semantic_contract": {"data_release_id": DATA_RELEASE_A}},
+                "dataset": {
+                    "universeReleaseId": UNIVERSE_RELEASE_A,
+                    "semantic_contract": {
+                        "data_release_id": DATA_RELEASE_A,
+                        "universe_release_id": UNIVERSE_RELEASE_A,
+                    },
+                },
                 "model": {"fingerprint": "model-1", "family": "lightgbm"},
                 "canonicalConfig": {
                     "strategy": {"topk": 30},
@@ -42,6 +52,7 @@ def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
         ),
         encoding="utf-8",
     )
+    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
     path = export_manifest_as_v2_bundle(
         source,
         tmp_path / "v2",
@@ -51,10 +62,14 @@ def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
     payload = json.loads(path.read_text())
     assert payload["importType"] == "QLIB_RESEARCH_BUNDLE"
     assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
+    assert {item["universeReleaseId"] for item in payload["artifacts"]} == {UNIVERSE_RELEASE_A}
+    assert {
+        item["metadata"]["sourceManifestSha256"] for item in payload["artifacts"]
+    } == {source_sha256}
     validation = next(item for item in payload["artifacts"] if item["artifactType"] == "VALIDATION_RESULT")
     uploads = json.loads(path.with_name("qlib_research_bundle.v2.uploads.json").read_text())["uploads"]
     validation_payload = json.loads(Path(uploads[validation["payloadRef"]["objectKey"]]).read_text())
-    assert len(validation_payload["sourceManifestSha256"]) == 64
+    assert validation_payload["sourceManifestSha256"] == source_sha256
     assert str(source) not in path.read_text()
     assert str(source) not in json.dumps(validation_payload)
 
@@ -83,6 +98,18 @@ def test_release_resolution_accepts_one_identity_repeated_across_sources():
 
     assert resolve_data_release_id(manifest, None) == DATA_RELEASE_A
     assert resolve_data_release_id(manifest, DATA_RELEASE_A) == DATA_RELEASE_A
+
+
+def test_universe_resolution_accepts_one_identity_repeated_across_sources():
+    manifest = {
+        "dataset": {
+            "universeReleaseId": UNIVERSE_RELEASE_A,
+            "semantic_contract": {"universe_release_id": UNIVERSE_RELEASE_A},
+        },
+        "canonicalConfig": {"dataset": {"universe_release_id": UNIVERSE_RELEASE_A}},
+    }
+
+    assert resolve_universe_release_id(manifest) == UNIVERSE_RELEASE_A
 
 
 def test_release_override_only_fills_missing_identity():
@@ -120,6 +147,24 @@ def test_conflicting_manifest_release_id_fails_without_partial_bundle(tmp_path: 
     assert not output.exists()
 
 
+def test_conflicting_manifest_universe_release_fails_without_partial_bundle(tmp_path: Path):
+    manifest = json.loads((FIXTURES / "producer_valid.json").read_text(encoding="utf-8"))
+    manifest["canonicalConfig"]["dataset"] = {"universe_release_id": UNIVERSE_RELEASE_B}
+    source = tmp_path / "manifest.json"
+    source.write_text(json.dumps(manifest), encoding="utf-8")
+    output = tmp_path / "v2"
+
+    with pytest.raises(ValueError, match="conflicting UniverseRelease identities"):
+        export_manifest_as_v2_bundle(
+            source,
+            output,
+            git_commit="fixture-commit",
+            container_digest="sha256:" + "c" * 64,
+        )
+
+    assert not output.exists()
+
+
 def test_conflicting_override_fails_without_partial_bundle(tmp_path: Path):
     output = tmp_path / "v2"
 
@@ -137,8 +182,10 @@ def test_conflicting_override_fails_without_partial_bundle(tmp_path: Path):
 
 def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
     output = tmp_path / "v2"
+    source = FIXTURES / "producer_valid.json"
+    source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
     path = export_manifest_as_v2_bundle(
-        FIXTURES / "producer_valid.json",
+        source,
         output,
         git_commit="fixture-commit",
         container_digest="sha256:" + "b" * 64,
@@ -156,6 +203,10 @@ def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
         "VALIDATION_RESULT",
     ]
     assert {item["dataReleaseId"] for item in payload["artifacts"]} == {DATA_RELEASE_A}
+    assert {item["universeReleaseId"] for item in payload["artifacts"]} == {UNIVERSE_RELEASE_A}
+    assert {
+        item["metadata"]["sourceManifestSha256"] for item in payload["artifacts"]
+    } == {source_sha256}
     assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
     assert payload["rootArtifactIds"] == [payload["artifacts"][-1]["artifactId"]]
 
