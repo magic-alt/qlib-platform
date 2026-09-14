@@ -254,7 +254,9 @@ def test_instrument_master_fails_closed_for_provider_error_and_schema_drift():
 
     bad = pd.DataFrame({"ts_code": ["600000.SH"], "list_status": ["L"]})
     schema_source = TushareSemanticDataSource(
-        _StubClient({"stock_basic": [FetchResult(bad, "success", 1), FetchResult(pd.DataFrame(), "empty", 1)]})
+        _StubClient(
+            {"stock_basic": [FetchResult(bad, "success", 1), FetchResult(pd.DataFrame(), "empty", 1)]}
+        )
     )
     schema = schema_source.fetch_dataset(DatasetRequest("instrument_master", require_complete=False))
     assert schema.status == "schema_mismatch"
@@ -290,6 +292,29 @@ def test_trading_calendar_canonicalizes_dates_and_open_flag_with_range_params():
     assert params["exchange"] == ""
 
 
+def test_trading_calendar_same_day_uses_calendar_range_parameters():
+    raw = pd.DataFrame(
+        {
+            "exchange": ["SSE"],
+            "cal_date": ["20260910"],
+            "is_open": [1],
+            "pretrade_date": ["20260909"],
+        }
+    )
+    client = _StubClient({"trade_cal": FetchResult(raw, "success", 1)})
+    source = TushareSemanticDataSource(client)
+
+    result = source.fetch_dataset(
+        DatasetRequest("trading_calendar", start="2026-09-10", end="2026-09-10")
+    )
+
+    assert result.status == "success"
+    _, params = client.calls[0]
+    assert params["start_date"] == "20260910"
+    assert params["end_date"] == "20260910"
+    assert "trade_date" not in params
+
+
 def test_trading_calendar_fails_closed_for_error_and_schema_drift():
     failed_source = TushareSemanticDataSource(
         _StubClient({"trade_cal": FetchResult(pd.DataFrame(), "failed", 2, "timeout")})
@@ -302,9 +327,7 @@ def test_trading_calendar_fails_closed_for_error_and_schema_drift():
     bad_source = TushareSemanticDataSource(
         _StubClient({"trade_cal": FetchResult(pd.DataFrame({"cal_date": ["20260910"]}), "success", 1)})
     )
-    bad = bad_source.fetch_dataset(
-        DatasetRequest("trading_calendar", start="2026-09-10", end="2026-09-11")
-    )
+    bad = bad_source.fetch_dataset(DatasetRequest("trading_calendar", start="2026-09-10", end="2026-09-11"))
     assert bad.status == "schema_mismatch"
     assert "is_open" in (bad.error or "")
 
