@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -64,23 +65,57 @@ def _write_payload(root: Path, artifact_id: str, payload: object) -> tuple[Path,
     return path, digest
 
 
+def _validated_instrument(value: object, *, owner: str) -> str:
+    instrument = str(value or "").strip().upper()
+    if len(instrument) != 8 or instrument[:2] not in {"SH", "SZ", "BJ"} or not instrument[2:].isdigit():
+        raise ValueError(f"Invalid {owner} instrument: {instrument}")
+    return instrument
+
+
+def _validated_score(value: Any, *, instrument: str, owner: str) -> Any:
+    if value is None:
+        return None
+    try:
+        finite = math.isfinite(float(value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {owner} score: {instrument}") from exc
+    if not finite:
+        raise ValueError(f"Invalid {owner} score: {instrument}")
+    return value
+
+
+def _signal_payload(signals: Sequence[Mapping[str, Any]]) -> dict[str, object]:
+    preserved: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for signal in signals:
+        instrument = _validated_instrument(signal.get("instrument"), owner="signal")
+        if instrument in seen:
+            raise ValueError(f"Duplicate signal instrument: {instrument}")
+        seen.add(instrument)
+        _validated_score(signal.get("score"), instrument=instrument, owner="signal")
+        preserved.append(dict(signal))
+    return {"signals": preserved}
+
+
 def _target_payload(targets: Sequence[Mapping[str, Any]]) -> dict[str, object]:
     normalized: list[dict[str, object]] = []
     seen: set[str] = set()
     gross = 0.0
     for target in targets:
-        instrument = str(target.get("instrument") or "").strip().upper()
-        if len(instrument) != 8 or instrument[:2] not in {"SH", "SZ", "BJ"} or not instrument[2:].isdigit():
-            raise ValueError(f"Invalid target instrument: {instrument}")
+        instrument = _validated_instrument(target.get("instrument"), owner="target")
         if instrument in seen:
             raise ValueError(f"Duplicate target instrument: {instrument}")
         seen.add(instrument)
-        weight = float(target.get("targetWeight", target.get("target_weight", 0.0)))
-        if weight < 0 or weight > 1:
+        try:
+            weight = float(target.get("targetWeight", target.get("target_weight", 0.0)))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid target weight: {instrument}") from exc
+        if not math.isfinite(weight) or weight < 0 or weight > 1:
             raise ValueError(f"Invalid target weight: {instrument}")
+        score = _validated_score(target.get("score"), instrument=instrument, owner="target")
         gross += weight
-        normalized.append({"instrument": instrument, "targetWeight": weight, "score": target.get("score")})
-    if not normalized or gross > 1.000001:
+        normalized.append({"instrument": instrument, "targetWeight": weight, "score": score})
+    if not normalized or not math.isfinite(gross) or gross > 1.000001:
         raise ValueError("Target portfolio must be non-empty with gross exposure no greater than 1")
     return {"targets": sorted(normalized, key=lambda item: str(item["instrument"]))}
 
@@ -116,10 +151,10 @@ def export_research_bundle(
         if not value.strip():
             raise ValueError(f"{name} is required")
 
-    # Validate the complete target payload before creating the output directory
-    # or writing any upstream artifacts. Invalid v2 input must fail without
-    # leaving a partial producer bundle that could later be mistaken for valid
-    # handoff evidence.
+    # Validate all execution-facing research projections before creating the
+    # output directory. Invalid v2 input must fail without leaving a partial
+    # producer bundle that could later be mistaken for valid handoff evidence.
+    signal_payload = _signal_payload(signals)
     target_payload = _target_payload(targets)
     canonical_targets = target_payload["targets"]
     targets_sha = hashlib.sha256(_canonical_bytes(canonical_targets)).hexdigest()
@@ -209,7 +244,7 @@ def export_research_bundle(
     artifacts[-1]["strategyPolicyId"] = policy_id
     signal_id = publish(
         ResearchArtifactType.SIGNAL_SNAPSHOT,
-        {"signals": [dict(item) for item in signals]},
+        signal_payload,
         parents=[model_id, policy_id],
         model_release_id=model_id,
         strategy_policy_id=policy_id,

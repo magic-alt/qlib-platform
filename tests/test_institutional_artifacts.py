@@ -32,6 +32,19 @@ def _context() -> ResearchBundleContext:
     )
 
 
+def _export(output: Path, *, targets: list[dict]) -> Path:
+    return export_research_bundle(
+        output,
+        context=_context(),
+        promotion_status=ResearchPromotionStatus.CANDIDATE,
+        model={},
+        strategy_policy={},
+        signals=[],
+        targets=targets,
+        validation={},
+    )
+
+
 def test_export_bundle_is_content_addressed_and_research_only(tmp_path: Path):
     path = export_research_bundle(
         tmp_path,
@@ -140,4 +153,30 @@ def test_export_bundle_rejects_invalid_release_lineage_before_writes(tmp_path: P
             targets=[{"instrument": "SH600000", "targetWeight": 0.1}],
             validation={},
         )
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_target_weight_fails_before_bundle_creation(tmp_path: Path, invalid: float):
+    output = tmp_path / "bundle"
+
+    with pytest.raises(ValueError, match="Invalid target weight"):
+        _export(
+            output,
+            targets=[{"instrument": "SH600000", "targetWeight": invalid, "score": 0.5}],
+        )
+
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_target_score_fails_before_bundle_creation(tmp_path: Path, invalid: float):
+    output = tmp_path / "bundle"
+
+    with pytest.raises(ValueError, match="Invalid target score"):
+        _export(
+            output,
+            targets=[{"instrument": "SH600000", "targetWeight": 0.1, "score": invalid}],
+        )
+
     assert not output.exists()
