@@ -206,12 +206,17 @@ def test_resume_cursor_starts_at_failed_offset_without_refetching_prior_pages():
         cursor=initial.pagination.next_cursor,
     )
 
-    assert resumed.status == "success"
+    assert resumed.status == "incomplete"
+    assert resumed.succeeded is False
+    assert resumed.error_class == "resume_prefix_required"
+    assert resumed.error == "resumed pagination segment requires the caller's durable prefix before validation"
     assert resumed.batch is not None
     assert resumed.batch.data["instrument"].tolist() == ["SH600002"]
     assert resumed.pagination is not None
     assert resumed.pagination.start_offset == 2
     assert resumed_client.calls[0][1]["offset"] == 2
+    with pytest.raises(DataSourceContractError, match="incomplete"):
+        require_usable(resumed, request)
 
 
 @pytest.mark.parametrize(
@@ -278,9 +283,7 @@ def test_daily_basic_and_adjustment_factor_pagination_stay_inside_provider_adapt
             "circ_mv": [200.0],
         }
     )
-    adj_raw = pd.DataFrame(
-        {"ts_code": ["600000.SH"], "trade_date": ["20260910"], "adj_factor": [1.2]}
-    )
+    adj_raw = pd.DataFrame({"ts_code": ["600000.SH"], "trade_date": ["20260910"], "adj_factor": [1.2]})
     client = _StubClient(
         {
             "daily_basic": FetchResult(basic_raw, "success", 1),
