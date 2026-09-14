@@ -209,7 +209,9 @@ def test_resume_cursor_starts_at_failed_offset_without_refetching_prior_pages():
     assert resumed.status == "incomplete"
     assert resumed.succeeded is False
     assert resumed.error_class == "resume_prefix_required"
-    assert resumed.error == "resumed pagination segment requires the caller's durable prefix before validation"
+    assert (
+        resumed.error == "resumed pagination segment requires the caller's durable prefix before validation"
+    )
     assert resumed.batch is not None
     assert resumed.batch.data["instrument"].tolist() == ["SH600002"]
     assert resumed.pagination is not None
