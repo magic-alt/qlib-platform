@@ -241,9 +241,7 @@ def export_research_bundle(
         "artifacts": artifacts,
     }
     path = root / "qlib_research_bundle.v2.json"
-    path.write_bytes(
-        json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8")
-    )
+    path.write_bytes(json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2).encode("utf-8"))
     path.with_name("qlib_research_bundle.v2.uploads.json").write_bytes(
         json.dumps({"schemaVersion": SCHEMA_VERSION, "uploads": uploads}, sort_keys=True, indent=2).encode(
             "utf-8"
