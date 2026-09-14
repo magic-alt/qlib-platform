@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: data-platform
+applies_to_commit: 9d36f4750016f2cebe2d0c18791886d4add2b10a
+last_verified: 2026-09-14
+---
+
 # Semantic ingestion storage boundary
 
 The ingestion pipeline keeps the existing raw consumer contract stable while moving ownership of the required daily datasets to the provider-neutral semantic DataSource SDK.
