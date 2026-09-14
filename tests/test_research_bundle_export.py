@@ -63,9 +63,7 @@ def test_legacy_research_manifest_converts_to_v2_bundle(tmp_path: Path):
     assert payload["importType"] == "QLIB_RESEARCH_BUNDLE"
     assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
     assert {item["universeReleaseId"] for item in payload["artifacts"]} == {UNIVERSE_RELEASE_A}
-    assert {
-        item["metadata"]["sourceManifestSha256"] for item in payload["artifacts"]
-    } == {source_sha256}
+    assert {item["metadata"]["sourceManifestSha256"] for item in payload["artifacts"]} == {source_sha256}
     validation = next(item for item in payload["artifacts"] if item["artifactType"] == "VALIDATION_RESULT")
     uploads = json.loads(path.with_name("qlib_research_bundle.v2.uploads.json").read_text())["uploads"]
     validation_payload = json.loads(Path(uploads[validation["payloadRef"]["objectKey"]]).read_text())
@@ -204,9 +202,7 @@ def test_frozen_v2_positive_fixture_preserves_producer_contract(tmp_path: Path):
     ]
     assert {item["dataReleaseId"] for item in payload["artifacts"]} == {DATA_RELEASE_A}
     assert {item["universeReleaseId"] for item in payload["artifacts"]} == {UNIVERSE_RELEASE_A}
-    assert {
-        item["metadata"]["sourceManifestSha256"] for item in payload["artifacts"]
-    } == {source_sha256}
+    assert {item["metadata"]["sourceManifestSha256"] for item in payload["artifacts"]} == {source_sha256}
     assert {item["promotionStatus"] for item in payload["artifacts"]} == {"RESEARCH_PROMOTED"}
     assert payload["rootArtifactIds"] == [payload["artifacts"][-1]["artifactId"]]
 
