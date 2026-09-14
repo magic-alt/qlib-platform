@@ -304,9 +304,7 @@ def test_trading_calendar_same_day_uses_calendar_range_parameters():
     client = _StubClient({"trade_cal": FetchResult(raw, "success", 1)})
     source = TushareSemanticDataSource(client)
 
-    result = source.fetch_dataset(
-        DatasetRequest("trading_calendar", start="2026-09-10", end="2026-09-10")
-    )
+    result = source.fetch_dataset(DatasetRequest("trading_calendar", start="2026-09-10", end="2026-09-10"))
 
     assert result.status == "success"
     _, params = client.calls[0]
