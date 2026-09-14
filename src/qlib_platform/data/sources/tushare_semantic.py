@@ -80,9 +80,9 @@ class TushareSemanticDataSource:
         frame = pd.DataFrame(
             {
                 "instrument": raw["ts_code"].astype(str).map(ts_to_qlib),
-                "trading_date": pd.to_datetime(raw["trade_date"], format="%Y%m%d", errors="raise").dt.strftime(
-                    "%Y-%m-%d"
-                ),
+                "trading_date": pd.to_datetime(
+                    raw["trade_date"], format="%Y%m%d", errors="raise"
+                ).dt.strftime("%Y-%m-%d"),
                 "event_time": _ashare_close_time(raw["trade_date"]),
                 "available_at": pd.NaT,
                 "open": pd.to_numeric(raw["open"], errors="raise"),
@@ -118,7 +118,15 @@ class TushareSemanticDataSource:
         )
         if result.status != "success":
             return _failure_envelope(result, request)
-        required = {"ts_code", "trade_date", "total_share", "float_share", "free_share", "total_mv", "circ_mv"}
+        required = {
+            "ts_code",
+            "trade_date",
+            "total_share",
+            "float_share",
+            "free_share",
+            "total_mv",
+            "circ_mv",
+        }
         missing = required - set(result.data.columns)
         if missing:
             return _schema_failure(result, missing)
@@ -126,9 +134,9 @@ class TushareSemanticDataSource:
         frame = pd.DataFrame(
             {
                 "instrument": raw["ts_code"].astype(str).map(ts_to_qlib),
-                "trading_date": pd.to_datetime(raw["trade_date"], format="%Y%m%d", errors="raise").dt.strftime(
-                    "%Y-%m-%d"
-                ),
+                "trading_date": pd.to_datetime(
+                    raw["trade_date"], format="%Y%m%d", errors="raise"
+                ).dt.strftime("%Y-%m-%d"),
                 "event_time": _ashare_close_time(raw["trade_date"]),
                 "available_at": pd.NaT,
                 "total_shares": pd.to_numeric(raw["total_share"], errors="coerce") * 10000.0,
@@ -177,9 +185,9 @@ class TushareSemanticDataSource:
         frame = pd.DataFrame(
             {
                 "instrument": raw["ts_code"].astype(str).map(ts_to_qlib),
-                "trading_date": pd.to_datetime(raw["trade_date"], format="%Y%m%d", errors="raise").dt.strftime(
-                    "%Y-%m-%d"
-                ),
+                "trading_date": pd.to_datetime(
+                    raw["trade_date"], format="%Y%m%d", errors="raise"
+                ).dt.strftime("%Y-%m-%d"),
                 "event_time": _ashare_close_time(raw["trade_date"]),
                 "available_at": pd.NaT,
                 "adjustment_factor": pd.to_numeric(raw["adj_factor"], errors="raise"),
@@ -235,7 +243,7 @@ class TushareSemanticDataSource:
             fields=_CALENDAR_FIELDS,
             required=False,
             exchange="",
-            **_date_params(request),
+            **_calendar_date_params(request),
         )
         if result.status != "success":
             return _failure_envelope(result, request)
@@ -270,8 +278,21 @@ class TushareSemanticDataSource:
 
 
 def _date_params(request: DatasetRequest) -> dict[str, str]:
-    if request.start and request.end and pd.Timestamp(request.start).date() == pd.Timestamp(request.end).date():
+    if (
+        request.start
+        and request.end
+        and pd.Timestamp(request.start).date() == pd.Timestamp(request.end).date()
+    ):
         return {"trade_date": pd.Timestamp(request.start).strftime("%Y%m%d")}
+    params: dict[str, str] = {}
+    if request.start:
+        params["start_date"] = pd.Timestamp(request.start).strftime("%Y%m%d")
+    if request.end:
+        params["end_date"] = pd.Timestamp(request.end).strftime("%Y%m%d")
+    return params
+
+
+def _calendar_date_params(request: DatasetRequest) -> dict[str, str]:
     params: dict[str, str] = {}
     if request.start:
         params["start_date"] = pd.Timestamp(request.start).strftime("%Y%m%d")
@@ -288,7 +309,11 @@ def _ashare_close_time(values: pd.Series) -> pd.Series:
 def _select_fields(frame: pd.DataFrame, request: DatasetRequest) -> pd.DataFrame:
     if not request.fields:
         return frame.reset_index(drop=True)
-    identity = [column for column in ("instrument", "trading_date", "event_time", "available_at") if column in frame]
+    identity = [
+        column
+        for column in ("instrument", "trading_date", "event_time", "available_at")
+        if column in frame
+    ]
     selected = list(dict.fromkeys([*identity, *request.fields]))
     if set(selected) - set(frame.columns):
         return frame.reset_index(drop=True)
