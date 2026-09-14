@@ -372,7 +372,9 @@ def _identity(frame: pd.DataFrame) -> pd.DataFrame:
     required = {"instrument", "trading_date"}
     missing = required - set(frame.columns)
     if missing:
-        raise DataSourceContractError(f"canonical compatibility projection missing columns: {sorted(missing)}")
+        raise DataSourceContractError(
+            f"canonical compatibility projection missing columns: {sorted(missing)}"
+        )
     return pd.DataFrame(
         {
             "ts_code": frame["instrument"].astype(str).map(qlib_to_ts),
