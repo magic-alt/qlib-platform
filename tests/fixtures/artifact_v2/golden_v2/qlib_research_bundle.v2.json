@@ -1,0 +1,163 @@
+{
+  "artifacts": [
+    {
+      "artifactId": "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+      "artifactType": "MODEL_RELEASE",
+      "asOfTime": "2026-08-13T23:59:59+08:00",
+      "containerDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "currency": "CNY",
+      "dataReleaseId": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gitCommit": "fixture-commit-stage-b",
+      "metadata": {
+        "sourceManifestSha256": "5e6d237c157032955364b8ba878452da3d8c382ab6cb534923cc6bc3f3836e7a"
+      },
+      "modelReleaseId": "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+      "parentArtifactIds": [],
+      "payloadRef": {
+        "mediaType": "application/json",
+        "objectKey": "qlib/fixture-run-v2/art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa.json",
+        "rows": null,
+        "sha256": "d604d8e2530b384735a46052fdc91342f487e785f7b661ce91dc16c05df39160"
+      },
+      "payloadSha256": "d604d8e2530b384735a46052fdc91342f487e785f7b661ce91dc16c05df39160",
+      "promotionStatus": "RESEARCH_PROMOTED",
+      "schemaVersion": "2.0",
+      "signalDate": null,
+      "strategyPolicyId": null,
+      "timezone": "Asia/Shanghai",
+      "tradeDate": null,
+      "universeReleaseId": "universe-csi300-fixture-v2"
+    },
+    {
+      "artifactId": "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91",
+      "artifactType": "STRATEGY_POLICY",
+      "asOfTime": "2026-08-13T23:59:59+08:00",
+      "containerDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "currency": "CNY",
+      "dataReleaseId": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gitCommit": "fixture-commit-stage-b",
+      "metadata": {
+        "sourceManifestSha256": "5e6d237c157032955364b8ba878452da3d8c382ab6cb534923cc6bc3f3836e7a"
+      },
+      "modelReleaseId": "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+      "parentArtifactIds": [
+        "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa"
+      ],
+      "payloadRef": {
+        "mediaType": "application/json",
+        "objectKey": "qlib/fixture-run-v2/art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91.json",
+        "rows": null,
+        "sha256": "fea9a91f114ef813d6cce19b4650f02cfbd70d3a58f16c9974eb0377338026f8"
+      },
+      "payloadSha256": "fea9a91f114ef813d6cce19b4650f02cfbd70d3a58f16c9974eb0377338026f8",
+      "promotionStatus": "RESEARCH_PROMOTED",
+      "schemaVersion": "2.0",
+      "signalDate": null,
+      "strategyPolicyId": "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91",
+      "timezone": "Asia/Shanghai",
+      "tradeDate": null,
+      "universeReleaseId": "universe-csi300-fixture-v2"
+    },
+    {
+      "artifactId": "art_c9dad4d294e85df2f3bf0d892f68f0c79a5cbd950ec05c4be0a8a16aecb53f39",
+      "artifactType": "SIGNAL_SNAPSHOT",
+      "asOfTime": "2026-08-13T23:59:59+08:00",
+      "containerDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "currency": "CNY",
+      "dataReleaseId": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gitCommit": "fixture-commit-stage-b",
+      "metadata": {
+        "sourceManifestSha256": "5e6d237c157032955364b8ba878452da3d8c382ab6cb534923cc6bc3f3836e7a"
+      },
+      "modelReleaseId": "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+      "parentArtifactIds": [
+        "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+        "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91"
+      ],
+      "payloadRef": {
+        "mediaType": "application/json",
+        "objectKey": "qlib/fixture-run-v2/art_c9dad4d294e85df2f3bf0d892f68f0c79a5cbd950ec05c4be0a8a16aecb53f39.json",
+        "rows": null,
+        "sha256": "3881b56ce03f3ce6651d6af9b576a984ab2b078448f22152d63e38dba2efe517"
+      },
+      "payloadSha256": "3881b56ce03f3ce6651d6af9b576a984ab2b078448f22152d63e38dba2efe517",
+      "promotionStatus": "RESEARCH_PROMOTED",
+      "schemaVersion": "2.0",
+      "signalDate": "2026-08-13",
+      "strategyPolicyId": "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91",
+      "timezone": "Asia/Shanghai",
+      "tradeDate": "2026-08-14",
+      "universeReleaseId": "universe-csi300-fixture-v2"
+    },
+    {
+      "artifactId": "art_0b507bd8c84fc99fcda853e45ea403c17e2360dffa49e04263c1dba864736c0c",
+      "artifactType": "TARGET_PORTFOLIO",
+      "asOfTime": "2026-08-13T23:59:59+08:00",
+      "containerDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "currency": "CNY",
+      "dataReleaseId": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gitCommit": "fixture-commit-stage-b",
+      "metadata": {
+        "sourceManifestSha256": "5e6d237c157032955364b8ba878452da3d8c382ab6cb534923cc6bc3f3836e7a",
+        "targetsSha256": "d27a680f9d69a0df11c0437412d4c0561533f2dc26d38f3595c928981a0e5b3e"
+      },
+      "modelReleaseId": "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+      "parentArtifactIds": [
+        "art_c9dad4d294e85df2f3bf0d892f68f0c79a5cbd950ec05c4be0a8a16aecb53f39",
+        "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91"
+      ],
+      "payloadRef": {
+        "mediaType": "application/json",
+        "objectKey": "qlib/fixture-run-v2/art_0b507bd8c84fc99fcda853e45ea403c17e2360dffa49e04263c1dba864736c0c.json",
+        "rows": null,
+        "sha256": "416441d7e3641e0faa79d52f9ce02ac9ac590ce25c9f2a035799442a4582dcf7"
+      },
+      "payloadSha256": "416441d7e3641e0faa79d52f9ce02ac9ac590ce25c9f2a035799442a4582dcf7",
+      "promotionStatus": "RESEARCH_PROMOTED",
+      "schemaVersion": "2.0",
+      "signalDate": "2026-08-13",
+      "strategyPolicyId": "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91",
+      "timezone": "Asia/Shanghai",
+      "tradeDate": "2026-08-14",
+      "universeReleaseId": "universe-csi300-fixture-v2"
+    },
+    {
+      "artifactId": "art_c8ff078f28a53fea9b98c34575fc6cf543183ff8c1645515171cceaff6431b15",
+      "artifactType": "VALIDATION_RESULT",
+      "asOfTime": "2026-08-13T23:59:59+08:00",
+      "containerDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "currency": "CNY",
+      "dataReleaseId": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gitCommit": "fixture-commit-stage-b",
+      "metadata": {
+        "sourceManifestSha256": "5e6d237c157032955364b8ba878452da3d8c382ab6cb534923cc6bc3f3836e7a"
+      },
+      "modelReleaseId": "art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa",
+      "parentArtifactIds": [
+        "art_0b507bd8c84fc99fcda853e45ea403c17e2360dffa49e04263c1dba864736c0c"
+      ],
+      "payloadRef": {
+        "mediaType": "application/json",
+        "objectKey": "qlib/fixture-run-v2/art_c8ff078f28a53fea9b98c34575fc6cf543183ff8c1645515171cceaff6431b15.json",
+        "rows": null,
+        "sha256": "e0d64dae4e25a721b76bbe7693742c26f410c7f0b2796bc587a569efdd685ad2"
+      },
+      "payloadSha256": "e0d64dae4e25a721b76bbe7693742c26f410c7f0b2796bc587a569efdd685ad2",
+      "promotionStatus": "RESEARCH_PROMOTED",
+      "schemaVersion": "2.0",
+      "signalDate": null,
+      "strategyPolicyId": "art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91",
+      "timezone": "Asia/Shanghai",
+      "tradeDate": null,
+      "universeReleaseId": "universe-csi300-fixture-v2"
+    }
+  ],
+  "externalRunId": "fixture-run-v2",
+  "importType": "QLIB_RESEARCH_BUNDLE",
+  "name": null,
+  "rootArtifactIds": [
+    "art_c8ff078f28a53fea9b98c34575fc6cf543183ff8c1645515171cceaff6431b15"
+  ],
+  "runKind": "walk_forward",
+  "schemaVersion": "2.0"
+}

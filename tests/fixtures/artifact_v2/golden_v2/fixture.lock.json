@@ -1,0 +1,22 @@
+{
+  "bundlePath": "qlib_research_bundle.v2.json",
+  "bundleSha256": "676f7cd29ddabe6f4c559bacaba4e370ccda819ffd4da2bbad106b1307d800e8",
+  "contractVersion": "2.0",
+  "dataReleaseId": "ds_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "externalRunId": "fixture-run-v2",
+  "files": {
+    "payloads/art_0b507bd8c84fc99fcda853e45ea403c17e2360dffa49e04263c1dba864736c0c.json": "416441d7e3641e0faa79d52f9ce02ac9ac590ce25c9f2a035799442a4582dcf7",
+    "payloads/art_24f36c33b78c7376384078b6d212c709a907d3e3994d1a52bceb6025c93a5b91.json": "fea9a91f114ef813d6cce19b4650f02cfbd70d3a58f16c9974eb0377338026f8",
+    "payloads/art_934fd77a9483d9d96dababdcd77f47df5dd77a73bd00c4707953588f36483eaa.json": "d604d8e2530b384735a46052fdc91342f487e785f7b661ce91dc16c05df39160",
+    "payloads/art_c8ff078f28a53fea9b98c34575fc6cf543183ff8c1645515171cceaff6431b15.json": "e0d64dae4e25a721b76bbe7693742c26f410c7f0b2796bc587a569efdd685ad2",
+    "payloads/art_c9dad4d294e85df2f3bf0d892f68f0c79a5cbd950ec05c4be0a8a16aecb53f39.json": "3881b56ce03f3ce6651d6af9b576a984ab2b078448f22152d63e38dba2efe517",
+    "qlib_research_bundle.v2.json": "676f7cd29ddabe6f4c559bacaba4e370ccda819ffd4da2bbad106b1307d800e8"
+  },
+  "fixtureId": "qlib-artifact-v2-stage-b-golden",
+  "producerBaselineCommit": "2c896093c34289e91860807cce88a61ec41473ec",
+  "producerRepository": "magic-alt/qlib-platform",
+  "schemaVersion": "1.0",
+  "sourceManifestPath": "../producer_valid.json",
+  "sourceManifestSha256": "5e6d237c157032955364b8ba878452da3d8c382ab6cb534923cc6bc3f3836e7a",
+  "universeReleaseId": "universe-csi300-fixture-v2"
+}
