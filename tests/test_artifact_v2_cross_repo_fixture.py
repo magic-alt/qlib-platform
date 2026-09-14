@@ -36,12 +36,8 @@ def test_cross_repo_golden_bundle_regenerates_byte_for_byte(tmp_path: Path):
     bundle = json.loads(generated.read_text(encoding="utf-8"))
     assert bundle["schemaVersion"] == lock["contractVersion"]
     assert bundle["externalRunId"] == lock["externalRunId"]
-    assert {item["dataReleaseId"] for item in bundle["artifacts"]} == {
-        lock["dataReleaseId"]
-    }
-    assert {item["universeReleaseId"] for item in bundle["artifacts"]} == {
-        lock["universeReleaseId"]
-    }
+    assert {item["dataReleaseId"] for item in bundle["artifacts"]} == {lock["dataReleaseId"]}
+    assert {item["universeReleaseId"] for item in bundle["artifacts"]} == {lock["universeReleaseId"]}
 
     expected_files = {"qlib_research_bundle.v2.json"}
     for artifact in bundle["artifacts"]:
