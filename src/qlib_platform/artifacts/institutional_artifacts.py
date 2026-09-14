@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import Any, Mapping, Sequence
 
 SCHEMA_VERSION = "2.0"
 IMPORT_TYPE = "QLIB_RESEARCH_BUNDLE"
+_DATA_RELEASE_ID = re.compile(r"^ds_[0-9a-f]{64}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ResearchArtifactType(str, Enum):
@@ -40,6 +43,7 @@ class ResearchBundleContext:
     timezone: str = "Asia/Shanghai"
     currency: str = "CNY"
     universe_release_id: str | None = None
+    source_manifest_sha256: str | None = None
     name: str | None = None
 
 
@@ -92,8 +96,14 @@ def export_research_bundle(
     targets: Sequence[Mapping[str, Any]],
     validation: Mapping[str, Any],
 ) -> Path:
-    if not context.data_release_id.startswith("ds_") or len(context.data_release_id) != 67:
-        raise ValueError("data_release_id must be a content-addressed DataRelease ID")
+    if not _DATA_RELEASE_ID.fullmatch(context.data_release_id):
+        raise ValueError("data_release_id must be ds_<64 lowercase hex>")
+    if context.universe_release_id is not None:
+        universe_release_id = context.universe_release_id.strip()
+        if not universe_release_id or any(character.isspace() for character in universe_release_id):
+            raise ValueError("universe_release_id must be a non-empty whitespace-free identity")
+    if context.source_manifest_sha256 is not None and not _SHA256.fullmatch(context.source_manifest_sha256):
+        raise ValueError("source_manifest_sha256 must be 64 lowercase hex characters")
     if context.trade_date <= context.signal_date:
         raise ValueError("trade_date must be after signal_date")
     for name, value in {
@@ -134,6 +144,8 @@ def export_research_bundle(
             "artifactType": artifact_type.value,
             "promotionStatus": promotion_status.value,
             "dataReleaseId": context.data_release_id,
+            "universeReleaseId": context.universe_release_id,
+            "sourceManifestSha256": context.source_manifest_sha256,
             "payloadSha256": payload_sha,
             "parentArtifactIds": list(parents),
             "modelReleaseId": model_release_id,
@@ -145,6 +157,9 @@ def export_research_bundle(
             raise RuntimeError("Canonical artifact payload changed while writing")
         object_key = f"qlib/{context.external_run_id}/{artifact_id}.json"
         uploads[object_key] = str(local_path)
+        bound_metadata = dict(metadata or {})
+        if context.source_manifest_sha256 is not None:
+            bound_metadata["sourceManifestSha256"] = context.source_manifest_sha256
         artifact = {
             "schemaVersion": SCHEMA_VERSION,
             "artifactId": artifact_id,
@@ -171,7 +186,7 @@ def export_research_bundle(
                 if isinstance(payload, Sequence) and not isinstance(payload, str)
                 else None,
             },
-            "metadata": dict(metadata or {}),
+            "metadata": bound_metadata,
         }
         artifacts.append(artifact)
         return artifact_id
