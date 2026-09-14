@@ -72,9 +72,7 @@ def test_artifact_identity_changes_with_release_lineage(tmp_path: Path):
         "validation": {"metrics": {"icir": 0.51}},
     }
     first = export_research_bundle(tmp_path / "first", context=_context(), **common)
-    second_context = ResearchBundleContext(
-        **{**_context().__dict__, "source_manifest_sha256": "e" * 64}
-    )
+    second_context = ResearchBundleContext(**{**_context().__dict__, "source_manifest_sha256": "e" * 64})
     second = export_research_bundle(tmp_path / "second", context=second_context, **common)
 
     first_ids = [item["artifactId"] for item in json.loads(first.read_text())["artifacts"]]
@@ -130,9 +128,7 @@ def test_export_bundle_rejects_invalid_release_lineage_before_writes(tmp_path: P
         )
     assert not output.exists()
 
-    invalid_source_hash = ResearchBundleContext(
-        **{**_context().__dict__, "source_manifest_sha256": "bad"}
-    )
+    invalid_source_hash = ResearchBundleContext(**{**_context().__dict__, "source_manifest_sha256": "bad"})
     with pytest.raises(ValueError, match="source_manifest_sha256"):
         export_research_bundle(
             output,
