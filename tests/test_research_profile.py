@@ -18,6 +18,7 @@ from qlib_platform.research.contracts.research_profile import (
     InstrumentSpec,
     LabelDefinition,
     ResearchProfile,
+    ashare_etf_instrument,
     assert_information_available,
     assert_settings_profile_compatible,
     describe_research_profile,
@@ -52,6 +53,21 @@ def test_legacy_ashare_identity_is_vendor_neutral_and_handoff_ready() -> None:
     assert manifest["venue"] == "XSHG"
     assert manifest["aliases"][1]["symbol"] == "600000.SH"
     from_qlib.assert_governed_handoff_ready()
+
+
+def test_ashare_etf_identity_is_vendor_neutral_and_distinct_from_stock_identity() -> None:
+    from_qlib = ashare_etf_instrument("SH510300")
+    from_tushare = ashare_etf_instrument("510300.SH")
+
+    assert from_qlib == from_tushare
+    assert from_qlib.instrument_id == "CN.XSHG.ETF.510300"
+    assert from_qlib.subtype == "etf"
+    assert from_qlib.instrument_id != legacy_ashare_instrument("SH510300").instrument_id
+    assert [alias.symbol for alias in from_qlib.aliases] == ["SH510300", "510300.SH"]
+    from_qlib.assert_governed_handoff_ready()
+
+    with pytest.raises(ValueError, match="venue is not supported"):
+        ashare_etf_instrument("BJ510300")
 
 
 def test_instrument_handoff_rejects_research_only_continuous_and_incomplete_derivatives() -> None:
@@ -123,23 +139,25 @@ def test_calendar_label_and_profile_contracts_are_versioned_and_fail_closed() ->
         replace(profile, promotion_scope="paper")
 
 
-def test_profile_registry_defaults_to_legacy_ashare_and_keeps_etf_explicitly_unsupported(tmp_path) -> None:
+def test_profile_registry_defaults_to_legacy_ashare_and_enables_explicit_etf(tmp_path) -> None:
     settings = _Settings(tmp_path, {})
     profile = research_profile_from_settings(settings)
     assert profile.profile_id == "ashare_equity_v1"
     assert profile.subtype == "common_stock"
     assert profile.promotion_scope == "research_only"
     assert require_research_profile("ashare_equity_v1") is profile
-    assert describe_research_profile("ashare_etf_v1").implemented is False
 
-    with pytest.raises(ValueError, match="declared but not implemented"):
-        require_research_profile("ashare_etf_v1")
+    etf = require_research_profile("ashare_etf_v1")
+    assert etf is describe_research_profile("ashare_etf_v1")
+    assert etf.implemented is True
+    assert etf.subtype == "etf"
+    assert etf.promotion_scope == "research_only"
+
     with pytest.raises(ValueError, match="unknown research profile"):
         describe_research_profile("future_option_v1")
 
-    unsupported = _Settings(tmp_path, {"experiment": {"research_profile": "ashare_etf_v1"}})
-    with pytest.raises(ValueError, match="declared but not implemented"):
-        research_profile_from_settings(unsupported)
+    configured = _Settings(tmp_path, {"experiment": {"research_profile": "ashare_etf_v1"}})
+    assert research_profile_from_settings(configured) is etf
 
 
 def test_settings_preflight_rejects_label_frequency_and_horizon_drift(tmp_path) -> None:
@@ -181,8 +199,11 @@ def test_alpha_applicability_is_separate_from_frozen_alpha_pack_identity(tmp_pat
 
     pit = alpha_pack_applicability(ALPHA_PACKS["alpha158_pit_v1"])
     market = alpha_pack_applicability(ALPHA_PACKS["alpha158_market_v1"])
+    etf = alpha_pack_applicability(ALPHA_PACKS["etf_core_v1"])
     assert pit.pit_required is True
     assert market.pit_required is False
+    assert etf.pit_required is False
+    assert etf.supported_profile_ids == ("ashare_etf_v1",)
 
     unknown = AlphaPackSpec("future_pack", 1, "Future", (), (), 1, "future", ())
     with pytest.raises(ValueError, match="no ResearchProfile applicability"):
@@ -192,21 +213,25 @@ def test_alpha_applicability_is_separate_from_frozen_alpha_pack_identity(tmp_pat
     assert_alpha_pack_compatible(settings, ALPHA_PACKS["alpha158_market_v1"])
 
 
-def test_alpha_profile_compatibility_rejects_asset_subtype_label_and_profile_drift() -> None:
-    pack = ALPHA_PACKS["alpha158_market_v1"]
-    profile = require_research_profile("ashare_equity_v1")
-    assert_alpha_pack_profile_compatible(pack, profile)
+def test_alpha_profile_compatibility_rejects_cross_asset_pack_reuse() -> None:
+    stock_pack = ALPHA_PACKS["alpha158_market_v1"]
+    stock_profile = require_research_profile("ashare_equity_v1")
+    etf_pack = ALPHA_PACKS["etf_core_v1"]
+    etf_profile = require_research_profile("ashare_etf_v1")
+    assert_alpha_pack_profile_compatible(stock_pack, stock_profile)
+    assert_alpha_pack_profile_compatible(etf_pack, etf_profile)
 
-    etf = describe_research_profile("ashare_etf_v1")
     with pytest.raises(ValueError, match="not compatible"):
-        assert_alpha_pack_profile_compatible(pack, etf)
+        assert_alpha_pack_profile_compatible(stock_pack, etf_profile)
+    with pytest.raises(ValueError, match="not compatible"):
+        assert_alpha_pack_profile_compatible(etf_pack, stock_profile)
     with pytest.raises(ValueError, match="asset class"):
-        assert_alpha_pack_profile_compatible(pack, replace(profile, asset_class="future"))
+        assert_alpha_pack_profile_compatible(stock_pack, replace(stock_profile, asset_class="future"))
     with pytest.raises(ValueError, match="subtype"):
-        assert_alpha_pack_profile_compatible(pack, replace(profile, subtype="preferred_stock"))
-    other_label = replace(profile.label, label_id="return_1d_v1")
+        assert_alpha_pack_profile_compatible(stock_pack, replace(stock_profile, subtype="preferred_stock"))
+    other_label = replace(stock_profile.label, label_id="return_1d_v1")
     with pytest.raises(ValueError, match="does not support label"):
-        assert_alpha_pack_profile_compatible(pack, replace(profile, label=other_label))
+        assert_alpha_pack_profile_compatible(stock_pack, replace(stock_profile, label=other_label))
 
 
 def test_available_at_guard_uses_absolute_time_not_same_date_alignment() -> None:
