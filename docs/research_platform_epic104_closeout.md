@@ -2,7 +2,7 @@
 
 Issue #104 is the September 2026 research-platform audit Epic. This page closes the **qlib-platform software scope** after child issues #105 through #110 were completed and merged. It is not a production-trading certificate and it does not close the paired execution-platform Epic `magic-alt/lean-local-platform#58`.
 
-The machine-readable source of truth for this closeout is [`contracts/research-platform-epic104.v1.json`](../contracts/research-platform-epic104.v1.json). CI verifies that the manifest continues to match the runtime contract versions, research profiles, Strategy SDK registry, data-source error taxonomy and governance boundary.
+The machine-readable source of truth for this closeout is `contracts/research-platform-epic104.v1.json`. CI verifies that the manifest continues to match the runtime contract versions, research profiles, Strategy SDK registry, data-source error taxonomy and governance boundary.
 
 ## Verdict
 
