@@ -1,3 +1,9 @@
+---
+status: ACTIVE
+owner: research
+last_verified: 2026-09-15
+---
+
 # Governed research pipeline UX
 
 `qlib-platform` uses one local research entry point for planning, matrix experiments, execution, recovery and review. The governed quickstart extends the existing CLI; it does **not** create a second scheduler and it does not require the web platform for offline research.
