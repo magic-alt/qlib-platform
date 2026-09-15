@@ -69,7 +69,7 @@ class ResumableCertifiedDailySyncService(CertifiedDailySyncService):
         try:
             resolved = resolve_dataset(self.settings, allow_legacy=False)
             payload = json.loads(resolved.manifest_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, ValueError, RuntimeError, json.JSONDecodeError, OSError):
+        except (KeyError, FileNotFoundError, ValueError, RuntimeError, json.JSONDecodeError, OSError):
             return None
         return payload, resolved.version_id
 
