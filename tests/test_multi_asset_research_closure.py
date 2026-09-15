@@ -17,7 +17,7 @@ from qlib_platform.research.contracts.research_profile import (
 
 
 def _git_blob_sha(path: Path) -> str:
-    payload = path.read_bytes()
+    payload = path.read_bytes().replace(b"\r\n", b"\n")
     header = f"blob {len(payload)}\0".encode()
     return hashlib.sha1(header + payload).hexdigest()
 
