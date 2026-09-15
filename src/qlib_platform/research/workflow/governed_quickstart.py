@@ -353,9 +353,7 @@ def _run(settings: Settings, args: argparse.Namespace, plan: dict[str, Any], roo
                             "summary": summary,
                             "warnings": warnings,
                         }
-                        outputs = _manifest_outputs(
-                            bt_result if isinstance(bt_result, Mapping) else None
-                        )
+                        outputs = _manifest_outputs(bt_result if isinstance(bt_result, Mapping) else None)
                         return ("SUCCEEDED" if bt_code == 0 else "FAILED"), metadata, outputs
 
                     bt_reused, bt_meta = _run_stage(
@@ -373,15 +371,9 @@ def _run(settings: Settings, args: argparse.Namespace, plan: dict[str, Any], roo
                             break
 
         plan["failureCount"] = failures
-        plan["status"] = (
-            "SUCCEEDED" if failures == 0 else "PARTIAL" if args.continue_on_error else "FAILED"
-        )
+        plan["status"] = "SUCCEEDED" if failures == 0 else "PARTIAL" if args.continue_on_error else "FAILED"
         plan["observedWarnings"] = list(
-            dict.fromkeys(
-                str(item)
-                for job in plan["jobs"]
-                for item in job.get("warnings", [])
-            )
+            dict.fromkeys(str(item) for job in plan["jobs"] for item in job.get("warnings", []))
         )
         legacy._write_matrix(root, plan)
     return 0 if failures == 0 else 2
@@ -389,9 +381,7 @@ def _run(settings: Settings, args: argparse.Namespace, plan: dict[str, Any], roo
 
 def _parser() -> argparse.ArgumentParser:
     parser = legacy.parser()
-    subparsers = next(
-        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
-    )
+    subparsers = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
     for name in _RESEARCH_COMMANDS:
         command = subparsers.choices[name]
         command.add_argument("--max-concurrent-jobs", type=int, default=1, choices=[1])
