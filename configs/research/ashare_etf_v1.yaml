@@ -29,6 +29,7 @@ baseline:
   ridgeAlpha: 1.0
   topk: 3
 backtest:
+  realizedReturnSpec: return_1d_t1_v1
   buyCostBps: 3.0
   sellCostBps: 3.0
   slippageBps: 1.0
