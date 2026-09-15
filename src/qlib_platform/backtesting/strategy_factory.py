@@ -3,6 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import TypeAlias
 
+from qlib_platform.backtesting.portfolio import PortfolioPolicy
+from qlib_platform.backtesting.strategy_sdk import (
+    PortfolioWeightingPolicy,
+    RebalancePolicy,
+    ResearchCostModel,
+    describe_strategy,
+)
 from qlib_platform.backtesting.topk_dropout import RankBufferPolicy, TopkDropoutPolicy
 
 StrategyPolicy: TypeAlias = TopkDropoutPolicy | RankBufferPolicy
@@ -51,3 +58,24 @@ def strategy_policy_id(policy: StrategyPolicy) -> str:
     if isinstance(policy, RankBufferPolicy):
         return "rank_buffer_v1"
     return "topk_dropout_v1"
+
+
+def strategy_descriptor(
+    policy: StrategyPolicy,
+    *,
+    portfolio_policy: PortfolioPolicy | None = None,
+    weighting_policy: PortfolioWeightingPolicy | None = None,
+    rebalance_policy: RebalancePolicy | None = None,
+    cost_model: ResearchCostModel | None = None,
+) -> dict[str, object]:
+    """Describe strategy, portfolio and backend contracts without changing execution."""
+
+    policy.validate()
+    return describe_strategy(
+        strategy_policy_id(policy),
+        decision_policy=asdict(policy),
+        portfolio_policy=portfolio_policy,
+        weighting_policy=weighting_policy,
+        rebalance_policy=rebalance_policy,
+        cost_model=cost_model,
+    )
