@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Mapping
 from zoneinfo import ZoneInfo
 
 from qlib_platform.data.symbols import qlib_to_ts, ts_to_qlib
