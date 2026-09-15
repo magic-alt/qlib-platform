@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
 
 from qlib_platform.data.production_daily_sync import ProductionDailySyncService
 from qlib_platform.runtime import daily_research_run as base
@@ -14,6 +16,47 @@ class DailyResearchRun(base.DailyResearchRun):
         self.settings = settings
         self.sync = ProductionDailySyncService(settings)
         self.root = settings.paths.state / "daily_run"
+
+    def _verify_dataset(self, plan: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+        dataset = super()._verify_dataset(plan, state)
+        data_path = Path(str(dataset["data_path"]))
+        feature_root = data_path / "features"
+        instrument_root = data_path / "instruments"
+        input_hash = base._identity(
+            {
+                "dataset_version_id": dataset["dataset_version_id"],
+                "dataset_manifest_sha256": dataset["dataset_manifest_sha256"],
+                "target_session": plan["target_session"],
+            },
+            prefix="features-",
+        )
+        if self._step_reusable(state, "feature_materialization", input_hash):
+            return dataset
+
+        feature_files = [path for path in feature_root.rglob("*") if path.is_file()]
+        instrument_files = [path for path in instrument_root.rglob("*") if path.is_file()]
+        if not feature_root.is_dir() or not feature_files:
+            raise RuntimeError(
+                f"published DatasetVersion has no materialized Qlib features: {feature_root}"
+            )
+        if not instrument_root.is_dir() or not instrument_files:
+            raise RuntimeError(
+                f"published DatasetVersion has no materialized Qlib instruments: {instrument_root}"
+            )
+        output = {
+            "dataset_version_id": dataset["dataset_version_id"],
+            "feature_file_count": len(feature_files),
+            "instrument_file_count": len(instrument_files),
+            "feature_root": str(feature_root),
+        }
+        self._finish_step(
+            state,
+            "feature_materialization",
+            status="SUCCEEDED",
+            input_hash=input_hash,
+            output=output,
+        )
+        return dataset
 
 
 def main() -> int:
