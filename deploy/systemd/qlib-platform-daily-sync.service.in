@@ -1,12 +1,12 @@
 [Unit]
-Description=qlib-platform standalone daily data sync
+Description=qlib-platform standalone daily research DAG
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=@REPO_ROOT@
-ExecStart=@PYTHON_EXE@ -m qlib_platform --config @CONFIG_PATH@ daily-sync
+ExecStart=@PYTHON_EXE@ -m qlib_platform.runtime.daily_research_run --config @CONFIG_PATH@
 
 [Install]
 WantedBy=default.target
