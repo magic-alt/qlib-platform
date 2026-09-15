@@ -194,9 +194,7 @@ def test_score_threshold_policy_runs_only_as_shadow_decision_overlay() -> None:
 def test_topk_dropout_v1_matches_frozen_action_fixture() -> None:
     fixture = _goldens()["topk_dropout_v1"]
     scores = pd.Series({"A": 0.9, "B": 0.8, "C": 0.7, "D": 0.6})
-    positions = pd.DataFrame(
-        {"instrument": ["B", "D"], "quantity": [100, 100], "holding_days": [5, 5]}
-    )
+    positions = pd.DataFrame({"instrument": ["B", "D"], "quantity": [100, 100], "holding_days": [5, 5]})
     policy = TopkDropoutPolicy(**fixture["policy"])
 
     decision = topk_dropout_decision(scores, positions, _quotes(list(scores.index)), policy=policy)
@@ -208,9 +206,7 @@ def test_topk_dropout_v1_matches_frozen_action_fixture() -> None:
 def test_rank_buffer_v1_matches_frozen_action_fixture() -> None:
     fixture = _goldens()["rank_buffer_v1"]
     scores = pd.Series({f"S{rank:02d}": 100 - rank for rank in range(1, 26)})
-    positions = pd.DataFrame(
-        {"instrument": ["S03", "S22"], "quantity": [100, 100], "holding_days": [3, 3]}
-    )
+    positions = pd.DataFrame({"instrument": ["S03", "S22"], "quantity": [100, 100], "holding_days": [3, 3]})
     policy = RankBufferPolicy(**fixture["policy"])
 
     decision = rank_buffer_decision(scores, positions, _quotes(list(scores.index)), policy=policy)
@@ -218,10 +214,14 @@ def test_rank_buffer_v1_matches_frozen_action_fixture() -> None:
         decision["target_action"].isin({"BUY", "SELL"}),
         ["instrument", "target_action", "action_reason"],
     ].to_dict("records")
-    held = decision.loc[
-        decision["instrument"].eq("S03"),
-        ["instrument", "target_action", "action_reason"],
-    ].iloc[0].to_dict()
+    held = (
+        decision.loc[
+            decision["instrument"].eq("S03"),
+            ["instrument", "target_action", "action_reason"],
+        ]
+        .iloc[0]
+        .to_dict()
+    )
 
     assert actions == fixture["expected_actions"]
     assert held == fixture["expected_hold"]
