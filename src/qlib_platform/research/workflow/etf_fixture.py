@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
 from typing import Iterable
 
 import numpy as np
@@ -42,7 +41,7 @@ class EtfBacktestCostSpec:
 class EtfCertificationSpec:
     topk: int = 3
     ridge_alpha: float = 1.0
-    costs: EtfBacktestCostSpec = EtfBacktestCostSpec()
+    costs: EtfBacktestCostSpec = field(default_factory=EtfBacktestCostSpec)
     diagnostics_min_cross_section: int = 3
 
     def __post_init__(self) -> None:
@@ -68,13 +67,20 @@ class EtfCertificationResult:
 def certify_ashare_etf_fixture(
     features: pd.DataFrame,
     labels: pd.DataFrame,
+    realized_returns: pd.DataFrame,
     members: Iterable[EtfUniverseMember],
     observations: Iterable[EtfTradabilityObservation],
     *,
     train_end: str | pd.Timestamp,
     spec: EtfCertificationSpec | None = None,
 ) -> EtfCertificationResult:
-    """Execute the deterministic ETF train -> backtest -> diagnostics certification path."""
+    """Execute deterministic ETF train -> daily backtest -> diagnostics certification.
+
+    ``labels`` are the governed research target (`return_5d_t1_v1` for this profile).
+    ``realized_returns`` are one-session forward returns used only by the daily portfolio
+    simulator. Keeping them separate prevents a multi-session research label from being
+    misrepresented as one-day account PnL.
+    """
 
     resolved = spec or EtfCertificationSpec()
     profile = require_research_profile("ashare_etf_v1")
@@ -83,12 +89,24 @@ def certify_ashare_etf_fixture(
     assert_etf_data_contract(ETF_REQUIRED_DATASETS)
 
     normalized_features = _normalize_features(features)
-    normalized_labels = _normalize_labels(labels, normalized_features.index)
+    normalized_labels = _normalize_single_column(
+        labels,
+        normalized_features.index,
+        column="label",
+        label="ETF fixture labels",
+    )
+    normalized_returns = _normalize_single_column(
+        realized_returns,
+        normalized_features.index,
+        column="return",
+        label="ETF fixture realized returns",
+    )
     member_list = tuple(members)
     observation_list = tuple(observations)
     eligible_index = _eligible_index(member_list, observation_list, normalized_features.index)
     eligible_features = normalized_features.loc[eligible_index]
     eligible_labels = normalized_labels.loc[eligible_index]
+    eligible_returns = normalized_returns.loc[eligible_index]
 
     split = pd.Timestamp(train_end).normalize()
     dates = pd.DatetimeIndex(eligible_features.index.get_level_values("datetime"))
@@ -105,11 +123,12 @@ def certify_ashare_etf_fixture(
 
     evaluation_features = eligible_features.loc[evaluation_mask]
     evaluation_labels = eligible_labels.loc[evaluation_mask]
+    evaluation_returns = eligible_returns.loc[evaluation_mask]
     scores = evaluation_features.to_numpy(dtype=float) @ coefficients + intercept
     predictions = pd.DataFrame({"score": scores}, index=evaluation_features.index)
     daily_backtest = _backtest_topk(
         predictions,
-        evaluation_labels,
+        evaluation_returns,
         topk=resolved.topk,
         costs=resolved.costs,
     )
@@ -162,20 +181,32 @@ def _normalize_features(features: pd.DataFrame) -> pd.DataFrame:
     return frame.sort_index()
 
 
-def _normalize_labels(labels: pd.DataFrame, expected_index: pd.MultiIndex) -> pd.DataFrame:
-    if not isinstance(labels.index, pd.MultiIndex) or labels.index.names != [
+def _normalize_single_column(
+    frame: pd.DataFrame,
+    expected_index: pd.MultiIndex,
+    *,
+    column: str,
+    label: str,
+) -> pd.DataFrame:
+    if not isinstance(frame.index, pd.MultiIndex) or frame.index.names != [
         "datetime",
         "instrument",
     ]:
-        raise ValueError("ETF fixture labels require a datetime/instrument MultiIndex")
-    if "label" not in labels or len(labels.columns) != 1:
-        raise ValueError("ETF fixture labels must contain exactly one label column")
-    if not labels.index.equals(expected_index):
-        raise ValueError("ETF fixture labels must exactly align with feature keys")
-    frame = labels[["label"]].apply(pd.to_numeric, errors="coerce")
-    if not np.isfinite(frame.to_numpy(dtype=float)).all():
-        raise ValueError("ETF fixture labels must be finite")
-    return frame
+        raise ValueError(f"{label} require a datetime/instrument MultiIndex")
+    if frame.index.has_duplicates:
+        raise ValueError(f"{label} contain duplicate datetime/instrument keys")
+    if column not in frame or len(frame.columns) != 1:
+        raise ValueError(f"{label} must contain exactly one {column!r} column")
+    missing = expected_index.difference(frame.index)
+    unexpected = frame.index.difference(expected_index)
+    if len(missing) or len(unexpected):
+        raise ValueError(
+            f"{label} must exactly align with feature keys: missing={len(missing)}, unexpected={len(unexpected)}"
+        )
+    normalized = frame[[column]].reindex(expected_index).apply(pd.to_numeric, errors="coerce")
+    if not np.isfinite(normalized.to_numpy(dtype=float)).all():
+        raise ValueError(f"{label} must be finite")
+    return normalized
 
 
 def _eligible_index(
@@ -183,6 +214,15 @@ def _eligible_index(
     observations: tuple[EtfTradabilityObservation, ...],
     source_index: pd.MultiIndex,
 ) -> pd.MultiIndex:
+    qlib_aliases: dict[str, str] = {}
+    for member in members:
+        aliases = [alias.symbol for alias in member.instrument.aliases if alias.provider == "qlib"]
+        if len(aliases) != 1:
+            raise ValueError(
+                f"ETF instrument must expose exactly one Qlib alias: {member.instrument.instrument_id}"
+            )
+        qlib_aliases[member.instrument.instrument_id] = aliases[0]
+
     keys: list[tuple[pd.Timestamp, str]] = []
     for timestamp in pd.DatetimeIndex(source_index.get_level_values("datetime").unique()).sort_values():
         selection = select_ashare_etf_universe(
@@ -190,12 +230,6 @@ def _eligible_index(
             observations,
             trading_date=pd.Timestamp(timestamp).date(),
         )
-        qlib_aliases = {
-            member.instrument.instrument_id: next(
-                alias.symbol for alias in member.instrument.aliases if alias.provider == "qlib"
-            )
-            for member in members
-        }
         for instrument_id in selection.eligible:
             key = (pd.Timestamp(timestamp), qlib_aliases[instrument_id])
             if key in source_index:
@@ -218,7 +252,7 @@ def _fit_ridge(x: np.ndarray, y: np.ndarray, alpha: float) -> tuple[np.ndarray, 
 
 def _backtest_topk(
     predictions: pd.DataFrame,
-    labels: pd.DataFrame,
+    realized_returns: pd.DataFrame,
     *,
     topk: int,
     costs: EtfBacktestCostSpec,
@@ -241,9 +275,9 @@ def _backtest_topk(
             max(previous_weights.get(instrument, 0.0) - current_weights.get(instrument, 0.0), 0.0)
             for instrument in instruments
         )
-        realized = labels.xs(timestamp, level="datetime")["label"].reindex(selected)
+        realized = realized_returns.xs(timestamp, level="datetime")["return"].reindex(selected)
         if realized.isna().any():
-            raise ValueError(f"ETF backtest is missing realized labels on {timestamp.date()}")
+            raise ValueError(f"ETF backtest is missing realized returns on {timestamp.date()}")
         gross_return = float(realized.mean())
         transaction_cost = (
             buy_turnover * costs.buy_cost_bps
