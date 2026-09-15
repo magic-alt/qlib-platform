@@ -167,19 +167,24 @@ def test_governed_run_prediction_backtest_and_corruption_retry(tmp_path: Path, m
     assert plan["jobs"][0]["predictionBacktest"]["exitCode"] == 0
 
     artifact.write_bytes(b"corrupt")
-    assert governed.RunState(tmp_path / "bt" / "run_state.json", "research-test").decide(
-        "job.cell-a.research",
-        governed.identity(
-            {
-                "cellId": "cell-a",
-                "scientificInputHash": "input-a",
-                "datasetVersionId": "v1",
-                "dataReleaseId": "r1",
-                "stage": "research",
-            },
-            prefix="stage-",
-        ),
-    ).reuse is False
+    assert (
+        governed.RunState(tmp_path / "bt" / "run_state.json", "research-test")
+        .decide(
+            "job.cell-a.research",
+            governed.identity(
+                {
+                    "cellId": "cell-a",
+                    "scientificInputHash": "input-a",
+                    "datasetVersionId": "v1",
+                    "dataReleaseId": "r1",
+                    "stage": "research",
+                },
+                prefix="stage-",
+            ),
+        )
+        .reuse
+        is False
+    )
 
 
 def test_governed_run_dry_run_and_runtime_failure(tmp_path: Path, monkeypatch) -> None:
@@ -216,7 +221,9 @@ def test_governed_plan_carries_identity_budget_and_cell_hash(tmp_path: Path, mon
     anchor = {"path": str(tmp_path / "dataset"), "versionId": "v1", "dataReleaseId": "r1"}
 
     monkeypatch.setattr(governed, "_read_only_dataset_anchor", lambda *a: (anchor, None))
-    monkeypatch.setattr(governed.legacy, "_selected", lambda args: (("alpha158_market_v1",), (("lgb", profile),)))
+    monkeypatch.setattr(
+        governed.legacy, "_selected", lambda args: (("alpha158_market_v1",), (("lgb", profile),))
+    )
     monkeypatch.setattr(governed, "get_research_template", lambda value: None)
     monkeypatch.setattr(
         governed.legacy,
