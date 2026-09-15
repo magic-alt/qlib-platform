@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from typing import Mapping
 
+from qlib_platform.alpha.applicability import assert_alpha_pack_profile_compatible
 from qlib_platform.alpha.base import AlphaPackSpec
 from qlib_platform.data.fundamentals import PIT_FIELDS, PIT_FIELDS_V2
+from qlib_platform.research.contracts.research_profile import research_profile_from_settings
 from qlib_platform.settings import Settings
 
 
@@ -154,6 +156,9 @@ def alpha_pack_from_settings(settings: Settings) -> AlphaPackSpec:
 
 
 def assert_alpha_pack_compatible(settings: Settings, pack: AlphaPackSpec) -> None:
+    profile = research_profile_from_settings(settings)
+    assert_alpha_pack_profile_compatible(pack, profile)
+
     manifest_path = settings.qlib_data_uri / "dataset_manifest.json"
     if manifest_path.is_file():
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
