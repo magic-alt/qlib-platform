@@ -8,7 +8,7 @@
   <array>
     <string>@PYTHON_EXE@</string>
     <string>-m</string>
-    <string>qlib_platform.runtime.daily_research_run</string>
+    <string>qlib_platform.runtime.production_daily_run</string>
     <string>--config</string>
     <string>@CONFIG_PATH@</string>
   </array>
