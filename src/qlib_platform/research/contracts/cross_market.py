@@ -139,7 +139,7 @@ def select_cross_market_observations(
         if observation.available_at > as_of:
             excluded[observation.key] = "future_available_at"
             continue
-        assert_information_available(observation.available_at, as_of)
+        assert_information_available(available_at=observation.available_at, as_of=as_of)
         eligible.append(observation)
 
     return CrossMarketSelection(
@@ -182,7 +182,7 @@ def resolve_fx_rate(
     rates = {item.rate for item in latest}
     if len(rates) != 1:
         raise ValueError(f"conflicting FX quotes at {latest_at.isoformat()} for {base}/{quote}")
-    assert_information_available(latest_at, as_of)
+    assert_information_available(available_at=latest_at, as_of=as_of)
     if as_of.astimezone(timezone.utc) - latest_at.astimezone(timezone.utc) > max_age:
         raise ValueError(f"stale FX quote for {base}/{quote}")
     return latest[0].rate
