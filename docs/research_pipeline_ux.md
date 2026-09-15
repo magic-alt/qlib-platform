@@ -1,6 +1,7 @@
 ---
 status: ACTIVE
 owner: research
+applies_to_commit: fc801c5f0132be6d00d466bd4d427187ef50a148
 last_verified: 2026-09-15
 ---
 
