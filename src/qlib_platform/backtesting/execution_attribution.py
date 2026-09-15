@@ -89,8 +89,9 @@ def attribute_strategy_execution(
     result["fill_ratio"] = fill_ratio
     result["turnover_drift_ratio"] = np.where(target_trade, fill_ratio - 1.0, 0.0)
 
-    if model.calibrated:
-        expected = filled_value * float(model.expected_cost_bps) / 10_000.0
+    expected_cost_bps = model.expected_cost_bps
+    if expected_cost_bps is not None:
+        expected = filled_value * float(expected_cost_bps) / 10_000.0
         result["expected_trade_cost"] = expected
         result["cost_drift"] = actual_cost - expected
         result["cost_drift_status"] = "CALCULATED"
