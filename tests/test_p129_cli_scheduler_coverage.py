@@ -25,31 +25,19 @@ def test_scheduler_helpers_validate_paths_and_schedule(tmp_path: Path):
         scheduler._absolute_existing(str(directory), file=True)
 
     settings = SimpleNamespace(
-        data={
-            "production": {
-                "daily_run": {
-                    "schedule": {"time": "19:05", "timezone": "Asia/Shanghai"}
-                }
-            }
-        }
+        data={"production": {"daily_run": {"schedule": {"time": "19:05", "timezone": "Asia/Shanghai"}}}}
     )
     assert scheduler._schedule(settings) == ("19:05", "Asia/Shanghai")
 
     fallback = SimpleNamespace(data={"data_sync": {"timezone": "Asia/Singapore"}})
     assert scheduler._schedule(fallback) == ("18:30", "Asia/Singapore")
 
-    invalid_time = SimpleNamespace(
-        data={"production": {"daily_run": {"schedule": {"time": "25:00"}}}}
-    )
+    invalid_time = SimpleNamespace(data={"production": {"daily_run": {"schedule": {"time": "25:00"}}}})
     with pytest.raises(ValueError):
         scheduler._schedule(invalid_time)
 
     invalid_zone = SimpleNamespace(
-        data={
-            "production": {
-                "daily_run": {"schedule": {"time": "18:30", "timezone": "   "}}
-            }
-        }
+        data={"production": {"daily_run": {"schedule": {"time": "18:30", "timezone": "   "}}}}
     )
     with pytest.raises(ValueError, match="timezone"):
         scheduler._schedule(invalid_zone)
@@ -78,13 +66,7 @@ def test_scheduler_main_uses_local_relative_config(tmp_path: Path, monkeypatch, 
     config.write_text("stub: true\n", encoding="utf-8")
     output = tmp_path / "rendered"
     fake_settings = SimpleNamespace(
-        data={
-            "production": {
-                "daily_run": {
-                    "schedule": {"time": "19:05", "timezone": "Asia/Shanghai"}
-                }
-            }
-        }
+        data={"production": {"daily_run": {"schedule": {"time": "19:05", "timezone": "Asia/Shanghai"}}}}
     )
     monkeypatch.setattr(scheduler.Settings, "load", lambda *args, **kwargs: fake_settings)
     monkeypatch.setattr(
@@ -107,9 +89,7 @@ def test_scheduler_main_uses_local_relative_config(tmp_path: Path, monkeypatch, 
     scheduler.main()
     rendered = capsys.readouterr().out
     assert "qlib-platform-daily-sync.service" in rendered
-    assert "19:05:00 Asia/Shanghai" in (output / "qlib-platform-daily-sync.timer").read_text(
-        encoding="utf-8"
-    )
+    assert "19:05:00 Asia/Shanghai" in (output / "qlib-platform-daily-sync.timer").read_text(encoding="utf-8")
 
 
 def test_code_provenance_prefers_environment_and_falls_back_to_git(tmp_path: Path, monkeypatch):
