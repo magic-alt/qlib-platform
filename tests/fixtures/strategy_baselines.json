@@ -1,0 +1,62 @@
+{
+  "topk_dropout_v1": {
+    "policy": {
+      "topk": 2,
+      "n_drop": 1,
+      "hold_thresh": 5
+    },
+    "expected": [
+      {
+        "instrument": "D",
+        "target_action": "SELL",
+        "action_reason": "DROP_LOWEST_COMBINED_SCORE"
+      },
+      {
+        "instrument": "A",
+        "target_action": "BUY",
+        "action_reason": "TOPK_FILL_OR_REPLACEMENT"
+      },
+      {
+        "instrument": "B",
+        "target_action": "HOLD",
+        "action_reason": "CURRENT_POSITION"
+      }
+    ]
+  },
+  "rank_buffer_v1": {
+    "policy": {
+      "target_size": 10,
+      "entry_rank": 10,
+      "exit_rank": 20,
+      "max_replacements": 3,
+      "hold_thresh": 1
+    },
+    "expected_actions": [
+      {
+        "instrument": "S22",
+        "target_action": "SELL",
+        "action_reason": "EXIT_RANK_BREACH"
+      },
+      {
+        "instrument": "S01",
+        "target_action": "BUY",
+        "action_reason": "ENTRY_RANK"
+      },
+      {
+        "instrument": "S02",
+        "target_action": "BUY",
+        "action_reason": "ENTRY_RANK"
+      },
+      {
+        "instrument": "S04",
+        "target_action": "BUY",
+        "action_reason": "ENTRY_RANK"
+      }
+    ],
+    "expected_hold": {
+      "instrument": "S03",
+      "target_action": "HOLD",
+      "action_reason": "INSIDE_HOLD_BUFFER"
+    }
+  }
+}
