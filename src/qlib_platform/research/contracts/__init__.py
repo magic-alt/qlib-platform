@@ -1,5 +1,15 @@
 """Frozen research contracts and design locks."""
 
+from qlib_platform.research.contracts.ashare_etf import (
+    ETF_FORBIDDEN_STOCK_DATASETS,
+    ETF_REQUIRED_DATASETS,
+    EtfTradabilityObservation,
+    EtfUniverseMember,
+    EtfUniversePolicy,
+    EtfUniverseSelection,
+    assert_etf_data_contract,
+    select_ashare_etf_universe,
+)
 from qlib_platform.research.contracts.research_profile import (
     DEFAULT_RESEARCH_PROFILE_ID,
     RESEARCH_PROFILES,
@@ -8,6 +18,7 @@ from qlib_platform.research.contracts.research_profile import (
     LabelDefinition,
     ResearchProfile,
     SymbolAlias,
+    ashare_etf_instrument,
     assert_information_available,
     describe_research_profile,
     legacy_ashare_instrument,
@@ -17,15 +28,24 @@ from qlib_platform.research.contracts.research_profile import (
 
 __all__ = [
     "DEFAULT_RESEARCH_PROFILE_ID",
+    "ETF_FORBIDDEN_STOCK_DATASETS",
+    "ETF_REQUIRED_DATASETS",
     "RESEARCH_PROFILES",
     "CalendarVersion",
+    "EtfTradabilityObservation",
+    "EtfUniverseMember",
+    "EtfUniversePolicy",
+    "EtfUniverseSelection",
     "InstrumentSpec",
     "LabelDefinition",
     "ResearchProfile",
     "SymbolAlias",
+    "ashare_etf_instrument",
+    "assert_etf_data_contract",
     "assert_information_available",
     "describe_research_profile",
     "legacy_ashare_instrument",
     "require_research_profile",
     "research_profile_from_settings",
+    "select_ashare_etf_universe",
 ]

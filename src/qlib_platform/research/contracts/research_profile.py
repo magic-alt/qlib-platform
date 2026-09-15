@@ -199,7 +199,6 @@ RESEARCH_PROFILES: dict[str, ResearchProfile] = {
         price_field="close",
         label=_RETURN_5D_T1_V1,
         allowed_workflows=("research", "backtest", "diagnostics"),
-        implemented=False,
     ),
 }
 
@@ -273,6 +272,37 @@ def legacy_ashare_instrument(symbol: str) -> InstrumentSpec:
         instrument_id=f"CN.{mic}.EQUITY.{code}",
         asset_class="equity",
         subtype="common_stock",
+        market="CN",
+        venue=mic,
+        currency="CNY",
+        calendar_id=_CN_STOCK_CALENDAR_V1.calendar_id,
+        tradable=True,
+        aliases=(
+            SymbolAlias("qlib", qlib_symbol),
+            SymbolAlias("tushare", tushare_symbol),
+        ),
+    )
+
+
+def ashare_etf_instrument(symbol: str) -> InstrumentSpec:
+    """Map Qlib/TuShare ETF aliases to one provider-neutral research identity."""
+
+    text = symbol.strip().upper()
+    if "." in text:
+        qlib_symbol = ts_to_qlib(text)
+        tushare_symbol = text
+    else:
+        tushare_symbol = qlib_to_ts(text)
+        qlib_symbol = text
+    exchange = qlib_symbol[:2]
+    if exchange not in {"SH", "SZ"}:
+        raise ValueError(f"A-share ETF venue is not supported: {symbol}")
+    mic = _ASHARE_MIC[exchange]
+    code = qlib_symbol[2:]
+    return InstrumentSpec(
+        instrument_id=f"CN.{mic}.ETF.{code}",
+        asset_class="equity",
+        subtype="etf",
         market="CN",
         venue=mic,
         currency="CNY",
