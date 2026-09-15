@@ -48,9 +48,7 @@ def _report_result() -> SimpleNamespace:
             },
             index=pd.to_datetime(["2026-09-01", "2026-09-02", "2026-09-03"]),
         ),
-        diagnostics=SimpleNamespace(
-            summary=pd.DataFrame({"feature": ["RET_1", "MONEY_RATIO_20"]})
-        ),
+        diagnostics=SimpleNamespace(summary=pd.DataFrame({"feature": ["RET_1", "MONEY_RATIO_20"]})),
     )
 
 

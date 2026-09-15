@@ -44,10 +44,7 @@ def etf_shared_processors(processors: object) -> object:
     return [
         processor
         for processor in processors
-        if not (
-            isinstance(processor, dict)
-            and processor.get("class") == "AshareUniverseFilter"
-        )
+        if not (isinstance(processor, dict) and processor.get("class") == "AshareUniverseFilter")
     ]
 
 

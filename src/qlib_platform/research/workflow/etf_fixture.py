@@ -172,9 +172,7 @@ def _normalize_features(features: pd.DataFrame) -> pd.DataFrame:
     missing = sorted(expected - actual)
     unexpected = sorted(actual - expected)
     if missing or unexpected:
-        raise ValueError(
-            f"ETF fixture feature contract mismatch: missing={missing}, unexpected={unexpected}"
-        )
+        raise ValueError(f"ETF fixture feature contract mismatch: missing={missing}, unexpected={unexpected}")
     frame = features.loc[:, list(ETF_CORE_FEATURE_NAMES)].apply(pd.to_numeric, errors="coerce")
     if not np.isfinite(frame.to_numpy(dtype=float)).all():
         raise ValueError("ETF fixture features must be finite")

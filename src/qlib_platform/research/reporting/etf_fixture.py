@@ -17,11 +17,7 @@ def render_etf_certification_report(result: EtfCertificationResult) -> str:
     net = _compound(backtest["net_return"])
     max_drawdown = _max_drawdown(backtest["net_return"])
     diagnostics = result.diagnostics.summary
-    features = (
-        [str(value) for value in diagnostics["feature"].tolist()]
-        if "feature" in diagnostics.columns
-        else []
-    )
+    features = [str(value) for value in diagnostics["feature"].tolist()] if "feature" in diagnostics.columns else []
     lines = [
         "# A-share ETF Research Fixture Report",
         "",

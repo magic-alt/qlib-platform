@@ -135,7 +135,9 @@ def test_etf_universe_is_listing_and_tradability_aware_and_fail_closed() -> None
     assert selection.excluded[suspended.instrument.instrument_id] == "suspended"
     assert selection.excluded[zero_volume.instrument.instrument_id] == "non_positive_volume"
     assert selection.excluded[delisted.instrument.instrument_id] == "outside_listing_window"
-    assert selection.excluded[missing_observation.instrument.instrument_id] == "missing_tradability_observation"
+    assert (
+        selection.excluded[missing_observation.instrument.instrument_id] == "missing_tradability_observation"
+    )
     assert selection.excluded[not_tradable.instrument.instrument_id] == "instrument_not_tradable"
 
     with pytest.raises(ValueError, match="equity/etf"):
@@ -367,11 +369,11 @@ def _fixture_panel() -> tuple[
         {"return": 0.1 * features["RET_1"] + 0.02 * cross},
         index=index,
     )
-    members = [
-        EtfUniverseMember(ashare_etf_instrument(symbol), date(2020, 1, 1)) for symbol in symbols
-    ]
+    members = [EtfUniverseMember(ashare_etf_instrument(symbol), date(2020, 1, 1)) for symbol in symbols]
     id_by_symbol = {
-        next(alias.symbol for alias in member.instrument.aliases if alias.provider == "qlib"): member.instrument.instrument_id
+        next(
+            alias.symbol for alias in member.instrument.aliases if alias.provider == "qlib"
+        ): member.instrument.instrument_id
         for member in members
     }
     observations: list[EtfTradabilityObservation] = []
