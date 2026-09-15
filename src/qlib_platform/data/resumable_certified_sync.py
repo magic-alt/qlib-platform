@@ -63,7 +63,7 @@ class ResumableCertifiedDailySyncService(CertifiedDailySyncService):
         reusable = self._crash_resume_plan(target, mode)
         if reusable is not None:
             return reusable
-        return super().create_plan(as_of=resolved, mode=mode)
+        return Path(super().create_plan(as_of=resolved, mode=mode))
 
     def _active_dataset_manifest(self) -> tuple[dict[str, Any], str] | None:
         try:

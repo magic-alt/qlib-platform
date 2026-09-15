@@ -88,9 +88,7 @@ def _factor(date: str, symbols: tuple[str, ...] = ("000001.SZ",)) -> pd.DataFram
     )
 
 
-def test_production_plan_requires_no_provider_or_token_and_reads_only_manifests(
-    tmp_path: Path, monkeypatch
-):
+def test_production_plan_requires_no_provider_or_token_and_reads_only_manifests(tmp_path: Path, monkeypatch):
     settings = _settings(tmp_path)
     _calendar(settings)
     store = PartitionStore(settings.paths.raw)

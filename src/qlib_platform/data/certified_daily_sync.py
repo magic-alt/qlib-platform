@@ -45,10 +45,7 @@ class CertifiedDailySyncService(ProductionDailySyncService):
             report = validate_raw_day(frames, trade_date)
             write_report(
                 report,
-                self.plan_root
-                / str(plan["plan_id"])
-                / "quality"
-                / f"pre_promote_{trade_date}.json",
+                self.plan_root / str(plan["plan_id"]) / "quality" / f"pre_promote_{trade_date}.json",
             )
             assert_quality(report)
 
@@ -192,7 +189,9 @@ class CertifiedDailySyncService(ProductionDailySyncService):
                     if missing:
                         error = f"missing columns: {missing}"
                     else:
-                        effective_from = pd.to_datetime(frame["effective_from"], errors="coerce").dt.normalize()
+                        effective_from = pd.to_datetime(
+                            frame["effective_from"], errors="coerce"
+                        ).dt.normalize()
                         effective_to = pd.to_datetime(frame["effective_to"], errors="coerce").dt.normalize()
                         active = effective_from.le(target) & effective_to.ge(target)
                         active_members = int(frame.loc[active, "instrument"].nunique())

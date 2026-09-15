@@ -20,11 +20,7 @@ def _code_provenance(settings: Settings) -> dict[str, str | None]:
     except PackageNotFoundError:
         package_version = "source-checkout"
 
-    commit = (
-        os.getenv("QLIB_PLATFORM_GIT_SHA", "").strip()
-        or os.getenv("GITHUB_SHA", "").strip()
-        or None
-    )
+    commit = os.getenv("QLIB_PLATFORM_GIT_SHA", "").strip() or os.getenv("GITHUB_SHA", "").strip() or None
     if commit is None:
         repository = settings.config_path.parent.parent
         try:
@@ -52,7 +48,7 @@ class DailyResearchRun(base.DailyResearchRun):
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.sync = ResumableCertifiedDailySyncService(settings)
+        self.sync: ResumableCertifiedDailySyncService = ResumableCertifiedDailySyncService(settings)
         self.root = settings.paths.state / "daily_run"
 
     def _load_state(self, plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -65,9 +61,7 @@ class DailyResearchRun(base.DailyResearchRun):
         self._save_state(state)
         return state
 
-    def _verify_dataset(
-        self, plan: Mapping[str, Any], state: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _verify_dataset(self, plan: Mapping[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         dataset = super()._verify_dataset(plan, state)
         data_path = Path(str(dataset["data_path"]))
         feature_root = data_path / "features"
@@ -86,9 +80,7 @@ class DailyResearchRun(base.DailyResearchRun):
         feature_files = [path for path in feature_root.rglob("*") if path.is_file()]
         instrument_files = [path for path in instrument_root.rglob("*") if path.is_file()]
         if not feature_root.is_dir() or not feature_files:
-            raise RuntimeError(
-                f"published DatasetVersion has no materialized Qlib features: {feature_root}"
-            )
+            raise RuntimeError(f"published DatasetVersion has no materialized Qlib features: {feature_root}")
         if not instrument_root.is_dir() or not instrument_files:
             raise RuntimeError(
                 f"published DatasetVersion has no materialized Qlib instruments: {instrument_root}"
@@ -129,9 +121,7 @@ class DailyResearchRun(base.DailyResearchRun):
             active_end = self.sync._manifest_end(active[0])
             if active_end is not None:
                 blocked = [
-                    trade_date
-                    for trade_date in dates
-                    if pd.Timestamp(trade_date).normalize() <= active_end
+                    trade_date for trade_date in dates if pd.Timestamp(trade_date).normalize() <= active_end
                 ]
                 if blocked:
                     raise ValueError(

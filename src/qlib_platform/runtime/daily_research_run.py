@@ -386,9 +386,7 @@ class DailyResearchRun:
                 f"release={dataset.get('data_release_id', 'N/A')}"
             ),
             sections={
-                "Stages": {
-                    name: record.get("status") for name, record in state.get("steps", {}).items()
-                },
+                "Stages": {name: record.get("status") for name, record in state.get("steps", {}).items()},
                 "Report": str(report),
             },
         )
@@ -514,9 +512,7 @@ class DailyResearchRun:
                 state["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
                 self._save_state(state)
                 report = self._render_report(plan, state)
-                report_input = _identity(
-                    {"state": state, "report_path": str(report)}, prefix="report-"
-                )
+                report_input = _identity({"state": state, "report_path": str(report)}, prefix="report-")
                 self._finish_step(
                     state,
                     "report",

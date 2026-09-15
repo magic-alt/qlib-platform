@@ -29,9 +29,9 @@ def _schedule(settings: Settings) -> tuple[str, str]:
     datetime.strptime(value, "%H:%M")
     timezone_name = str(
         schedule.get("timezone")
-        or (settings.data.get("data_sync", {}) if isinstance(settings.data.get("data_sync"), Mapping) else {}).get(
-            "timezone", "Asia/Shanghai"
-        )
+        or (
+            settings.data.get("data_sync", {}) if isinstance(settings.data.get("data_sync"), Mapping) else {}
+        ).get("timezone", "Asia/Shanghai")
     )
     if not timezone_name.strip():
         raise ValueError("production.daily_run.schedule.timezone must not be empty")

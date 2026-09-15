@@ -147,9 +147,7 @@ def test_stale_plan_cannot_roll_active_dataset_alias_back(tmp_path: Path, monkey
     )
 
     with pytest.raises(SyncPlanInvalidatedError, match="active DatasetVersion"):
-        service._guard_monotonic_active_alias(
-            {"plan_id": "older-plan", "target_session": "20260810"}
-        )
+        service._guard_monotonic_active_alias({"plan_id": "older-plan", "target_session": "20260810"})
 
 
 def test_publish_receipt_recovers_crash_after_alias_promotion(tmp_path: Path, monkeypatch):
@@ -178,9 +176,7 @@ def test_publish_receipt_recovers_crash_after_alias_promotion(tmp_path: Path, mo
         },
     }
 
-    recovered = service._recover_publish_receipt(
-        {"plan_id": plan_id, "target_session": "20260811"}, state
-    )
+    recovered = service._recover_publish_receipt({"plan_id": plan_id, "target_session": "20260811"}, state)
 
     assert recovered is True
     assert state["steps"]["qlib_publish"]["status"] == "SUCCEEDED"

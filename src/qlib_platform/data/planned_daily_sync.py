@@ -64,7 +64,7 @@ def _config_hash(settings: Settings) -> str:
 
 
 def _normalize_date(value: str | pd.Timestamp) -> str:
-    return pd.Timestamp(value).normalize().strftime("%Y%m%d")
+    return str(pd.Timestamp(value).normalize().strftime("%Y%m%d"))
 
 
 def _normalize_factor_history(frame: pd.DataFrame) -> pd.DataFrame:
@@ -103,11 +103,7 @@ def _changed_symbols(old: pd.DataFrame, new: pd.DataFrame) -> set[str]:
 
     previous = fingerprints(old)
     current = fingerprints(new)
-    return {
-        code
-        for code in previous.keys() | current.keys()
-        if previous.get(code) != current.get(code)
-    }
+    return {code for code in previous.keys() | current.keys() if previous.get(code) != current.get(code)}
 
 
 def factor_history_diff(old: pd.DataFrame, new: pd.DataFrame) -> list[str]:
@@ -206,9 +202,7 @@ class PlannedDailySyncService(DailySyncService):
         digest = str(manifest.get("content_sha256") or "")
         if digest and manifest.get("content_hash_kind") == "logical_frame_v1":
             return digest
-        return frame_content_sha256(
-            store.read(dataset, trade_date), key_columns=("ts_code", "trade_date")
-        )
+        return frame_content_sha256(store.read(dataset, trade_date), key_columns=("ts_code", "trade_date"))
 
     def _required_partition_current(self, dataset: str, trade_date: str) -> bool:
         if not self.store.exists(dataset, trade_date):
@@ -310,11 +304,13 @@ class PlannedDailySyncService(DailySyncService):
         if not path.is_file():
             raise FileNotFoundError(f"unknown daily sync plan: {plan_id}")
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise TypeError(f"daily sync plan must be a JSON object: {path}")
         if payload.get("schema_version") != PLAN_SCHEMA_VERSION:
             raise ValueError(f"unsupported daily sync plan schema: {payload.get('schema_version')}")
         if payload.get("config_sha256") != _config_hash(self.settings):
             raise SyncPlanInvalidatedError("daily sync plan config hash no longer matches current settings")
-        return payload
+        return dict(payload)
 
     def _save_plan(self, plan: Mapping[str, Any]) -> None:
         _atomic_json(plan, self._plan_path(str(plan["plan_id"])))
@@ -323,8 +319,8 @@ class PlannedDailySyncService(DailySyncService):
         path = self._apply_state_path(plan_id)
         if path.is_file():
             loaded = json.loads(path.read_text(encoding="utf-8"))
-            if loaded.get("schema_version") == APPLY_STATE_SCHEMA_VERSION:
-                return loaded
+            if isinstance(loaded, dict) and loaded.get("schema_version") == APPLY_STATE_SCHEMA_VERSION:
+                return dict(loaded)
         return {
             "schema_version": APPLY_STATE_SCHEMA_VERSION,
             "plan_id": plan_id,
@@ -343,9 +339,11 @@ class PlannedDailySyncService(DailySyncService):
     @staticmethod
     def _step_done(state: Mapping[str, Any], name: str) -> bool:
         steps = state.get("steps", {})
-        return isinstance(steps, Mapping) and isinstance(steps.get(name), Mapping) and steps[name].get(
-            "status"
-        ) == _COMPLETE_STEP
+        return (
+            isinstance(steps, Mapping)
+            and isinstance(steps.get(name), Mapping)
+            and steps[name].get("status") == _COMPLETE_STEP
+        )
 
     def _finish_step(self, state: dict[str, Any], name: str, output: Mapping[str, Any]) -> None:
         steps = state.setdefault("steps", {})
@@ -362,9 +360,7 @@ class PlannedDailySyncService(DailySyncService):
         return {
             "base_exists": self.store.exists(dataset, trade_date),
             "base_content_sha256": base_hash,
-            "planned_content_sha256": frame_content_sha256(
-                frame, key_columns=("ts_code", "trade_date")
-            ),
+            "planned_content_sha256": frame_content_sha256(frame, key_columns=("ts_code", "trade_date")),
             "planned_changed_symbols": sorted(_changed_symbols(current, frame)),
         }
 
@@ -387,9 +383,7 @@ class PlannedDailySyncService(DailySyncService):
         else:
             current = self.store.read(dataset, trade_date)
             base.update(
-                planned_content_sha256=frame_content_sha256(
-                    frame, key_columns=("ts_code", "trade_date")
-                ),
+                planned_content_sha256=frame_content_sha256(frame, key_columns=("ts_code", "trade_date")),
                 planned_changed_symbols=sorted(_changed_symbols(current, frame)),
             )
         promoted = dict(metadata)
@@ -475,7 +469,7 @@ class PlannedDailySyncService(DailySyncService):
             return stage.read("adj_factor", trade_date)
         return self.store.read("adj_factor", trade_date)
 
-    def _factor_event_symbols(self, plan: Mapping[str, Any]) -> set[str]:
+    def _planned_factor_event_symbols(self, plan: Mapping[str, Any]) -> set[str]:
         dates = [str(value) for value in plan.get("expected_dates", [])]
         if len(dates) < 2:
             return set()
@@ -488,10 +482,7 @@ class PlannedDailySyncService(DailySyncService):
         paired = left.merge(right, on="ts_code", how="inner")
         prior = pd.to_numeric(paired["previous"], errors="coerce")
         latest = pd.to_numeric(paired["current"], errors="coerce")
-        changed = ~(
-            np.isclose(prior, latest, rtol=1e-10, atol=1e-12)
-            | (prior.isna() & latest.isna())
-        )
+        changed = ~(np.isclose(prior, latest, rtol=1e-10, atol=1e-12) | (prior.isna() & latest.isna()))
         return set(paired.loc[changed, "ts_code"].astype(str).str.upper())
 
     def _latest_factor_symbols(self, plan: Mapping[str, Any]) -> set[str]:
@@ -513,9 +504,7 @@ class PlannedDailySyncService(DailySyncService):
                 "schema_version": "1.0",
                 "symbol": symbol.upper(),
                 "indexed_through": indexed_through,
-                "content_sha256": frame_content_sha256(
-                    normalized, key_columns=("ts_code", "trade_date")
-                ),
+                "content_sha256": frame_content_sha256(normalized, key_columns=("ts_code", "trade_date")),
                 "updated_at_utc": datetime.now(timezone.utc).isoformat(),
             },
             self._factor_index_manifest_path(symbol),
@@ -558,9 +547,7 @@ class PlannedDailySyncService(DailySyncService):
                 for symbol, group in selected.groupby(selected["ts_code"].astype(str).str.upper()):
                     buckets[str(symbol)].append(group.copy())
             indexed_through = (
-                self.store.list_dates("adj_factor")[-1]
-                if self.store.list_dates("adj_factor")
-                else ""
+                self.store.list_dates("adj_factor")[-1] if self.store.list_dates("adj_factor") else ""
             )
             for symbol in missing:
                 history = (
@@ -652,9 +639,7 @@ class PlannedDailySyncService(DailySyncService):
                 if not rows.empty:
                     additions.append(rows)
             merged = _normalize_factor_history(
-                pd.concat([retained, *additions], ignore_index=True)
-                if additions
-                else retained
+                pd.concat([retained, *additions], ignore_index=True) if additions else retained
             )
             self._stage_market_frame(
                 stage,
@@ -678,7 +663,7 @@ class PlannedDailySyncService(DailySyncService):
     ) -> None:
         if self._step_done(state, "factor_reconcile"):
             return
-        event_symbols = self._factor_event_symbols(plan)
+        event_symbols = self._planned_factor_event_symbols(plan)
         if plan.get("mode") == "historical-audit":
             event_symbols |= self._latest_factor_symbols(plan)
         local_histories, partition_reads = self._load_factor_histories(
@@ -936,7 +921,9 @@ class PlannedDailySyncService(DailySyncService):
         for dataset in REQUIRED_MARKET_ENDPOINTS:
             frame = self.store.read(dataset, target)
             manifest = self.store.read_manifest(dataset, target)
-            ok = self.store.exists(dataset, target) and not frame.empty and manifest.get("status") == "success"
+            ok = (
+                self.store.exists(dataset, target) and not frame.empty and manifest.get("status") == "success"
+            )
             endpoint_status[dataset] = {
                 "fresh": ok,
                 "rows": len(frame),
