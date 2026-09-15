@@ -1,0 +1,56 @@
+{
+  "schema": "legacy_ashare_research_compatibility_v1",
+  "sourceCommit": "9efc465c3556a642bba68368f7cc9cfc2d69a34b",
+  "sourceFiles": {
+    "tests/test_label_spec.py": "526015bb376aac0ba56cb27fc627d8fa1793fc1f",
+    "src/qlib_platform/research/workflow/train_select.py": "e1c8d7c5290d04cea5adefddc800a25483b9e534",
+    "src/qlib_platform/alpha/base.py": "51e4a8fb88f85a8ba82bae3f38db546d2b587343"
+  },
+  "defaultAlphaPack": "alpha158_pit_v1",
+  "legacyAlphaPackFingerprints": {
+    "qlib_alpha158_official_v1": "a944dbae032c793805a6e28c36a9575ca47ca726d6ab3c131d0730727d017ae6",
+    "alpha158_market_v1": "b2967c1ea66491367096278899f0222c6c534a9cd6baa9f4196d1c9340d96182",
+    "alpha158_daily_v1": "c627e26b967a39c30217fe98e3dc2769667fff81ab18991b4e1f1705131c2682",
+    "alpha158_pit_v1": "637cede2eb9c1107c26ed35bda3c8f5a1186824abb73cdf89ef648333a402fa5",
+    "multifactor_core_v1": "e1df5813911536f5a91e9d88cf567a465edcc574d5a85b29691619793cae7279",
+    "ashare_factor_benchmark_v1": "c5f275ae210f71358bd83e6f182c765e5bd2ed1d6648078838d87b6b1b62bda5",
+    "ashare_alpha_phase2_v1": "aef34eae78a86cdb18914feca570ffe7eea94022aa8c12e4747db999b88977a0"
+  },
+  "defaultResearchSemantics": {
+    "assetClass": "equity",
+    "subtype": "common_stock",
+    "market": "CN",
+    "currency": "CNY",
+    "calendarId": "cn_stock_v1",
+    "frequency": "day",
+    "adjustment": "factor_adjusted",
+    "priceField": "close",
+    "labelId": "return_5d_t1_v1",
+    "labelHorizonSessions": 5,
+    "labelExecutionLagSessions": 1,
+    "allowedWorkflows": [
+      "research",
+      "backtest",
+      "diagnostics"
+    ],
+    "promotionScope": "research_only"
+  },
+  "legacyFixture": {
+    "generator": "tests/test_label_spec.py::_mini_qlib_provider",
+    "labelSpec": "return_5d_t2_v1",
+    "labelExpression": "Ref($close, -7)/Ref($close, -1) - 1",
+    "train": [
+      "2026-01-05",
+      "2026-01-16"
+    ],
+    "valid": [
+      "2026-01-19",
+      "2026-01-23"
+    ],
+    "test": [
+      "2026-01-26",
+      "2026-02-13"
+    ],
+    "outputSha256": "ddc58877e2ab85f2f16e33cfb747e1c7d830cbe25f40b2ddc3b9841b0021ca42"
+  }
+}
