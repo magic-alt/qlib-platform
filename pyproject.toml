@@ -64,7 +64,7 @@ docs = ["mkdocs-material==9.7.7"]
 qlib-platform = "qlib_platform.cli:main"
 tq = "qlib_platform.cli:main"
 tq-qlib = "qlib_platform.qlib_compat.cli:main"
-tq-research = "qlib_platform.research.workflow.quickstart:main"
+tq-research = "qlib_platform.research.workflow.governed_quickstart:main"
 tq-research-summary = "qlib_platform.research.reporting.summary:main"
 tq-research-console = "qlib_platform.research.reporting.research_console:main"
 tq-render-scheduler = "qlib_platform.runtime.scheduler:main"
