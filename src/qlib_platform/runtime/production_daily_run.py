@@ -4,17 +4,17 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from qlib_platform.data.production_daily_sync import ProductionDailySyncService
+from qlib_platform.data.certified_daily_sync import CertifiedDailySyncService
 from qlib_platform.runtime import daily_research_run as base
 from qlib_platform.settings import Settings
 
 
 class DailyResearchRun(base.DailyResearchRun):
-    """Daily DAG bound to the metadata-only planner and incremental factor cache."""
+    """Daily DAG bound to the metadata-only planner and certified freshness gates."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.sync = ProductionDailySyncService(settings)
+        self.sync = CertifiedDailySyncService(settings)
         self.root = settings.paths.state / "daily_run"
 
     def _verify_dataset(
