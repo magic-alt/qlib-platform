@@ -83,9 +83,7 @@ def test_epic104_contract_versions_track_runtime_contracts() -> None:
 
 def test_epic104_research_profiles_cannot_authorize_execution() -> None:
     contract = _contract()
-    capabilities = {
-        capability["id"]: capability for capability in contract["capabilities"]
-    }
+    capabilities = {capability["id"]: capability for capability in contract["capabilities"]}
     declared_profiles = set(capabilities["multi_asset_research_profiles"]["scope"])
 
     assert {"ashare_equity_v1", "ashare_etf_v1"}.issubset(declared_profiles)
@@ -98,9 +96,7 @@ def test_epic104_research_profiles_cannot_authorize_execution() -> None:
 
 def test_epic104_strategy_sdk_keeps_baselines_and_shadow_separate() -> None:
     contract = _contract()
-    capabilities = {
-        capability["id"]: capability for capability in contract["capabilities"]
-    }
+    capabilities = {capability["id"]: capability for capability in contract["capabilities"]}
     scope = set(capabilities["strategy_pipeline"]["scope"])
     registry = strategy_registry()
 
