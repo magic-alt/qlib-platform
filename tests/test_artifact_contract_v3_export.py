@@ -61,7 +61,9 @@ def test_producer_fixture_reuses_the_shared_contract_case() -> None:
     shared = json.loads(
         (FIXTURE_ROOT / "contract_cases.json").read_text(encoding="utf-8")
     )
-    assert source["artifactContractV3"]["targetInstruction"] == shared["cases"]["fullSnapshot"]
+    assert source["artifactContractV3"]["targetInstruction"] == shared[
+        "instructions"
+    ]["fullSnapshot"]
 
 
 def test_v3_export_is_byte_locked_portable_and_idempotent(tmp_path: Path) -> None:
@@ -121,7 +123,9 @@ def test_v3_export_supports_each_shared_instruction_state(
     shared = json.loads(
         (FIXTURE_ROOT / "contract_cases.json").read_text(encoding="utf-8")
     )
-    source["artifactContractV3"]["targetInstruction"] = shared["cases"][case_name]
+    source["artifactContractV3"]["targetInstruction"] = shared["instructions"][
+        case_name
+    ]
     source_path = _write_source(tmp_path / f"{case_name}.json", source)
 
     manifest_path = _export(source_path, tmp_path / f"bundle-{case_name}")
@@ -137,7 +141,7 @@ def test_v3_export_supports_each_shared_instruction_state(
             encoding="utf-8"
         )
     )
-    expected = shared["cases"][case_name]
+    expected = shared["instructions"][case_name]
     assert target_payload["instructionType"] == expected["instructionType"]
     assert target_payload["targetSemantics"] == expected.get("targetSemantics")
     assert target_payload["omittedInstrumentPolicy"] == expected.get(
@@ -180,7 +184,7 @@ def test_invalid_v3_sources_fail_before_final_output(
     else:
         source["artifactContractV3"]["targetInstruction"]["targets"][1][
             "fxAvailableAt"
-        ] = "2024-01-05T08:01:00+08:00"
+        ] = "2026-09-14T15:01:00+08:00"
 
     source_path = _write_source(tmp_path / "invalid.json", source)
     output = tmp_path / "bundle"
