@@ -99,9 +99,7 @@ def _basic(date: str) -> pd.DataFrame:
 
 
 def _factor(date: str, value: float) -> pd.DataFrame:
-    return pd.DataFrame(
-        {"ts_code": ["000001.SZ"], "trade_date": [date], "adj_factor": [value]}
-    )
+    return pd.DataFrame({"ts_code": ["000001.SZ"], "trade_date": [date], "adj_factor": [value]})
 
 
 @dataclass(frozen=True)
@@ -159,7 +157,9 @@ def test_full_resumable_sync_repairs_factor_and_reuses_checkpoints(tmp_path: Pat
     client = _ProviderClient()
     service = ResumableCertifiedDailySyncService(settings, extractor=_Extractor(client))
 
-    monkeypatch.setattr(service, "_sync_extended", lambda eligible: {"status": "complete", "as_of": str(eligible)})
+    monkeypatch.setattr(
+        service, "_sync_extended", lambda eligible: {"status": "complete", "as_of": str(eligible)}
+    )
     monkeypatch.setattr(
         service,
         "_refresh_pit_from_extended",
@@ -250,9 +250,7 @@ def _fake_dataset(tmp_path: Path, target: str) -> SimpleNamespace:
     (root / "calendars").mkdir(parents=True)
     (root / "instruments").mkdir()
     (root / "features" / "sh600000").mkdir(parents=True)
-    (root / "calendars" / "day.txt").write_text(
-        f"{pd.Timestamp(target).date()}\n", encoding="utf-8"
-    )
+    (root / "calendars" / "day.txt").write_text(f"{pd.Timestamp(target).date()}\n", encoding="utf-8")
     (root / "instruments" / "all.txt").write_text(
         f"SH600000\t{pd.Timestamp(target).date()}\t{pd.Timestamp(target).date()}\n",
         encoding="utf-8",
