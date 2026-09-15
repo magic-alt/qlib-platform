@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "ResearchPlatformEpicCloseout",
+  "epic": {
+    "repository": "magic-alt/qlib-platform",
+    "issue": 104,
+    "auditDate": "2026-09-15",
+    "baselineCommit": "86b0bac9bd9f2d54fd2a2654b8196eb7d6a54639",
+    "status": "RESEARCH_SOFTWARE_COMPLETE",
+    "pairedExecution": {
+      "repository": "magic-alt/lean-local-platform",
+      "issue": 58,
+      "status": "EXTERNAL_EVIDENCE_PENDING",
+      "productionCertified": false
+    }
+  },
+  "contracts": {
+    "artifactCurrent": "3.0",
+    "artifactPreviousSupported": "2.0",
+    "researchProfileSchemaVersion": 1,
+    "strategySdkSchemaVersion": "1.0",
+    "quantHandoff": "target_portfolio_v1"
+  },
+  "governance": {
+    "permittedModes": [
+      "research",
+      "backtest",
+      "diagnostics",
+      "shadow"
+    ],
+    "forbiddenModes": [
+      "paper",
+      "live",
+      "production"
+    ],
+    "formalCandidatesAllowed": false,
+    "modelSelectionAllowed": false,
+    "publishingAuthorized": false,
+    "finalHoldoutAccessAllowed": false,
+    "maximumPromotionState": "RESEARCH_PROMOTED",
+    "brokerOmsAuthority": false
+  },
+  "children": [
+    {
+      "issue": 105,
+      "status": "COMPLETE",
+      "capability": "data_source_registry_atomicity",
+      "evidence": [
+        "src/qlib_platform/data/sources/registry.py"
+      ]
+    },
+    {
+      "issue": 106,
+      "status": "COMPLETE",
+      "capability": "provider_neutral_data_source_sdk",
+      "evidence": [
+        "src/qlib_platform/data/sources/semantic.py",
+        "src/qlib_platform/data/semantic_bridge.py"
+      ]
+    },
+    {
+      "issue": 107,
+      "status": "COMPLETE",
+      "capability": "research_profile_contract",
+      "evidence": [
+        "src/qlib_platform/research/contracts/research_profile.py"
+      ]
+    },
+    {
+      "issue": 108,
+      "status": "COMPLETE",
+      "capability": "artifact_contract_compatibility",
+      "evidence": [
+        "src/qlib_platform/artifacts/artifact_contract_v3.py",
+        "src/qlib_platform/artifacts/research_bundle_export.py"
+      ]
+    },
+    {
+      "issue": 109,
+      "status": "COMPLETE",
+      "capability": "governed_research_pipeline",
+      "evidence": [
+        "src/qlib_platform/research/workflow/governed_quickstart.py",
+        "docs/research_pipeline_ux.md"
+      ]
+    },
+    {
+      "issue": 110,
+      "status": "COMPLETE",
+      "capability": "strategy_sdk_and_execution_attribution",
+      "evidence": [
+        "src/qlib_platform/backtesting/strategy_sdk.py",
+        "src/qlib_platform/backtesting/execution_attribution.py"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "multi_asset_research_profiles",
+      "status": "IMPLEMENTED_RESEARCH",
+      "modes": ["research", "backtest", "diagnostics"],
+      "scope": ["ashare_equity_v1", "ashare_etf_v1"],
+      "productionCertified": false
+    },
+    {
+      "id": "multi_source_semantics",
+      "status": "IMPLEMENTED_RESEARCH",
+      "modes": ["research", "backtest"],
+      "scope": ["provider_neutral_request", "canonical_batch", "capability_negotiation", "auditable_failures"],
+      "productionCertified": false
+    },
+    {
+      "id": "artifact_handoff",
+      "status": "CONTRACTED_RESEARCH",
+      "modes": ["research"],
+      "scope": ["artifact_v3", "artifact_v2_compatibility", "single_data_release", "target_portfolio_v1"],
+      "productionCertified": false
+    },
+    {
+      "id": "governed_research_pipeline",
+      "status": "IMPLEMENTED_RESEARCH",
+      "modes": ["research", "backtest", "diagnostics"],
+      "scope": ["plan", "matrix", "resume", "leakage_guards", "immutable_evidence"],
+      "productionCertified": false
+    },
+    {
+      "id": "strategy_pipeline",
+      "status": "IMPLEMENTED_RESEARCH",
+      "modes": ["backtest", "shadow"],
+      "scope": ["topk_dropout_v1", "rank_buffer_v1", "score_threshold_shadow_v1", "execution_attribution"],
+      "productionCertified": false
+    },
+    {
+      "id": "lean_execution_collaboration",
+      "status": "EXTERNAL_EVIDENCE_PENDING",
+      "modes": [],
+      "scope": ["consumer_compatibility", "lean_validation", "paper", "live"],
+      "authorityRepository": "magic-alt/lean-local-platform",
+      "productionCertified": false,
+      "evidence": [
+        "src/qlib_platform/ops/lean_bridge.py"
+      ]
+    }
+  ],
+  "rollbackCompatibility": {
+    "dataReleaseIdentityMutable": false,
+    "historicalStrategyIdsMutable": false,
+    "artifactV2ReinterpretedInPlace": false,
+    "researchProfilesMayAuthorizeExecution": false,
+    "executionAuthorityMayMoveIntoQlibPlatform": false
+  }
+}
