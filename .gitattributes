@@ -1,3 +1,5 @@
 *.pdf binary
 tests/fixtures/artifact_v2/*.json text eol=lf
 tests/fixtures/artifact_v2/golden_v2/** text eol=lf
+tests/fixtures/artifact_v3/*.json text eol=lf
+tests/fixtures/artifact_v3/golden_v3/** text eol=lf
