@@ -138,6 +138,16 @@ ALPHA_PACKS: dict[str, AlphaPackSpec] = {
             "state",
         ),
     ),
+    "etf_core_v1": AlphaPackSpec(
+        "etf_core_v1",
+        1,
+        "AshareEtfCore",
+        _BASE_FIELDS,
+        ("etf_daily", "etf_adjustment_factor"),
+        60,
+        "etf_core_v1",
+        ("technical", "liquidity", "tradability"),
+    ),
 }
 
 
@@ -179,9 +189,9 @@ def assert_alpha_pack_compatible(settings: Settings, pack: AlphaPackSpec) -> Non
 
 
 def handler_class(pack: AlphaPackSpec):
-    from qlib_platform.data import custom_handler, official_handler
+    from qlib_platform.data import custom_handler, etf_handler, official_handler
 
-    for module in (custom_handler, official_handler):
+    for module in (custom_handler, etf_handler, official_handler):
         candidate = getattr(module, pack.handler_class, None)
         if candidate is not None:
             return candidate
