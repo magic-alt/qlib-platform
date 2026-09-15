@@ -1,0 +1,49 @@
+{
+  "bundleSha256": "0cc355854f95074bf655540fea3fb52dcc7cfa2eb0293b54f6a4612de5a232a9",
+  "files": {
+    "artifacts/art_3b00d8a2b6301fe799120ff08d423c3b5f71821feb977ef131ce8d810bb3ad5e.json": {
+      "sha256": "2c81213e3fbfdb5f9b979ec022db2bc21c69769c33a04bfdc00af8bf6ee78159",
+      "size": 1612
+    },
+    "artifacts/art_9c554824884f95e66c05aab166bb5941f79778eb3397284b96498cf0a0bc39b8.json": {
+      "sha256": "a0ab40ae7f6845bddc3d0c5c7fed40a5d9ed7c3fb983ad933a21e60086df962e",
+      "size": 1507
+    },
+    "artifacts/art_c45504a91b02bcd325dc0041831d3dfe4c7f31328baed5360b438de8ca7064fa.json": {
+      "sha256": "31f33c3be9bd1846d15b492d2f3210f59a7b5da6b8e202123bcd042474cca630",
+      "size": 1501
+    },
+    "artifacts/art_d013a7dacf93b283aeb6441f76829a920fdc8462bbf93a537a56a16c2a36b96b.json": {
+      "sha256": "2691ad0556624fb077821bfa8cbf0cf92de9f3fcbf53143ff49997ededcb8b80",
+      "size": 1513
+    },
+    "artifacts/art_eab13a41731af0565fa4bafab07c75165f081d78a10fb7acdda43b94b0a4d0a6.json": {
+      "sha256": "06e0dd6524774ce4aa5e7e50078c488f1861a75e30867e14d805ed8addc27fb3",
+      "size": 1507
+    },
+    "payloads/model_release.json": {
+      "sha256": "49cd023fbefcd3c7e18cf6344c691019ae022a5128a3bed5b00b94c46302fe8c",
+      "size": 119
+    },
+    "payloads/signal_snapshot.json": {
+      "sha256": "5233e1d862fdae2d126ac5c295397e3e51106c9ca630e6778e9037ef395dccd3",
+      "size": 193
+    },
+    "payloads/strategy_policy.json": {
+      "sha256": "70a1993b69eda725c6a7ab62ea5d9ab5be25353d043db868a8a161257a3d36fc",
+      "size": 414
+    },
+    "payloads/target_portfolio.json": {
+      "sha256": "45f3464e13749b858d9cbbb3c75769ccaa9c6521dbcd04129952079a8f31c04a",
+      "size": 1214
+    },
+    "payloads/validation_result.json": {
+      "sha256": "f9a60b2644ef23b6e652a30f397dc0ab2b1ab4e4032fa2b7a9d263621c68a7b8",
+      "size": 245
+    },
+    "production_research_bundle_manifest_v3.json": {
+      "sha256": "573168b015eea8a6ec68e6ad820eee05654d51a379fdca451974a6d74ffe3b74",
+      "size": 4493
+    }
+  }
+}
