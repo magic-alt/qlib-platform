@@ -187,6 +187,7 @@ def test_derivative_handoff_distinguishes_research_series_from_tradable_contract
         venue="CFFEX",
         currency="CNY",
         calendar_id="cn_future_fixture_v1",
+        tradable=True,
         aliases=(SymbolAlias("fixture", "IF2612"),),
         underlying_id="CN.INDEX.CSI300",
         expiry="2026-12-18",
