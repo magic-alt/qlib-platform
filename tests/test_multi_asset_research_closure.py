@@ -36,10 +36,7 @@ def _frame_payload(frame: pd.DataFrame) -> dict[str, object]:
             for timestamp, instrument in ordered.index
         ],
         "columns": [str(column) for column in ordered.columns],
-        "values": [
-            [_normalized_scalar(value) for value in row]
-            for row in ordered.to_numpy()
-        ],
+        "values": [[_normalized_scalar(value) for value in row] for row in ordered.to_numpy()],
     }
 
 
@@ -54,11 +51,7 @@ def _legacy_fixture_output_sha256() -> str:
     label_rows: list[np.float32] = []
     for day_number in range(len(dates)):
         for offset, _instrument in enumerate(instruments):
-            close = (
-                10.0
-                + offset
-                + np.arange(len(dates), dtype=float) * (0.1 + offset * 0.02)
-            ).astype("<f4")
+            close = (10.0 + offset + np.arange(len(dates), dtype=float) * (0.1 + offset * 0.02)).astype("<f4")
             feature_rows.append(
                 [
                     close[day_number],
@@ -70,11 +63,7 @@ def _legacy_fixture_output_sha256() -> str:
                 ]
             )
             if day_number + 7 < len(dates):
-                label_rows.append(
-                    np.float32(
-                        close[day_number + 7] / close[day_number + 1] - np.float32(1.0)
-                    )
-                )
+                label_rows.append(np.float32(close[day_number + 7] / close[day_number + 1] - np.float32(1.0)))
             else:
                 label_rows.append(np.float32(np.nan))
 
@@ -119,13 +108,7 @@ def _legacy_fixture_output_sha256() -> str:
 
 def _compatibility_golden() -> dict[str, object]:
     root = Path(__file__).resolve().parents[1]
-    path = (
-        root
-        / "tests"
-        / "fixtures"
-        / "research_profile"
-        / "ashare_equity_v1_pre_profile_golden.json"
-    )
+    path = root / "tests" / "fixtures" / "research_profile" / "ashare_equity_v1_pre_profile_golden.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
