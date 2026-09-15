@@ -31,8 +31,21 @@ _MASTER_FIELDS = (
     "ts_code,symbol,name,area,industry,market,exchange,list_status,list_date,delist_date,is_hs,"
     "act_name,act_ent_type"
 )
+_ETF_MASTER_FIELDS = (
+    "ts_code,csname,extname,cname,index_code,index_name,setup_date,list_date,list_status,exchange,"
+    "mgr_name,custod_name,mgt_fee,etf_type"
+)
+_FUND_LIFECYCLE_FIELDS = "ts_code,name,list_date,delist_date,status,market"
 _CALENDAR_FIELDS = "exchange,cal_date,is_open,pretrade_date"
-_PAGINATED_DATASETS = frozenset({"equity_daily", "equity_daily_basic", "adjustment_factor"})
+_PAGINATED_DATASETS = frozenset(
+    {
+        "equity_daily",
+        "equity_daily_basic",
+        "adjustment_factor",
+        "etf_daily",
+        "etf_adjustment_factor",
+    }
+)
 
 
 class TushareSemanticDataSource:
@@ -50,6 +63,9 @@ class TushareSemanticDataSource:
                 DatasetCapability("equity_daily_basic"),
                 DatasetCapability("adjustment_factor"),
                 DatasetCapability("instrument_master"),
+                DatasetCapability("etf_daily"),
+                DatasetCapability("etf_adjustment_factor"),
+                DatasetCapability("etf_instrument_master"),
                 DatasetCapability("trading_calendar"),
             ),
         )
@@ -64,6 +80,9 @@ class TushareSemanticDataSource:
             "equity_daily_basic": self._fetch_daily_basic,
             "adjustment_factor": self._fetch_adjustment_factor,
             "instrument_master": self._fetch_instrument_master,
+            "etf_daily": self._fetch_etf_daily,
+            "etf_adjustment_factor": self._fetch_etf_adjustment_factor,
+            "etf_instrument_master": self._fetch_etf_instrument_master,
             "trading_calendar": self._fetch_calendar,
         }
         return handlers[request.dataset_kind](request)
@@ -114,6 +133,14 @@ class TushareSemanticDataSource:
             return self._fetch_daily_basic(request, transport_params=transport_params, allow_empty=True)
         if request.dataset_kind == "adjustment_factor":
             return self._fetch_adjustment_factor(request, transport_params=transport_params, allow_empty=True)
+        if request.dataset_kind == "etf_daily":
+            return self._fetch_etf_daily(request, transport_params=transport_params, allow_empty=True)
+        if request.dataset_kind == "etf_adjustment_factor":
+            return self._fetch_etf_adjustment_factor(
+                request,
+                transport_params=transport_params,
+                allow_empty=True,
+            )
         return FetchEnvelope(
             "tushare",
             "unsupported",
@@ -158,41 +185,13 @@ class TushareSemanticDataSource:
         if missing:
             return _schema_failure(result, missing)
         raw = result.data.copy()
-        frame = pd.DataFrame(
-            {
-                "instrument": raw["ts_code"].astype(str).map(ts_to_qlib),
-                "trading_date": pd.to_datetime(
-                    raw["trade_date"], format="%Y%m%d", errors="raise"
-                ).dt.strftime("%Y-%m-%d"),
-                "event_time": _ashare_close_time(raw["trade_date"]),
-                "available_at": pd.NaT,
-                "open": pd.to_numeric(raw["open"], errors="raise"),
-                "high": pd.to_numeric(raw["high"], errors="raise"),
-                "low": pd.to_numeric(raw["low"], errors="raise"),
-                "close": pd.to_numeric(raw["close"], errors="raise"),
-                "previous_close": pd.to_numeric(raw["pre_close"], errors="raise"),
-                "absolute_change": pd.to_numeric(raw["change"], errors="raise"),
-                "return_ratio": pd.to_numeric(raw["pct_chg"], errors="raise") / 100.0,
-                "volume": pd.to_numeric(raw["vol"], errors="raise") * 100.0,
-                "turnover": pd.to_numeric(raw["amount"], errors="raise") * 1000.0,
-            }
-        )
+        frame = _canonical_daily_frame(raw)
         return _success_envelope(
             request,
             raw,
             _select_fields(frame, request),
             source_units={"vol": "hand", "amount": "CNY_thousand"},
-            canonical_units={
-                "open": "CNY/share",
-                "high": "CNY/share",
-                "low": "CNY/share",
-                "close": "CNY/share",
-                "previous_close": "CNY/share",
-                "absolute_change": "CNY/share",
-                "return_ratio": "ratio",
-                "volume": "share",
-                "turnover": "CNY",
-            },
+            canonical_units=_daily_canonical_units(),
             attempts=result.attempts,
         )
 
@@ -283,6 +282,78 @@ class TushareSemanticDataSource:
             required=False,
             **params,
         )
+        return self._adjustment_envelope(request, result, allow_empty=allow_empty)
+
+    def _fetch_etf_daily(
+        self,
+        request: DatasetRequest,
+        *,
+        transport_params: Mapping[str, object] | None = None,
+        allow_empty: bool = False,
+    ) -> FetchEnvelope:
+        params: dict[str, object] = dict(_date_params(request))
+        params.update(transport_params or {})
+        result = self._client.fetch(
+            "fund_daily",
+            fields=_DAILY_FIELDS,
+            required=False,
+            **params,
+        )
+        if result.status != "success":
+            if allow_empty and result.status == "empty":
+                return _empty_envelope(result)
+            return _failure_envelope(result, request)
+        required = {
+            "ts_code",
+            "trade_date",
+            "open",
+            "high",
+            "low",
+            "close",
+            "pre_close",
+            "change",
+            "pct_chg",
+            "vol",
+            "amount",
+        }
+        missing = required - set(result.data.columns)
+        if missing:
+            return _schema_failure(result, missing)
+        raw = result.data.copy()
+        frame = _canonical_daily_frame(raw)
+        return _success_envelope(
+            request,
+            raw,
+            _select_fields(frame, request),
+            source_units={"vol": "hand", "amount": "CNY_thousand"},
+            canonical_units=_daily_canonical_units(),
+            attempts=result.attempts,
+        )
+
+    def _fetch_etf_adjustment_factor(
+        self,
+        request: DatasetRequest,
+        *,
+        transport_params: Mapping[str, object] | None = None,
+        allow_empty: bool = False,
+    ) -> FetchEnvelope:
+        params: dict[str, object] = dict(_date_params(request))
+        params.update(transport_params or {})
+        result = self._client.fetch(
+            "fund_adj",
+            fields=_ADJ_FIELDS,
+            required=False,
+            **params,
+        )
+        return self._adjustment_envelope(request, result, allow_empty=allow_empty)
+
+    def _adjustment_envelope(
+        self,
+        request: DatasetRequest,
+        result: FetchResult,
+        *,
+        allow_empty: bool,
+    ) -> FetchEnvelope:
         if result.status != "success":
             if allow_empty and result.status == "empty":
                 return _empty_envelope(result)
@@ -347,6 +418,88 @@ class TushareSemanticDataSource:
             timezone="UTC",
         )
 
+    def _fetch_etf_instrument_master(self, request: DatasetRequest) -> FetchEnvelope:
+        metadata_frames: list[pd.DataFrame] = []
+        attempts = 0
+        for list_status in ("L", "D"):
+            result = self._client.fetch(
+                "etf_basic",
+                fields=_ETF_MASTER_FIELDS,
+                required=False,
+                list_status=list_status,
+            )
+            attempts += result.attempts
+            if result.status not in {"success", "empty"}:
+                return _failure_envelope(result, request)
+            metadata_frames.append(result.data)
+
+        lifecycle = self._client.fetch(
+            "fund_basic",
+            fields=_FUND_LIFECYCLE_FIELDS,
+            required=False,
+            market="E",
+        )
+        attempts += lifecycle.attempts
+        if lifecycle.status not in {"success", "empty"}:
+            return _failure_envelope(lifecycle, request)
+
+        metadata = pd.concat(metadata_frames, ignore_index=True) if metadata_frames else pd.DataFrame()
+        required_metadata = {"ts_code", "list_status", "list_date", "exchange"}
+        missing = required_metadata - set(metadata.columns)
+        if missing:
+            return _schema_failure(FetchResult(metadata, "success", max(attempts, 1)), missing)
+        required_lifecycle = {"ts_code", "list_date", "delist_date", "status", "market"}
+        missing_lifecycle = required_lifecycle - set(lifecycle.data.columns)
+        if missing_lifecycle:
+            return _schema_failure(lifecycle, missing_lifecycle)
+
+        metadata = metadata.drop_duplicates("ts_code")
+        lifecycle_frame = lifecycle.data.drop_duplicates("ts_code")
+        raw = metadata.merge(
+            lifecycle_frame,
+            on="ts_code",
+            how="left",
+            suffixes=("", "_fund"),
+            validate="one_to_one",
+        )
+        missing_lifecycle_rows = raw["market"].isna()
+        if missing_lifecycle_rows.any():
+            return FetchEnvelope(
+                "tushare",
+                "incomplete",
+                max(attempts, 1),
+                provider_revision="tushare-pro",
+                source_hash=frame_sha256(raw),
+                entitlement="granted",
+                error_class="missing_etf_lifecycle",
+                error="ETF metadata rows are missing fund lifecycle evidence",
+            )
+        raw["list_date"] = raw["list_date"].where(raw["list_date"].notna(), raw["list_date_fund"])
+        raw = raw.sort_values("ts_code").reset_index(drop=True)
+        frame = pd.DataFrame(
+            {
+                "instrument": raw["ts_code"].astype(str).map(ts_to_qlib),
+                "event_time": pd.Timestamp("1970-01-01", tz="UTC"),
+                "available_at": pd.NaT,
+                "name": raw.get("csname", raw.get("name", "")),
+                "tracking_index": raw.get("index_code", ""),
+                "listing_status": raw["list_status"].astype(str),
+                "list_date": raw["list_date"].astype(str),
+                "delist_date": raw["delist_date"],
+                "exchange": raw["exchange"].astype(str),
+                "etf_type": raw.get("etf_type", ""),
+            }
+        )
+        return _success_envelope(
+            request,
+            raw,
+            _select_fields(frame, request),
+            source_units={},
+            canonical_units={},
+            attempts=max(attempts, 1),
+            timezone="UTC",
+        )
+
     def _fetch_calendar(self, request: DatasetRequest) -> FetchEnvelope:
         result = self._client.fetch(
             "trade_cal",
@@ -385,6 +538,42 @@ class TushareSemanticDataSource:
             canonical_units={},
             attempts=result.attempts,
         )
+
+
+def _canonical_daily_frame(raw: pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "instrument": raw["ts_code"].astype(str).map(ts_to_qlib),
+            "trading_date": pd.to_datetime(raw["trade_date"], format="%Y%m%d", errors="raise").dt.strftime(
+                "%Y-%m-%d"
+            ),
+            "event_time": _ashare_close_time(raw["trade_date"]),
+            "available_at": pd.NaT,
+            "open": pd.to_numeric(raw["open"], errors="raise"),
+            "high": pd.to_numeric(raw["high"], errors="raise"),
+            "low": pd.to_numeric(raw["low"], errors="raise"),
+            "close": pd.to_numeric(raw["close"], errors="raise"),
+            "previous_close": pd.to_numeric(raw["pre_close"], errors="raise"),
+            "absolute_change": pd.to_numeric(raw["change"], errors="raise"),
+            "return_ratio": pd.to_numeric(raw["pct_chg"], errors="raise") / 100.0,
+            "volume": pd.to_numeric(raw["vol"], errors="raise") * 100.0,
+            "turnover": pd.to_numeric(raw["amount"], errors="raise") * 1000.0,
+        }
+    )
+
+
+def _daily_canonical_units() -> dict[str, str]:
+    return {
+        "open": "CNY/share",
+        "high": "CNY/share",
+        "low": "CNY/share",
+        "close": "CNY/share",
+        "previous_close": "CNY/share",
+        "absolute_change": "CNY/share",
+        "return_ratio": "ratio",
+        "volume": "share",
+        "turnover": "CNY",
+    }
 
 
 def _date_params(request: DatasetRequest) -> dict[str, str]:
