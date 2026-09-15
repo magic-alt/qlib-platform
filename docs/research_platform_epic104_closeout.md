@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: architecture
+applies_to_commit: 86b0bac9bd9f2d54fd2a2654b8196eb7d6a54639
+last_verified: 2026-09-15
+---
+
 # Research Platform Epic #104 closeout
 
 Issue #104 is the September 2026 research-platform audit Epic. This page closes the **qlib-platform software scope** after child issues #105 through #110 were completed and merged. It is not a production-trading certificate and it does not close the paired execution-platform Epic `magic-alt/lean-local-platform#58`.
