@@ -60,9 +60,11 @@ def _sha(value: object, label: str) -> str:
 
 
 def _number(value: object, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{label} must be numeric")
     try:
         number = float(value)
-    except (TypeError, ValueError) as exc:
+    except ValueError as exc:
         raise ValueError(f"{label} must be numeric") from exc
     if not math.isfinite(number):
         raise ValueError(f"{label} must be finite")
