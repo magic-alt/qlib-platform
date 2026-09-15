@@ -99,7 +99,7 @@ nav:
       - Portfolio Policy: portfolio_v2_rank_buffer.md
       - Windows LightGBM GPU: windows_lightgbm_gpu.md
   - Research & ML:
-      - Research Platform Epic #104 Closeout: research_platform_epic104_closeout.md
+      - "Research Platform Epic #104 Closeout": research_platform_epic104_closeout.md
       - Governed Research Pipeline UX: research_pipeline_ux.md
       - Research Baselines & Templates: research_baselines.md
       - Research Web Dashboard: research_web_dashboard.md
