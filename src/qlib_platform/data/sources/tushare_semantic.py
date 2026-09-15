@@ -141,7 +141,19 @@ class TushareSemanticDataSource:
             if allow_empty and result.status == "empty":
                 return _empty_envelope(result)
             return _failure_envelope(result, request)
-        required = {"ts_code", "trade_date", "open", "high", "low", "close", "vol", "amount"}
+        required = {
+            "ts_code",
+            "trade_date",
+            "open",
+            "high",
+            "low",
+            "close",
+            "pre_close",
+            "change",
+            "pct_chg",
+            "vol",
+            "amount",
+        }
         missing = required - set(result.data.columns)
         if missing:
             return _schema_failure(result, missing)
@@ -158,6 +170,9 @@ class TushareSemanticDataSource:
                 "high": pd.to_numeric(raw["high"], errors="raise"),
                 "low": pd.to_numeric(raw["low"], errors="raise"),
                 "close": pd.to_numeric(raw["close"], errors="raise"),
+                "previous_close": pd.to_numeric(raw["pre_close"], errors="raise"),
+                "absolute_change": pd.to_numeric(raw["change"], errors="raise"),
+                "return_ratio": pd.to_numeric(raw["pct_chg"], errors="raise") / 100.0,
                 "volume": pd.to_numeric(raw["vol"], errors="raise") * 100.0,
                 "turnover": pd.to_numeric(raw["amount"], errors="raise") * 1000.0,
             }
@@ -172,6 +187,9 @@ class TushareSemanticDataSource:
                 "high": "CNY/share",
                 "low": "CNY/share",
                 "close": "CNY/share",
+                "previous_close": "CNY/share",
+                "absolute_change": "CNY/share",
+                "return_ratio": "ratio",
                 "volume": "share",
                 "turnover": "CNY",
             },
@@ -225,6 +243,8 @@ class TushareSemanticDataSource:
                 "circulating_market_value": pd.to_numeric(raw["circ_mv"], errors="coerce") * 10000.0,
             }
         )
+        if "close" in raw.columns:
+            frame["close"] = pd.to_numeric(raw["close"], errors="coerce")
         for column in ("turnover_rate", "turnover_rate_f", "dv_ratio", "dv_ttm"):
             if column in raw.columns:
                 frame[column] = pd.to_numeric(raw[column], errors="coerce") / 100.0
@@ -237,6 +257,7 @@ class TushareSemanticDataSource:
             _select_fields(frame, request),
             source_units={"total_share": "10k_share", "total_mv": "CNY_10k", "turnover_rate": "percent"},
             canonical_units={
+                "close": "CNY/share",
                 "total_shares": "share",
                 "float_shares": "share",
                 "free_shares": "share",

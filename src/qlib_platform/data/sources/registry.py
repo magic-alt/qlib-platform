@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 from qlib_platform.data.sources.base import DataSourceClient, RetryPolicy
 
 if TYPE_CHECKING:
+    from qlib_platform.data.sources.semantic import SemanticDataSource
     from qlib_platform.settings import Settings
 
 
@@ -23,6 +24,7 @@ class DataSourceBinding:
 
     name: str
     client: DataSourceClient
+    semantic_source: SemanticDataSource | None = None
     endpoint_overrides: Mapping[str, EndpointOverride] = field(default_factory=dict)
     capabilities: frozenset[str] = field(default_factory=frozenset)
     operations: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
@@ -110,11 +112,16 @@ def _optional_endpoints(settings: "Settings") -> Mapping[str, Any]:
 
 
 def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
+    from qlib_platform.data.semantic_bridge import SemanticIngestionClient
+    from qlib_platform.data.sources.semantic import PaginationPolicy
     from qlib_platform.data.sources.tushare import TushareClient
+    from qlib_platform.data.sources.tushare_semantic import TushareSemanticDataSource
 
     source_cfg = _mapping(settings.data.get("data_source"))
     legacy = _mapping(settings.data.get("tushare"))
     provider_cfg = _mapping(source_cfg.get("tushare")) or legacy
+    runtime_cfg = _mapping(source_cfg.get("runtime"))
+    pagination_cfg = _mapping(runtime_cfg.get("pagination"))
     calls = int(os.getenv("TUSHARE_CALLS_PER_MINUTE", provider_cfg.get("calls_per_minute", 180)))
     token_env = str(provider_cfg.get("token_env") or "TUSHARE_TOKEN").strip()
     token = os.getenv(token_env, "").strip() or str(settings.tushare_token or "").strip()
@@ -122,12 +129,26 @@ def _tushare_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSou
         raise RuntimeError(
             f"{token_env} is not set. Configure data_source.tushare.token_env or the environment variable."
         )
-    client = TushareClient(
+    transport = TushareClient(
         token,
         calls_per_minute=calls,
         retry_policy=retry_policy,
     )
-    return DataSourceBinding(name="tushare", client=client)
+    semantic_source = TushareSemanticDataSource(transport)
+    client = SemanticIngestionClient(
+        transport,
+        semantic_source,
+        canonical_root=settings.paths.raw / "_semantic_v1",
+        pagination_policy=PaginationPolicy(
+            page_size=int(pagination_cfg.get("page_size", 1000)),
+            max_pages=int(pagination_cfg.get("max_pages", 100)),
+        ),
+    )
+    return DataSourceBinding(
+        name="tushare",
+        client=client,
+        semantic_source=semantic_source,
+    )
 
 
 def _mysql_factory(settings: "Settings", retry_policy: RetryPolicy) -> DataSourceBinding:
