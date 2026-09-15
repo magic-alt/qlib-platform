@@ -62,9 +62,6 @@ def register_data_source(
     raw_aliases = tuple(_normalize(alias) for alias in aliases)
     if any(not alias for alias in raw_aliases):
         raise ValueError("data source aliases must not be empty")
-    # Legacy spellings may intentionally normalize to the same registry key
-    # (for example ``lean-platform`` and ``lean_platform``). Collapse those
-    # equivalents before validation while preserving first-seen order.
     normalized_aliases = tuple(dict.fromkeys(raw_aliases))
     if canonical in normalized_aliases:
         raise ValueError("data source alias must not duplicate the canonical name")
@@ -78,8 +75,6 @@ def register_data_source(
         raise ValueError(f"data source name conflicts with existing alias: {canonical}")
 
     if replace:
-        # Replacing a provider also replaces its alias set. Stale aliases must
-        # not continue to resolve to a factory that no longer advertises them.
         next_aliases = {alias: target for alias, target in next_aliases.items() if target != canonical}
 
     for alias in normalized_aliases:
@@ -215,12 +210,29 @@ def available_data_sources() -> tuple[str, ...]:
     return tuple(sorted(_FACTORIES))
 
 
+def _auto_mysql_is_configured(source_cfg: Mapping[str, Any]) -> bool:
+    mysql_cfg = source_cfg.get("mysql")
+    if not isinstance(mysql_cfg, Mapping):
+        return False
+
+    # Reuse the adapter's own connection contract so auto-resolution cannot drift
+    # from the configuration that the MySQL factory will actually accept. This also
+    # honors the adapter's environment-variable fallbacks without opening a socket.
+    from qlib_platform.data.sources.mysql import build_connection_kwargs
+
+    try:
+        build_connection_kwargs(mysql_cfg)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def resolve_data_source_name(settings: "Settings") -> str:
     _register_builtins()
     source_cfg = _mapping(settings.data.get("data_source"))
     requested = _normalize(str(source_cfg.get("kind", "tushare")))
     if requested == "auto":
-        requested = "mysql" if isinstance(source_cfg.get("mysql"), Mapping) else "tushare"
+        requested = "mysql" if _auto_mysql_is_configured(source_cfg) else "tushare"
     return _ALIASES.get(requested, requested)
 
 
