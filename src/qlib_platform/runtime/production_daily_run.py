@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from qlib_platform.data.production_daily_sync import ProductionDailySyncService
 from qlib_platform.runtime import daily_research_run as base
@@ -17,7 +17,9 @@ class DailyResearchRun(base.DailyResearchRun):
         self.sync = ProductionDailySyncService(settings)
         self.root = settings.paths.state / "daily_run"
 
-    def _verify_dataset(self, plan: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    def _verify_dataset(
+        self, plan: Mapping[str, Any], state: dict[str, Any]
+    ) -> dict[str, Any]:
         dataset = super()._verify_dataset(plan, state)
         data_path = Path(str(dataset["data_path"]))
         feature_root = data_path / "features"
