@@ -42,12 +42,8 @@ def test_market_close_evidence_preserves_new_york_dst_shift() -> None:
     )
 
     assert shanghai.close_at().astimezone(timezone.utc) == _utc("2026-03-09T07:00:00Z")
-    assert new_york_before_dst.close_at().astimezone(timezone.utc) == _utc(
-        "2026-03-06T21:00:00Z"
-    )
-    assert new_york_after_dst.close_at().astimezone(timezone.utc) == _utc(
-        "2026-03-09T20:00:00Z"
-    )
+    assert new_york_before_dst.close_at().astimezone(timezone.utc) == _utc("2026-03-06T21:00:00Z")
+    assert new_york_after_dst.close_at().astimezone(timezone.utc) == _utc("2026-03-09T20:00:00Z")
 
 
 def test_same_session_date_does_not_leak_a_market_that_has_not_closed() -> None:
@@ -87,9 +83,7 @@ def test_same_session_date_does_not_leak_a_market_that_has_not_closed() -> None:
     )
 
     assert [item.instrument_id for item in selected.eligible] == ["CN.XSHG.EQUITY.600000"]
-    assert selected.excluded[("US.XNAS.EQUITY.AAPL", date(2026, 3, 9))] == (
-        "future_available_at"
-    )
+    assert selected.excluded[("US.XNAS.EQUITY.AAPL", date(2026, 3, 9))] == ("future_available_at")
 
 
 def test_market_holidays_are_evidenced_per_calendar_not_by_shared_dates() -> None:
@@ -242,12 +236,15 @@ def test_fx_resolution_requires_direct_fresh_as_of_evidence() -> None:
         quotes,
         as_of=_utc("2026-03-09T10:00:00Z"),
     ) == pytest.approx(7.1)
-    assert resolve_fx_rate(
-        "CNY",
-        "CNY",
-        quotes,
-        as_of=_utc("2026-03-09T10:00:00Z"),
-    ) == 1.0
+    assert (
+        resolve_fx_rate(
+            "CNY",
+            "CNY",
+            quotes,
+            as_of=_utc("2026-03-09T10:00:00Z"),
+        )
+        == 1.0
+    )
     with pytest.raises(ValueError, match="unknown FX conversion"):
         resolve_fx_rate(
             "HKD",
