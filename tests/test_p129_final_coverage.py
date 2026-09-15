@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -84,9 +86,7 @@ def test_scheduler_render_rejects_unresolved_template_marker(tmp_path: Path, mon
     systemd = deploy / "systemd"
     systemd.mkdir(parents=True)
     (systemd / "qlib-platform-daily-sync.service.in").write_text(
-        "WorkingDirectory=@REPO_ROOT@\n"
-        "ExecStart=@PYTHON_EXE@ --config @CONFIG_PATH@\n"
-        "Unexpected=@UNKNOWN@\n",
+        "WorkingDirectory=@REPO_ROOT@\nExecStart=@PYTHON_EXE@ --config @CONFIG_PATH@\nUnexpected=@UNKNOWN@\n",
         encoding="utf-8",
     )
     (systemd / "qlib-platform-daily-sync.timer").write_text(
@@ -108,3 +108,22 @@ def test_scheduler_render_rejects_unresolved_template_marker(tmp_path: Path, mon
             config,
             tmp_path / "rendered",
         )
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "qlib_platform.runtime.daily_research_run",
+        "qlib_platform.runtime.production_daily_run",
+    ],
+)
+def test_daily_run_module_entrypoints_expose_help(module: str):
+    completed = subprocess.run(
+        [sys.executable, "-m", module, "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0
+    assert "--as-of" in completed.stdout
