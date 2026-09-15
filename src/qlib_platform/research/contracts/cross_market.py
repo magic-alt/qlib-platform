@@ -199,6 +199,7 @@ def cross_market_valuation_rates(
     """Require an explicit fresh conversion for every observed non-base currency."""
 
     observations_tuple = tuple(observations)
+    quotes_tuple = tuple(quotes)
     currencies_by_instrument: dict[str, str] = {}
     for observation in observations_tuple:
         existing = currencies_by_instrument.get(observation.instrument_id)
@@ -212,7 +213,7 @@ def cross_market_valuation_rates(
         instrument_id: resolve_fx_rate(
             currency,
             valuation_currency,
-            quotes,
+            quotes_tuple,
             as_of=as_of,
             max_age=max_fx_age,
         )
