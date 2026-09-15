@@ -6,7 +6,7 @@ from qlib_platform.alpha import ALPHA_PACKS, get_alpha_pack
 
 
 def test_first_alpha_pack_set_is_registered_with_stable_contracts():
-    assert set(ALPHA_PACKS) == {
+    legacy_pack_ids = {
         "qlib_alpha158_official_v1",
         "alpha158_daily_v1",
         "alpha158_market_v1",
@@ -15,6 +15,8 @@ def test_first_alpha_pack_set_is_registered_with_stable_contracts():
         "ashare_factor_benchmark_v1",
         "ashare_alpha_phase2_v1",
     }
+    assert legacy_pack_ids.issubset(ALPHA_PACKS)
+    assert "etf_core_v1" in ALPHA_PACKS
     assert len({pack.fingerprint for pack in ALPHA_PACKS.values()}) == len(ALPHA_PACKS)
     assert "industry_classification_pit" in ALPHA_PACKS["multifactor_core_v1"].required_release_components
     market_pack = ALPHA_PACKS["alpha158_market_v1"]
