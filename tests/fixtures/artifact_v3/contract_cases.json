@@ -1,0 +1,216 @@
+{
+  "calendarContract": {
+    "calendarId": "cn_us_cross_market_fixture_v1",
+    "sessionEvidence": "explicit",
+    "timezonePolicy": "per-market-IANA"
+  },
+  "compatibilityMatrix": [
+    {
+      "consumer": ["3.0", "2.0"],
+      "expected": "3.0",
+      "producer": ["3.0", "2.0"]
+    },
+    {
+      "consumer": ["2.0"],
+      "expected": "2.0",
+      "producer": ["3.0", "2.0"]
+    },
+    {
+      "consumer": ["3.0", "2.0"],
+      "expected": "2.0",
+      "producer": ["2.0"]
+    },
+    {
+      "consumer": ["2.0"],
+      "error": "no mutually supported",
+      "producer": ["3.0"]
+    },
+    {
+      "consumer": ["3.0", "2.0"],
+      "error": "unsupported contract versions",
+      "producer": ["3.0", "1.0"]
+    }
+  ],
+  "instructions": {
+    "cashOnly": {
+      "baseCurrency": "CNY",
+      "calendar": {
+        "calendarId": "cn_us_cross_market_fixture_v1",
+        "versionSha256": "e2cc484392ea6ef9942a7f5ae1f19eb8ad963a69b03a83d6a05ccc6e1dca14b5"
+      },
+      "cashWeight": 1.0,
+      "cashWeightDelta": null,
+      "fx": {"maxAgeSeconds": 86400},
+      "instructionType": "CASH_ONLY",
+      "omittedInstrumentPolicy": null,
+      "policy": {
+        "strategyPolicySha256": "39bff61696d938b6cf4dd5af5f8a8b83e92f432e155c287bebdfa8293d712854"
+      },
+      "risk": {"maxAbsNetExposure": 1.0, "maxGrossExposure": 1.2},
+      "schemaVersion": "3.0",
+      "supersedesArtifactId": null,
+      "targetSemantics": null,
+      "targets": [],
+      "timing": {
+        "asOfTime": "2026-09-14T15:00:00+08:00",
+        "producedAt": "2026-09-14T15:06:00+08:00",
+        "signalTime": "2026-09-14T15:05:00+08:00",
+        "tradeNotBefore": "2026-09-15T09:30:00+08:00",
+        "validFrom": "2026-09-15T09:20:00+08:00",
+        "validUntil": "2026-09-15T15:00:00+08:00"
+      },
+      "valuationBasis": "AS_OF_MARK"
+    },
+    "delta": {
+      "baseCurrency": "CNY",
+      "calendar": {
+        "calendarId": "cn_us_cross_market_fixture_v1",
+        "versionSha256": "e2cc484392ea6ef9942a7f5ae1f19eb8ad963a69b03a83d6a05ccc6e1dca14b5"
+      },
+      "cashWeight": null,
+      "cashWeightDelta": -0.05,
+      "fx": {"maxAgeSeconds": 86400},
+      "instructionType": "TARGETS",
+      "omittedInstrumentPolicy": "UNCHANGED",
+      "policy": {
+        "strategyPolicySha256": "39bff61696d938b6cf4dd5af5f8a8b83e92f432e155c287bebdfa8293d712854"
+      },
+      "risk": {"maxAbsNetExposure": 1.0, "maxGrossExposure": 1.2},
+      "schemaVersion": "3.0",
+      "supersedesArtifactId": null,
+      "targetSemantics": "DELTA",
+      "targets": [
+        {
+          "currency": "CNY",
+          "instrument": "CN.XSHG.EQUITY.600000",
+          "score": 0.9,
+          "targetWeight": 0.05
+        },
+        {
+          "currency": "CNY",
+          "instrument": "CN.XSHE.EQUITY.000001",
+          "score": 0.2,
+          "targetWeight": -0.02
+        }
+      ],
+      "timing": {
+        "asOfTime": "2026-09-14T15:00:00+08:00",
+        "producedAt": "2026-09-14T15:06:00+08:00",
+        "signalTime": "2026-09-14T15:05:00+08:00",
+        "tradeNotBefore": "2026-09-15T09:30:00+08:00",
+        "validFrom": "2026-09-15T09:20:00+08:00",
+        "validUntil": "2026-09-15T15:00:00+08:00"
+      },
+      "valuationBasis": "AS_OF_MARK"
+    },
+    "fullSnapshot": {
+      "baseCurrency": "CNY",
+      "calendar": {
+        "calendarId": "cn_us_cross_market_fixture_v1",
+        "versionSha256": "e2cc484392ea6ef9942a7f5ae1f19eb8ad963a69b03a83d6a05ccc6e1dca14b5"
+      },
+      "cashWeight": 0.1,
+      "cashWeightDelta": null,
+      "fx": {"maxAgeSeconds": 86400},
+      "instructionType": "TARGETS",
+      "omittedInstrumentPolicy": "ZERO_TARGET",
+      "policy": {
+        "strategyPolicySha256": "39bff61696d938b6cf4dd5af5f8a8b83e92f432e155c287bebdfa8293d712854"
+      },
+      "risk": {"maxAbsNetExposure": 1.0, "maxGrossExposure": 1.2},
+      "schemaVersion": "3.0",
+      "supersedesArtifactId": null,
+      "targetSemantics": "FULL_SNAPSHOT",
+      "targets": [
+        {
+          "currency": "CNY",
+          "instrument": "CN.XSHG.EQUITY.600000",
+          "score": 0.8,
+          "targetWeight": 0.6
+        },
+        {
+          "currency": "USD",
+          "fxAvailableAt": "2026-09-14T14:00:00+08:00",
+          "fxQuoteId": "USD/CNY@20260914T1400+08",
+          "fxRateToBase": 7.1,
+          "instrument": "US.XNAS.EQUITY.AAPL",
+          "score": 0.7,
+          "targetWeight": 0.3
+        }
+      ],
+      "timing": {
+        "asOfTime": "2026-09-14T15:00:00+08:00",
+        "producedAt": "2026-09-14T15:06:00+08:00",
+        "signalTime": "2026-09-14T15:05:00+08:00",
+        "tradeNotBefore": "2026-09-15T09:30:00+08:00",
+        "validFrom": "2026-09-15T09:20:00+08:00",
+        "validUntil": "2026-09-15T15:00:00+08:00"
+      },
+      "valuationBasis": "AS_OF_MARK"
+    },
+    "noSignal": {
+      "baseCurrency": "CNY",
+      "calendar": {
+        "calendarId": "cn_us_cross_market_fixture_v1",
+        "versionSha256": "e2cc484392ea6ef9942a7f5ae1f19eb8ad963a69b03a83d6a05ccc6e1dca14b5"
+      },
+      "cashWeight": null,
+      "cashWeightDelta": null,
+      "fx": {"maxAgeSeconds": 86400},
+      "instructionType": "NO_SIGNAL",
+      "omittedInstrumentPolicy": "UNCHANGED",
+      "policy": {
+        "strategyPolicySha256": "39bff61696d938b6cf4dd5af5f8a8b83e92f432e155c287bebdfa8293d712854"
+      },
+      "risk": {"maxAbsNetExposure": 1.0, "maxGrossExposure": 1.2},
+      "schemaVersion": "3.0",
+      "supersedesArtifactId": null,
+      "targetSemantics": null,
+      "targets": [],
+      "timing": {
+        "asOfTime": "2026-09-14T15:00:00+08:00",
+        "producedAt": "2026-09-14T15:06:00+08:00",
+        "signalTime": "2026-09-14T15:05:00+08:00",
+        "tradeNotBefore": "2026-09-15T09:30:00+08:00",
+        "validFrom": "2026-09-15T09:20:00+08:00",
+        "validUntil": "2026-09-15T15:00:00+08:00"
+      },
+      "valuationBasis": "AS_OF_MARK"
+    },
+    "revoke": {
+      "baseCurrency": "CNY",
+      "calendar": {
+        "calendarId": "cn_us_cross_market_fixture_v1",
+        "versionSha256": "e2cc484392ea6ef9942a7f5ae1f19eb8ad963a69b03a83d6a05ccc6e1dca14b5"
+      },
+      "cashWeight": null,
+      "cashWeightDelta": null,
+      "fx": {"maxAgeSeconds": 86400},
+      "instructionType": "REVOKE",
+      "omittedInstrumentPolicy": "UNCHANGED",
+      "policy": {
+        "strategyPolicySha256": "39bff61696d938b6cf4dd5af5f8a8b83e92f432e155c287bebdfa8293d712854"
+      },
+      "risk": {"maxAbsNetExposure": 1.0, "maxGrossExposure": 1.2},
+      "schemaVersion": "3.0",
+      "supersedesArtifactId": "art_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "targetSemantics": null,
+      "targets": [],
+      "timing": {
+        "asOfTime": "2026-09-14T15:00:00+08:00",
+        "producedAt": "2026-09-14T15:06:00+08:00",
+        "signalTime": "2026-09-14T15:05:00+08:00",
+        "tradeNotBefore": "2026-09-15T09:30:00+08:00",
+        "validFrom": "2026-09-15T09:20:00+08:00",
+        "validUntil": "2026-09-15T15:00:00+08:00"
+      },
+      "valuationBasis": "AS_OF_MARK"
+    }
+  },
+  "policy": {
+    "portfolio": {"maxAbsNetExposure": 1.0, "maxGrossExposure": 1.2},
+    "researchPromotion": {"maxStage": "RESEARCH_PROMOTED"},
+    "strategy": {"name": "topk_dropout", "topK": 30}
+  },
+  "schemaVersion": "3.0"
+}
