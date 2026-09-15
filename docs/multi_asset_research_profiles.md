@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: research
+applies_to_commit: 7884eefa865b344022f4ace1599bce4e0befa0c3
+last_verified: 2026-09-15
+---
+
 # Multi-asset ResearchProfile extension guide
 
 This guide defines the research-side extension contract for adding another security or market to
