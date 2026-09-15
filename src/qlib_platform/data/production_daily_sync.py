@@ -23,6 +23,19 @@ _OPTIONAL_DEFAULTS = {
     "suspend_d": True,
     "stock_st": True,
 }
+_STORAGE_MANAGED_MANIFEST_KEYS = {
+    "dataset",
+    "trade_date",
+    "status",
+    "rows",
+    "columns",
+    "bytes",
+    "sha256",
+    "written_at_utc",
+    "ingest_run_id",
+    "content_sha256",
+    "content_hash_kind",
+}
 
 
 class ProductionDailySyncService(PlannedDailySyncService):
@@ -95,7 +108,7 @@ class ProductionDailySyncService(PlannedDailySyncService):
                     return int(rows) > 0
                 except (TypeError, ValueError):
                     return False
-        # Compatibility fallback for pre-manifest/pre-row-count data.  This branch is
+        # Compatibility fallback for pre-manifest/pre-row-count data. This branch is
         # intentionally exceptional so modern routine planning remains metadata-only.
         try:
             return not self.store.read(dataset, trade_date).empty
@@ -223,3 +236,77 @@ class ProductionDailySyncService(PlannedDailySyncService):
                     pd.concat([histories[symbol], *staged_rows], ignore_index=True)
                 )
         return histories, partition_reads
+
+    @staticmethod
+    def _canonical_metadata(staged_manifest: Mapping[str, Any]) -> dict[str, Any]:
+        """Preserve provenance while letting PartitionStore own file/checksum fields."""
+
+        return {
+            str(key): value
+            for key, value in staged_manifest.items()
+            if key not in _STORAGE_MANAGED_MANIFEST_KEYS
+        }
+
+    def _promote_staged_raw(
+        self,
+        plan: dict[str, Any],
+        state: dict[str, Any],
+    ) -> None:
+        if self._step_done(state, "raw_promote"):
+            return
+        self._validate_stage_bases(plan)
+        stage = self._market_stage(str(plan["plan_id"]))
+        staged: dict[tuple[str, str], pd.DataFrame] = {}
+        metadata: dict[tuple[str, str], dict[str, Any]] = {}
+        for target in self._stage_targets(plan):
+            staged[target] = stage.read(*target)
+            metadata[target] = self._canonical_metadata(stage.read_manifest(*target))
+
+        planned_dates, planned_revised, planned_changes = self._planned_raw_change_summary(plan)
+        actual_dates, actual_revised, _ = self._promote_raw(staged, metadata, check_only=False)
+        changed_dates = sorted(set(planned_dates) | set(actual_dates))
+        revised_symbols = set(planned_revised) | set(actual_revised)
+
+        incoming_path = self._stage_root(str(plan["plan_id"])) / "dividend" / "incoming.parquet"
+        incoming = pd.read_parquet(incoming_path) if incoming_path.is_file() else pd.DataFrame()
+        dividend = self.actions.upsert(incoming, check_only=False)
+
+        pending = self._load_pending_publish()
+        if pending:
+            changed_dates = sorted(
+                set(changed_dates) | {str(value) for value in pending.get("changed_trade_dates", [])}
+            )
+            revised_symbols.update(str(value) for value in pending.get("revised_symbols", []))
+        pit_changed = bool(pending.get("pit_changed", False)) if pending else False
+        self._write_pending_publish(
+            run_id=str(plan["plan_id"]),
+            changed_dates=changed_dates,
+            revised_symbols=revised_symbols,
+            pit_changed=pit_changed,
+        )
+        state["context"] = {
+            "changed_trade_dates": changed_dates,
+            "revised_symbols": sorted(revised_symbols),
+            "pit_changed": pit_changed,
+        }
+        self._finish_step(
+            state,
+            "raw_promote",
+            {
+                "changed_trade_dates": changed_dates,
+                "revised_symbols": sorted(revised_symbols),
+                "raw_changes": planned_changes,
+                "dividend": dividend,
+            },
+        )
+
+        # A remote symbol history becomes the shared cache only after canonical Bronze
+        # promotion. Failed plans therefore cannot advance factor-index provenance.
+        for symbol in set(plan.get("factor_event_symbols", [])):
+            path = self._factor_history_path(str(plan["plan_id"]), str(symbol))
+            if path.is_file():
+                self._write_factor_index(
+                    str(symbol),
+                    pd.read_parquet(path),
+                    str(plan["target_session"]),
+                )
