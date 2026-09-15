@@ -1,0 +1,49 @@
+{
+  "bundleSha256": "a92b27059fe533113a071092dad0238c8605586ff15024376d84268f8b511373",
+  "files": {
+    "artifacts/art_6bd41b23458375a7a97aca671a5c267ba9c69f64f35a41bd5f7b11dd1b689521.json": {
+      "sha256": "d8b856b13f03fa7f93dc89137a83bdaadb758b585516a3171baa5b1faa7afd4b",
+      "size": 1501
+    },
+    "artifacts/art_6c4ba841a26e8fe54812fa71d719abcf475dfe01cd549ebcb3043eda0f89fcbc.json": {
+      "sha256": "145718973f6f626a88958e0a6f09e9ae5904a72d7f6e3491c1053dd2f89e30da",
+      "size": 1507
+    },
+    "artifacts/art_d8cf2276333a639489356bd08c8e9d4e0a76342ab009945bb11327c53ff47ff5.json": {
+      "sha256": "f8d91a747b065ea0c4b53ed225c43e060392c7e2222edebb7bed16c5382130c7",
+      "size": 1507
+    },
+    "artifacts/art_ed8d5d851006e08028fb0bc3998014c4734ae8e1243ef85225f02aa085977598.json": {
+      "sha256": "317c05d5c97081fcdd7ca6fc5f0f004c0b6fe77959ffb428d4d54fc8d8dceb62",
+      "size": 1612
+    },
+    "artifacts/art_f8fb195f05a89d8a3a33fd529116c834693adb97669578a5af69ea31bd10dae8.json": {
+      "sha256": "42aefe0582041977a1d83a5d6925f4c09a925cffaf2ced4cf20bb88e692cf237",
+      "size": 1513
+    },
+    "payloads/model_release.json": {
+      "sha256": "49cd023fbefcd3c7e18cf6344c691019ae022a5128a3bed5b00b94c46302fe8c",
+      "size": 119
+    },
+    "payloads/signal_snapshot.json": {
+      "sha256": "7db20069c752d1fca80ada1d7c68219fe7aeae81a31f08c3939fe401410a19ba",
+      "size": 190
+    },
+    "payloads/strategy_policy.json": {
+      "sha256": "502e1ed689d1343bbef0efa3e831153821b221db538c79d60bbf8132f7a614db",
+      "size": 414
+    },
+    "payloads/target_portfolio.json": {
+      "sha256": "ee1a55335f3c6a37503e522c38f31c51949ecd8f41412446bd36fed0cc32aa34",
+      "size": 1244
+    },
+    "payloads/validation_result.json": {
+      "sha256": "7fb8a65c495de11a1747eb8d804cc8bb7361ebd1cb0ce01bb88d9222fe4253f4",
+      "size": 245
+    },
+    "production_research_bundle_manifest_v3.json": {
+      "sha256": "799ee7a04379ac00181bcee60262016971c0e571bb3a9843d86a061e7728d7ef",
+      "size": 4493
+    }
+  }
+}
