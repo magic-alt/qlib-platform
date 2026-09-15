@@ -1,0 +1,38 @@
+schema: ashare_etf_research_fixture_v1
+researchProfile: ashare_etf_v1
+alphaPack: etf_core_v1
+promotionScope: research_only
+publishingAuthorized: false
+executionAuthority: none
+finalHoldout:
+  accessAllowed: false
+data:
+  requiredDatasetKinds:
+    - etf_instrument_master
+    - etf_daily
+    - etf_adjustment_factor
+    - trading_calendar
+  forbiddenDatasetKinds:
+    - equity_daily_basic
+    - pit_fundamentals
+    - industry_classification_pit
+universe:
+  id: ashare_etf
+  version: 1
+  allowedVenues:
+    - XSHG
+    - XSHE
+  excludeSuspended: true
+  requirePositiveVolume: true
+baseline:
+  modelFamily: ridge
+  ridgeAlpha: 1.0
+  topk: 3
+backtest:
+  buyCostBps: 3.0
+  sellCostBps: 3.0
+  slippageBps: 1.0
+  stockStampTaxInherited: false
+diagnostics:
+  featureDiagnostics: true
+  minCrossSection: 3
