@@ -187,6 +187,7 @@ def test_numeric_duplicate_and_risk_errors_fail_closed() -> None:
 
     risk = _instruction("fullSnapshot")
     risk["risk"]["maxGrossExposure"] = 0.5
+    risk["risk"]["maxAbsNetExposure"] = 0.5
     with pytest.raises(ValueError, match="exceeds risk"):
         canonicalize_target_instruction_v3(risk)
 
@@ -253,10 +254,13 @@ def test_policy_calendar_universe_and_parent_identity_changes_are_not_equivalent
     changed_calendar = copy.deepcopy(contract_identity)
     changed_calendar["calendarVersionSha256"] = "e" * 64
     assert build_artifact_identity_v3(**(kwargs | {"contract_identity": changed_calendar}))[0] != artifact_id
-    assert build_artifact_identity_v3(**(kwargs | {"universe_release_id": "other-universe"}))[0] != artifact_id
-    assert build_artifact_identity_v3(
-        **(kwargs | {"parent_artifact_ids": ["art_" + "f" * 64]})
-    )[0] != artifact_id
+    assert (
+        build_artifact_identity_v3(**(kwargs | {"universe_release_id": "other-universe"}))[0] != artifact_id
+    )
+    assert (
+        build_artifact_identity_v3(**(kwargs | {"parent_artifact_ids": ["art_" + "f" * 64]}))[0]
+        != artifact_id
+    )
 
 
 def test_artifact_identity_rejects_invalid_release_hashes_and_parents() -> None:
@@ -274,9 +278,7 @@ def test_artifact_identity_rejects_invalid_release_hashes_and_parents() -> None:
     with pytest.raises(ValueError, match="sourceManifestSha256"):
         build_artifact_identity_v3(**(base | {"source_manifest_sha256": "bad"}))
     with pytest.raises(ValueError, match="parentArtifactIds"):
-        build_artifact_identity_v3(
-            **(base | {"parent_artifact_ids": ["art_" + "d" * 64, "art_" + "d" * 64]})
-        )
+        build_artifact_identity_v3(**(base | {"parent_artifact_ids": ["art_" + "d" * 64, "art_" + "d" * 64]}))
 
 
 def test_payload_references_are_portable_json_only_and_cannot_escape_bundle_root(tmp_path: Path) -> None:
