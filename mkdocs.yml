@@ -99,6 +99,8 @@ nav:
       - Portfolio Policy: portfolio_v2_rank_buffer.md
       - Windows LightGBM GPU: windows_lightgbm_gpu.md
   - Research & ML:
+      - "Research Platform Epic #104 Closeout": research_platform_epic104_closeout.md
+      - Governed Research Pipeline UX: research_pipeline_ux.md
       - Research Baselines & Templates: research_baselines.md
       - Research Web Dashboard: research_web_dashboard.md
       - Professional Research Engines: professional_research_engines.md
@@ -112,6 +114,7 @@ nav:
       - Production ML Phase 4: production_ml_phase4.md
       - Full Walk-forward Acceptance: full_walk_forward_acceptance.md
   - Contracts & Operations:
+      - Artifact Contract v3: artifact_contract_v3.md
       - Artifact Contract v2: artifact_contract_v2.md
       - Operations Runbook: OPERATIONS_RUNBOOK.md
       - Daily Research: operations/daily-research.md

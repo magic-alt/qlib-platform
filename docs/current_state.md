@@ -1,8 +1,8 @@
 ---
 status: ACTIVE
 owner: architecture
-applies_to_commit: 34dc33f6a2a56d87f9e67a2291809a4c52d0c158
-last_verified: 2026-09-06
+applies_to_commit: 86b0bac9bd9f2d54fd2a2654b8196eb7d6a54639
+last_verified: 2026-09-15
 ---
 
 # Current State
@@ -11,15 +11,16 @@ This page is the single source of truth for fast-changing governance state. Froz
 
 | Field | Current governed value |
 | --- | --- |
-| Documentation audit base | `34dc33f6a2a56d87f9e67a2291809a4c52d0c158` (2026-09-06); P5-C merged baseline |
-| Reviewed code baseline | `34dc33f6a2a56d87f9e67a2291809a4c52d0c158` |
-| Reviewed baseline date | 2026-09-06 |
+| Documentation audit base | `86b0bac9bd9f2d54fd2a2654b8196eb7d6a54639` (2026-09-15); Research Platform Epic #104 closeout base |
+| Reviewed code baseline | `86b0bac9bd9f2d54fd2a2654b8196eb7d6a54639` |
+| Reviewed baseline date | 2026-09-15 |
 | Certified infrastructure baseline | `4f5c5d5` |
 | Certification date | 2026-08-17 |
 | P0–P4 repository revalidation | `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58`; see [P0–P4 Repository Revalidation](p0_p4_repository_recertification.md) |
 | P5-A acceptance | `COMPLETE / MERGED`; PR #99, merge `0b88ee912d5a5ef9135b5113a32d886e9da1e0a6` |
 | P5-B acceptance | `COMPLETE / MERGED`; PR #100, merge `d0faf1120c11baefdb6b6921590fcd56f432e442` |
 | P5-C acceptance | `COMPLETE / MERGED`; PR #101, merge `34dc33f6a2a56d87f9e67a2291809a4c52d0c158` |
+| Research Platform Epic #104 | `RESEARCH_SOFTWARE_COMPLETE`; #105–#110 merged; paired LEAN #58 remains external execution evidence |
 | Active infrastructure program | P5-D / Enterprise Research Management |
 | Active research program | Phase 3-D / `ashare_alpha_stability_phase3_v1` |
 | Permitted Phase 3 scope | P3-D00 through P3-D04 diagnostics |
@@ -29,9 +30,9 @@ This page is the single source of truth for fast-changing governance state. Froz
 | Publishing in Phase 3-D | Disabled |
 | CLI default config | `configs/pipeline.standalone.yaml` |
 | Integrated profile | `configs/pipeline.integrated.yaml` |
-| Artifact contract | v2 |
+| Artifact contract | v3 current; v2 previous supported |
 | Maximum qlib promotion state | `RESEARCH_PROMOTED` |
-| Cross-repository execution handoff | One DataRelease-bound `TARGET_PORTFOLIO` |
+| Cross-repository execution handoff | One DataRelease-bound `target_portfolio_v1` / `TARGET_PORTFOLIO` |
 
 ## How to read the baselines
 
@@ -40,8 +41,9 @@ This page is the single source of truth for fast-changing governance state. Froz
 - **Certified infrastructure baseline** remains the frozen commit covered by the 2026-08-17 full research-infrastructure certificate.
 - **P0–P4 repository revalidation** is the narrower repository-level revalidation completed before P5 started.
 - **P5-A/P5-B/P5-C acceptance** records additive workstreams that each passed their dedicated contract and repository-wide gates before merge.
+- **Research Platform Epic #104** records the completed research-side software capabilities from #105–#110. It is not a LEAN/Paper/Live certificate; execution evidence remains owned by the paired execution repository.
 
-These values deliberately distinguish historical full acceptance, repository revalidation and later additive P5 workstreams.
+These values deliberately distinguish historical full acceptance, repository revalidation and later additive workstreams.
 
 ## Certification interpretation
 
@@ -50,6 +52,8 @@ These values deliberately distinguish historical full acceptance, repository rev
 `P0_P4_REPOSITORY_REVALIDATED` applies to `a74e568b0f1660da9bbbc6ed8ff6203c001f1e58` and the narrower scope defined by [P0–P4 Repository Revalidation](p0_p4_repository_recertification.md). It records successful repository/compatibility/security/cross-platform revalidation and does not pretend that the historical full-walk-forward acceptance campaign was rerun.
 
 P5-A, P5-B and P5-C were subsequently merged after their dedicated contracts and full repository gates. P5-D starts only from the merged P5-C baseline and must establish its own deterministic enterprise-management and repository-wide 85% unit-coverage contract before it is complete.
+
+Research Platform Epic #104 is a software/interface closeout on the 2026-09-15 reviewed baseline. The machine-readable capability and governance matrix is `contracts/research-platform-epic104.v1.json`, with interpretation in [Research Platform Epic #104 closeout](research_platform_epic104_closeout.md). `RESEARCH_SOFTWARE_COMPLETE` means the research repository implementation is closed; it does not mean the paired LEAN execution path is production-certified.
 
 Weak research results are still attributed first to alpha, regime, model or portfolio research when no certified invariant produces contradictory evidence. This attribution policy is not a substitute for revalidating material behavioral changes.
 
@@ -64,6 +68,8 @@ Phase 3-D remains diagnosis-only:
 - no candidate creation, model selection or automatic confirmatory hypothesis.
 
 The P5 infrastructure program does not alter those restrictions. P5-D may add enterprise identity, project ownership, research-resource authorization, service accounts and audit evidence, but those controls do not authorize model selection/promotion, publishing, final-holdout access or live execution.
+
+The Research Platform Epic does not alter those restrictions either. Multi-source data semantics, additional ResearchProfiles, Artifact v3, governed matrix experiments and Strategy SDK descriptors remain research/backtest/diagnostic/shadow capabilities only. `paper`, `live` and `production` are execution-plane states and are explicitly outside the closeout contract.
 
 P5-C did not move broker/OMS authority into this repository, and P5-D does not change that boundary. Authoritative order state, broker commands and live hard-risk enforcement remain execution-platform responsibilities.
 
