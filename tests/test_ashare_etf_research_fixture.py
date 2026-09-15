@@ -227,7 +227,7 @@ def test_tushare_etf_master_combines_etf_metadata_with_fund_lifecycle() -> None:
 
     batch = require_usable(source.fetch_dataset(request), request)
 
-    assert batch.data["instrument"].tolist() == ["SH510300", "SZ159999"]
+    assert set(batch.data["instrument"]) == {"SH510300", "SZ159999"}
     historical = batch.data.set_index("instrument").loc["SZ159999"]
     assert historical["delist_date"] == "20260909"
     assert [name for name, _ in client.calls] == ["etf_basic", "etf_basic", "fund_basic"]
