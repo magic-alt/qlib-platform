@@ -7,7 +7,9 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Mapping
 
-from qlib_platform.data.certified_daily_sync import CertifiedDailySyncService
+import pandas as pd
+
+from qlib_platform.data.resumable_certified_sync import ResumableCertifiedDailySyncService
 from qlib_platform.runtime import daily_research_run as base
 from qlib_platform.settings import Settings
 
@@ -46,11 +48,11 @@ def _code_provenance(settings: Settings) -> dict[str, str | None]:
 
 
 class DailyResearchRun(base.DailyResearchRun):
-    """Daily DAG bound to the metadata-only planner and certified freshness gates."""
+    """Daily DAG bound to resumable ingestion and certified freshness gates."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.sync = CertifiedDailySyncService(settings)
+        self.sync = ResumableCertifiedDailySyncService(settings)
         self.root = settings.paths.state / "daily_run"
 
     def _load_state(self, plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -105,6 +107,40 @@ class DailyResearchRun(base.DailyResearchRun):
             output=output,
         )
         return dataset
+
+    def backfill(
+        self,
+        start: str,
+        end: str,
+        *,
+        mode: str,
+        force_full: bool,
+    ) -> list[Path]:
+        """Catch up only sessions after the active immutable dataset coverage.
+
+        Historical revisions inside already-published coverage belong to a current
+        `historical-audit` run. Replaying them as a backfill would risk rolling the
+        active alias backwards before the monotonic publish guard rejected the plan.
+        """
+
+        dates = self.sync._local_open_dates(start, end)
+        active = self.sync._active_dataset_manifest()
+        if active is not None:
+            active_end = self.sync._manifest_end(active[0])
+            if active_end is not None:
+                blocked = [
+                    trade_date
+                    for trade_date in dates
+                    if pd.Timestamp(trade_date).normalize() <= active_end
+                ]
+                if blocked:
+                    raise ValueError(
+                        "backfill may only advance sessions after the active DatasetVersion; "
+                        f"active_end={active_end.date()} first_blocked={blocked[0]}. "
+                        "Use --mode historical-audit --as-of <current/latest session> "
+                        "for revisions inside published coverage."
+                    )
+        return super().backfill(start, end, mode=mode, force_full=force_full)
 
 
 def main() -> int:
