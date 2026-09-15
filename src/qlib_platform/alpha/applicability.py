@@ -41,7 +41,9 @@ def alpha_pack_applicability(pack: AlphaPackSpec) -> AlphaPackApplicability:
     try:
         supported_profiles, allowed_labels = _LEGACY_RULES[pack.pack_id]
     except KeyError as exc:
-        raise ValueError(f"alpha pack has no ResearchProfile applicability descriptor: {pack.pack_id}") from exc
+        raise ValueError(
+            f"alpha pack has no ResearchProfile applicability descriptor: {pack.pack_id}"
+        ) from exc
     return AlphaPackApplicability(
         pack_id=pack.pack_id,
         supported_profile_ids=supported_profiles,
@@ -63,12 +65,8 @@ def assert_alpha_pack_profile_compatible(pack: AlphaPackSpec, profile: ResearchP
             f"alpha pack {pack.pack_id} is not compatible with research profile {profile.profile_id}"
         )
     if profile.asset_class not in descriptor.supported_asset_classes:
-        raise ValueError(
-            f"alpha pack {pack.pack_id} does not support asset class {profile.asset_class!r}"
-        )
+        raise ValueError(f"alpha pack {pack.pack_id} does not support asset class {profile.asset_class!r}")
     if profile.subtype not in descriptor.supported_subtypes:
         raise ValueError(f"alpha pack {pack.pack_id} does not support subtype {profile.subtype!r}")
     if profile.label.label_id not in descriptor.allowed_label_ids:
-        raise ValueError(
-            f"alpha pack {pack.pack_id} does not support label {profile.label.label_id!r}"
-        )
+        raise ValueError(f"alpha pack {pack.pack_id} does not support label {profile.label.label_id!r}")
