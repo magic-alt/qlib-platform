@@ -175,6 +175,7 @@ def export_manifest_as_v2_bundle(
         },
     )
 
+
 # Artifact Contract v3 producer -------------------------------------------------
 
 V3_MANIFEST_NAME = "production_research_bundle_manifest_v3.json"
@@ -253,9 +254,7 @@ def _v3_contract_from_manifest(
 
 def _v3_promoted_status(manifest: Mapping[str, Any]) -> str:
     if _promotion_status(manifest) is not ResearchPromotionStatus.RESEARCH_PROMOTED:
-        raise ValueError(
-            "Artifact Contract v3 export requires promotion.status=RESEARCH_PROMOTED/PROMOTED"
-        )
+        raise ValueError("Artifact Contract v3 export requires promotion.status=RESEARCH_PROMOTED/PROMOTED")
     return _V3_PROMOTION_STATUS
 
 
@@ -493,9 +492,7 @@ def _publish_v3_bundle(output_dir: Path, expected: Mapping[str, bytes]) -> None:
         if output_dir.exists():
             if _v3_directory_matches(output_dir, expected):
                 return
-            raise FileExistsError(
-                "Artifact Contract v3 output appeared with non-identical contents"
-            )
+            raise FileExistsError("Artifact Contract v3 output appeared with non-identical contents")
         try:
             staging.replace(output_dir)
         except OSError:
