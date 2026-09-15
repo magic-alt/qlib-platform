@@ -23,7 +23,7 @@ def test_systemd_daily_run_uses_canonical_schedule(tmp_path: Path):
     )
 
     rendered = {path.name: path.read_text(encoding="utf-8") for path in paths}
-    assert "qlib_platform.runtime.daily_research_run" in rendered["qlib-platform-daily-sync.service"]
+    assert "qlib_platform.runtime.production_daily_run" in rendered["qlib-platform-daily-sync.service"]
     assert "19:05:00 Asia/Shanghai" in rendered["qlib-platform-daily-sync.timer"]
     assert "18:30" not in rendered["qlib-platform-daily-sync.timer"]
 
@@ -46,7 +46,7 @@ def test_launchd_daily_run_uses_same_canonical_clock(tmp_path: Path):
     )
     content = path.read_text(encoding="utf-8")
 
-    assert "qlib_platform.runtime.daily_research_run" in content
+    assert "qlib_platform.runtime.production_daily_run" in content
     assert "<key>Hour</key><integer>19</integer>" in content
     assert "<key>Minute</key><integer>5</integer>" in content
     assert "<integer>18</integer>" not in content
