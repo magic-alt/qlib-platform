@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from qlib_platform.artifacts.artifact_contract_v3 import canonicalize_target_instruction_v3
 from qlib_platform.artifacts.research_bundle_export import (
     V3_ARTIFACT_TYPES,
     V3_MANIFEST_NAME,
@@ -58,12 +59,8 @@ def _export(source: Path, output: Path, *, git_commit: str = GIT_COMMIT) -> Path
 
 def test_producer_fixture_reuses_the_shared_contract_case() -> None:
     source = _load_source()
-    shared = json.loads(
-        (FIXTURE_ROOT / "contract_cases.json").read_text(encoding="utf-8")
-    )
-    assert source["artifactContractV3"]["targetInstruction"] == shared[
-        "instructions"
-    ]["fullSnapshot"]
+    shared = json.loads((FIXTURE_ROOT / "contract_cases.json").read_text(encoding="utf-8"))
+    assert source["artifactContractV3"]["targetInstruction"] == shared["instructions"]["fullSnapshot"]
 
 
 def test_v3_export_is_byte_locked_portable_and_idempotent(tmp_path: Path) -> None:
@@ -107,9 +104,7 @@ def test_v3_export_is_byte_locked_portable_and_idempotent(tmp_path: Path) -> Non
     assert manifest_path.stat().st_mtime_ns == first_mtime
     assert _bundle_snapshot(output) == first_snapshot
 
-    all_bytes = b"".join(
-        path.read_bytes() for path in output.rglob("*") if path.is_file()
-    )
+    all_bytes = b"".join(path.read_bytes() for path in output.rglob("*") if path.is_file())
     assert str(SOURCE_MANIFEST.resolve()).encode("utf-8") not in all_bytes
     assert b"pickle" not in all_bytes.lower()
 
@@ -120,33 +115,21 @@ def test_v3_export_supports_each_shared_instruction_state(
     tmp_path: Path,
 ) -> None:
     source = _load_source()
-    shared = json.loads(
-        (FIXTURE_ROOT / "contract_cases.json").read_text(encoding="utf-8")
-    )
-    source["artifactContractV3"]["targetInstruction"] = shared["instructions"][
-        case_name
-    ]
+    shared = json.loads((FIXTURE_ROOT / "contract_cases.json").read_text(encoding="utf-8"))
+    source["artifactContractV3"]["targetInstruction"] = shared["instructions"][case_name]
     source_path = _write_source(tmp_path / f"{case_name}.json", source)
 
     manifest_path = _export(source_path, tmp_path / f"bundle-{case_name}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     target_id = manifest["artifactIdsByType"]["TARGET_PORTFOLIO"]
     target_envelope = json.loads(
-        (manifest_path.parent / f"artifacts/{target_id}.json").read_text(
-            encoding="utf-8"
-        )
+        (manifest_path.parent / f"artifacts/{target_id}.json").read_text(encoding="utf-8")
     )
     target_payload = json.loads(
-        (manifest_path.parent / target_envelope["payload"]["relativePath"]).read_text(
-            encoding="utf-8"
-        )
+        (manifest_path.parent / target_envelope["payload"]["relativePath"]).read_text(encoding="utf-8")
     )
-    expected = shared["instructions"][case_name]
-    assert target_payload["instructionType"] == expected["instructionType"]
-    assert target_payload["targetSemantics"] == expected.get("targetSemantics")
-    assert target_payload["omittedInstrumentPolicy"] == expected.get(
-        "omittedInstrumentPolicy"
-    )
+    expected = canonicalize_target_instruction_v3(shared["instructions"][case_name])
+    assert target_payload == expected
 
 
 @pytest.mark.parametrize(
@@ -182,9 +165,9 @@ def test_invalid_v3_sources_fail_before_final_output(
     elif mutation == "bad-contract-version":
         source["artifactContractV3"]["schemaVersion"] = "4.0"
     else:
-        source["artifactContractV3"]["targetInstruction"]["targets"][1][
-            "fxAvailableAt"
-        ] = "2026-09-14T15:01:00+08:00"
+        source["artifactContractV3"]["targetInstruction"]["targets"][1]["fxAvailableAt"] = (
+            "2026-09-14T15:01:00+08:00"
+        )
 
     source_path = _write_source(tmp_path / "invalid.json", source)
     output = tmp_path / "bundle"
@@ -239,18 +222,14 @@ def test_existing_conflicting_bundle_is_never_deleted_or_repaired(
 def test_lineage_and_code_commit_changes_create_different_artifact_ids(
     tmp_path: Path,
 ) -> None:
-    manifest_a = json.loads(
-        _export(SOURCE_MANIFEST, tmp_path / "bundle-a").read_text(encoding="utf-8")
-    )
+    manifest_a = json.loads(_export(SOURCE_MANIFEST, tmp_path / "bundle-a").read_text(encoding="utf-8"))
 
     changed = _load_source()
     changed_release = "ds_" + "2" * 64
     changed["dataset"]["dataReleaseId"] = changed_release
     changed["dataset"]["semantic_contract"]["data_release_id"] = changed_release
     changed_path = _write_source(tmp_path / "changed.json", changed)
-    manifest_b = json.loads(
-        _export(changed_path, tmp_path / "bundle-b").read_text(encoding="utf-8")
-    )
+    manifest_b = json.loads(_export(changed_path, tmp_path / "bundle-b").read_text(encoding="utf-8"))
     manifest_c = json.loads(
         _export(
             SOURCE_MANIFEST,
