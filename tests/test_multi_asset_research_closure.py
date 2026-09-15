@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -174,10 +173,10 @@ def test_derivative_handoff_distinguishes_research_series_from_tradable_contract
         currency="CNY",
         calendar_id="cn_future_fixture_v1",
         aliases=(SymbolAlias("research", "IF.CONTINUOUS"),),
-        tradable=False,
+        tradable=True,
         continuous_series=True,
     )
-    with pytest.raises(ValueError, match="research series"):
+    with pytest.raises(ValueError, match="continuous research series"):
         continuous.assert_governed_handoff_ready()
 
     incomplete_contract = InstrumentSpec(
@@ -190,7 +189,7 @@ def test_derivative_handoff_distinguishes_research_series_from_tradable_contract
         calendar_id="cn_future_fixture_v1",
         aliases=(SymbolAlias("fixture", "IF2612"),),
         underlying_id="CN.INDEX.CSI300",
-        expiry=date(2026, 12, 18),
+        expiry="2026-12-18",
         multiplier=None,
     )
     with pytest.raises(ValueError, match="multiplier"):
