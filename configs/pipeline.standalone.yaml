@@ -47,6 +47,13 @@ production:
     schedule:
       time: "18:30"
       timezone: Asia/Shanghai
+    freshness:
+      # Reject an apparently complete target day when its market cross-section is
+      # materially smaller than the previous trading session.
+      min_market_coverage_ratio: 0.95
+      # CSI300/index_weight is snapshot-oriented. An older PIT snapshot may remain
+      # effective, but beyond this age it is treated as provider/metadata staleness.
+      max_universe_snapshot_age_calendar_days: 45
     verification:
       mode: sampled
       sample_size: 64
