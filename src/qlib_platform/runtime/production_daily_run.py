@@ -1,12 +1,48 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Mapping
 
 from qlib_platform.data.certified_daily_sync import CertifiedDailySyncService
 from qlib_platform.runtime import daily_research_run as base
 from qlib_platform.settings import Settings
+
+
+def _code_provenance(settings: Settings) -> dict[str, str | None]:
+    try:
+        package_version = version("qlib-platform")
+    except PackageNotFoundError:
+        package_version = "source-checkout"
+
+    commit = (
+        os.getenv("QLIB_PLATFORM_GIT_SHA", "").strip()
+        or os.getenv("GITHUB_SHA", "").strip()
+        or None
+    )
+    if commit is None:
+        repository = settings.config_path.parent.parent
+        try:
+            completed = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repository,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=2.0,
+            )
+        except (OSError, subprocess.SubprocessError):
+            completed = None
+        if completed is not None and completed.returncode == 0:
+            value = completed.stdout.strip()
+            commit = value or None
+    return {
+        "git_commit": commit,
+        "package_version": package_version,
+    }
 
 
 class DailyResearchRun(base.DailyResearchRun):
@@ -16,6 +52,16 @@ class DailyResearchRun(base.DailyResearchRun):
         self.settings = settings
         self.sync = CertifiedDailySyncService(settings)
         self.root = settings.paths.state / "daily_run"
+
+    def _load_state(self, plan: Mapping[str, Any]) -> dict[str, Any]:
+        state = super()._load_state(plan)
+        state.setdefault("code", _code_provenance(self.settings))
+        state.setdefault("config_path", str(self.settings.config_path))
+        state.setdefault("config_sha256", str(plan.get("config_sha256") or ""))
+        state.setdefault("provider_watermarks", plan.get("watermarks", {}))
+        state.setdefault("endpoint_gaps", plan.get("endpoint_gaps", {}))
+        self._save_state(state)
+        return state
 
     def _verify_dataset(
         self, plan: Mapping[str, Any], state: dict[str, Any]
