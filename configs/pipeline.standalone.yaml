@@ -17,11 +17,11 @@ storage:
   registry_path: ""
 
 data_source:
-  # Standalone production ingestion is intentionally deterministic. The inherited
-  # dev profile also documents a MySQL adapter; `auto` would otherwise prefer that
-  # mapping even when its connection fields are empty. Integrated deployments use
-  # pipeline.integrated.yaml instead of changing this provider implicitly.
-  kind: tushare
+  # Keep standalone source selection backward compatible. The registry now treats
+  # an inherited but incomplete MySQL block as unavailable, so a normal standalone
+  # installation falls back to TuShare while a fully configured MySQL source can
+  # still be selected without changing this profile.
+  kind: auto
 
 release_store:
   kind: file
