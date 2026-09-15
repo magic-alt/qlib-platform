@@ -28,6 +28,10 @@ baseline:
   modelFamily: ridge
   ridgeAlpha: 1.0
   topk: 3
+allocation:
+  benchmark: equal_weight_selected_etf
+  policy: equal_weight_topk
+  targetGrossExposure: 1.0
 backtest:
   realizedReturnSpec: return_1d_t1_v1
   buyCostBps: 3.0
