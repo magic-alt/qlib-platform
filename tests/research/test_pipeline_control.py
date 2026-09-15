@@ -58,9 +58,7 @@ def test_matrix_cell_ids_do_not_depend_on_unrelated_matrix_members(tmp_path: Pat
     a = _profile(tmp_path / "a.yaml", seed=1)
     b = _profile(tmp_path / "b.yaml", seed=2)
     one = expand_matrix(("alpha158_market_v1",), (("a", a),), research_id="research-one")
-    two = expand_matrix(
-        ("alpha158_market_v1",), (("a", a), ("b", b)), research_id="research-two"
-    )
+    two = expand_matrix(("alpha158_market_v1",), (("a", a), ("b", b)), research_id="research-two")
     assert one[0]["cellId"] == two[0]["cellId"]
 
 
