@@ -124,14 +124,14 @@ def select_cross_market_observations(
             observation.calendar_id,
             observation.session_date,
         )
-        session = session_map.get(session_key)
-        if session is None:
+        matched_session = session_map.get(session_key)
+        if matched_session is None:
             excluded[observation.key] = "missing_calendar_session"
             continue
-        if not session.is_open:
+        if not matched_session.is_open:
             excluded[observation.key] = "market_closed"
             continue
-        if observation.available_at < session.close_at():
+        if observation.available_at < matched_session.close_at():
             raise ValueError(
                 "cross-market observation available_at precedes its certified session close: "
                 f"{observation.instrument_id} {observation.session_date}"
@@ -167,9 +167,7 @@ def resolve_fx_rate(
         return 1.0
 
     pair_quotes = [
-        item
-        for item in quotes
-        if item.base_currency.upper() == base and item.quote_currency.upper() == quote
+        item for item in quotes if item.base_currency.upper() == base and item.quote_currency.upper() == quote
     ]
     if not pair_quotes:
         raise ValueError(f"unknown FX conversion: {base}/{quote}")
