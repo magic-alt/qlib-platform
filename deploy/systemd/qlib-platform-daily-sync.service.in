@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=@REPO_ROOT@
-ExecStart=@PYTHON_EXE@ -m qlib_platform.runtime.daily_research_run --config @CONFIG_PATH@
+ExecStart=@PYTHON_EXE@ -m qlib_platform.runtime.production_daily_run --config @CONFIG_PATH@
 
 [Install]
 WantedBy=default.target
