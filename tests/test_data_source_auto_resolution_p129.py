@@ -23,11 +23,19 @@ def _settings(tmp_path: Path, mysql: dict[str, object]) -> Settings:
 
 
 def test_auto_ignores_inherited_empty_mysql_mapping(tmp_path: Path, monkeypatch):
-    for name in ("MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"):
+    for name in (
+        "LEAN_MYSQL_DSN",
+        "DATABASE_URL",
+        "LEAN_MYSQL_HOST",
+        "LEAN_MYSQL_USER",
+        "LEAN_MYSQL_PASSWORD",
+        "LEAN_MYSQL_DB",
+    ):
         monkeypatch.delenv(name, raising=False)
     settings = _settings(
         tmp_path,
         {
+            "readonly": True,
             "host": "",
             "user": "",
             "password": "",
@@ -43,6 +51,7 @@ def test_auto_selects_mysql_only_when_connection_contract_is_complete(tmp_path: 
     settings = _settings(
         tmp_path,
         {
+            "readonly": True,
             "host": "127.0.0.1",
             "user": "research",
             "password": "secret",
