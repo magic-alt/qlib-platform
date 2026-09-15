@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
+from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
 
@@ -18,7 +18,6 @@ from qlib_platform.research.contracts.research_profile import (
     InstrumentSpec,
     LabelDefinition,
     ResearchProfile,
-    SymbolAlias,
     assert_information_available,
     assert_settings_profile_compatible,
     describe_research_profile,
@@ -90,7 +89,7 @@ def test_instrument_handoff_rejects_research_only_continuous_and_incomplete_deri
 def test_calendar_label_and_profile_contracts_are_versioned_and_fail_closed() -> None:
     calendar = CalendarVersion("fixture_calendar", 1, "Asia/Shanghai", "15:00:00")
     assert len(calendar.fingerprint) == 64
-    with pytest.raises(Exception):
+    with pytest.raises(ZoneInfoNotFoundError):
         CalendarVersion("bad", 1, "Not/AZone", "15:00:00")
 
     label = LabelDefinition("return_5d_t1_v1", 1, 5, 1, "close")
