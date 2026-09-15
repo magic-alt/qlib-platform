@@ -103,6 +103,16 @@ class ResumableCertifiedDailySyncService(CertifiedDailySyncService):
                 f"active_end={active_end.date()} target={target.date()}"
             )
 
+    def apply_plan(self, plan_id: str, *, force_full: bool = False) -> Path:
+        # Reject an explicitly resumed stale plan before any provider request or
+        # canonical Bronze mutation. The publish-stage guard below repeats this check
+        # to close the race where another process advances the active alias after this
+        # preflight but before publication.
+        plan = self.load_plan(plan_id)
+        if plan.get("status") != "SKIPPED_NON_TRADING_DAY":
+            self._guard_monotonic_active_alias(plan)
+        return super().apply_plan(plan_id, force_full=force_full)
+
     def _recover_publish_receipt(
         self,
         plan: Mapping[str, Any],
