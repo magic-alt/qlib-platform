@@ -53,7 +53,7 @@ These values deliberately distinguish historical full acceptance, repository rev
 
 P5-A, P5-B and P5-C were subsequently merged after their dedicated contracts and full repository gates. P5-D starts only from the merged P5-C baseline and must establish its own deterministic enterprise-management and repository-wide 85% unit-coverage contract before it is complete.
 
-Research Platform Epic #104 is a software/interface closeout on the 2026-09-15 reviewed baseline. The machine-readable capability and governance matrix is [`contracts/research-platform-epic104.v1.json`](../contracts/research-platform-epic104.v1.json), with interpretation in [Research Platform Epic #104 closeout](research_platform_epic104_closeout.md). `RESEARCH_SOFTWARE_COMPLETE` means the research repository implementation is closed; it does not mean the paired LEAN execution path is production-certified.
+Research Platform Epic #104 is a software/interface closeout on the 2026-09-15 reviewed baseline. The machine-readable capability and governance matrix is `contracts/research-platform-epic104.v1.json`, with interpretation in [Research Platform Epic #104 closeout](research_platform_epic104_closeout.md). `RESEARCH_SOFTWARE_COMPLETE` means the research repository implementation is closed; it does not mean the paired LEAN execution path is production-certified.
 
 Weak research results are still attributed first to alpha, regime, model or portfolio research when no certified invariant produces contradictory evidence. This attribution policy is not a substitute for revalidating material behavioral changes.
 
