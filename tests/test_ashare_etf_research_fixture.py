@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -113,10 +114,9 @@ def test_etf_universe_is_listing_and_tradability_aware_and_fail_closed() -> None
     )
     missing_observation = EtfUniverseMember(ashare_etf_instrument("512000.SH"), date(2017, 8, 30))
     not_tradable = EtfUniverseMember(
-        ashare_etf_instrument("512010.SH"),
+        replace(ashare_etf_instrument("512010.SH"), tradable=False),
         date(2017, 9, 1),
     )
-    object.__setattr__(not_tradable.instrument, "tradable", False)
 
     observations = [
         EtfTradabilityObservation(eligible.instrument.instrument_id, trading_date, 1000.0),
@@ -282,7 +282,7 @@ def test_etf_master_fails_closed_when_lifecycle_evidence_is_missing() -> None:
     assert envelope.error_class == "missing_etf_lifecycle"
 
 
-def test_etf_materialization_produces_qib_price_volume_contract_without_stock_fields() -> None:
+def test_etf_materialization_produces_qlib_price_volume_contract_without_stock_fields() -> None:
     daily = pd.DataFrame(
         {
             "instrument": ["SH510300", "SH510300"],
@@ -346,6 +346,7 @@ def test_etf_pack_is_explicit_and_contains_no_stock_fundamental_dependencies() -
 def _fixture_panel() -> tuple[
     pd.DataFrame,
     pd.DataFrame,
+    pd.DataFrame,
     list[EtfUniverseMember],
     list[EtfTradabilityObservation],
 ]:
@@ -360,6 +361,10 @@ def _fixture_panel() -> tuple[
         features[name] = base * number + (number * 0.001)
     labels = pd.DataFrame(
         {"label": 0.6 * features["RET_5"] + 0.2 * features["MONEY_RATIO_20"]},
+        index=index,
+    )
+    realized_returns = pd.DataFrame(
+        {"return": 0.1 * features["RET_1"] + 0.02 * cross},
         index=index,
     )
     members = [
@@ -382,16 +387,17 @@ def _fixture_panel() -> tuple[
                     suspended,
                 )
             )
-    return features, labels, members, observations
+    return features, labels, realized_returns, members, observations
 
 
-def test_etf_fixture_executes_train_backtest_and_existing_feature_diagnostics() -> None:
-    features, labels, members, observations = _fixture_panel()
+def test_etf_fixture_executes_train_daily_backtest_and_existing_feature_diagnostics() -> None:
+    features, labels, realized_returns, members, observations = _fixture_panel()
     dates = pd.DatetimeIndex(features.index.get_level_values("datetime").unique())
 
     result = certify_ashare_etf_fixture(
         features,
         labels,
+        realized_returns,
         members,
         observations,
         train_end=dates[5],
@@ -413,7 +419,7 @@ def test_etf_fixture_executes_train_backtest_and_existing_feature_diagnostics() 
 
 
 def test_etf_fixture_rejects_stock_style_features_and_invalid_costs() -> None:
-    features, labels, members, observations = _fixture_panel()
+    features, labels, realized_returns, members, observations = _fixture_panel()
     bad = features.drop(columns=[ETF_CORE_FEATURE_NAMES[0]]).copy()
     bad["PE_TTM"] = 1.0
 
@@ -421,12 +427,28 @@ def test_etf_fixture_rejects_stock_style_features_and_invalid_costs() -> None:
         certify_ashare_etf_fixture(
             bad,
             labels,
+            realized_returns,
             members,
             observations,
             train_end=pd.Timestamp("2026-08-31"),
         )
     with pytest.raises(ValueError, match="costs must be non-negative"):
         EtfBacktestCostSpec(buy_cost_bps=-1.0)
+
+
+def test_etf_fixture_rejects_misaligned_realized_return_contract() -> None:
+    features, labels, realized_returns, members, observations = _fixture_panel()
+    misaligned = realized_returns.iloc[:-1]
+
+    with pytest.raises(ValueError, match="realized returns.*exactly align"):
+        certify_ashare_etf_fixture(
+            features,
+            labels,
+            misaligned,
+            members,
+            observations,
+            train_end=pd.Timestamp("2026-08-31"),
+        )
 
 
 def test_governed_etf_config_freezes_research_only_boundaries() -> None:
@@ -438,6 +460,7 @@ def test_governed_etf_config_freezes_research_only_boundaries() -> None:
     assert payload["alphaPack"] == "etf_core_v1"
     assert tuple(payload["data"]["requiredDatasetKinds"]) == ETF_REQUIRED_DATASETS
     assert tuple(payload["data"]["forbiddenDatasetKinds"]) == ETF_FORBIDDEN_STOCK_DATASETS
+    assert payload["backtest"]["realizedReturnSpec"] == "return_1d_t1_v1"
     assert payload["backtest"]["stockStampTaxInherited"] is False
     assert payload["promotionScope"] == "research_only"
     assert payload["publishingAuthorized"] is False
