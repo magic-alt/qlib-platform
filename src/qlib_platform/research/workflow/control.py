@@ -119,8 +119,7 @@ def build_research_spec(
             "stage": stage,
             "alphaPacks": list(alpha_packs),
             "models": [
-                {"name": name, "profile": model_profile_identity(profile)}
-                for name, profile in model_profiles
+                {"name": name, "profile": model_profile_identity(profile)} for name, profile in model_profiles
             ],
             "split": {
                 "train": list(train) if train else None,
