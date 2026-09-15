@@ -14,16 +14,16 @@
       "cashWeight": 0.1,
       "cashWeightDelta": null,
       "fx": {
-        "maxAgeSeconds": 14400
+        "maxAgeSeconds": 86400
       },
       "instructionType": "TARGETS",
       "omittedInstrumentPolicy": "ZERO_TARGET",
       "policy": {
-        "strategyPolicySha256": "24a28ddd4a626c81b4d2cda076a2366a53840eae463097a7cc2a9cdb76bb0581"
+        "strategyPolicySha256": "39bff61696d938b6cf4dd5af5f8a8b83e92f432e155c287bebdfa8293d712854"
       },
       "risk": {
         "maxAbsNetExposure": 1.0,
-        "maxGrossExposure": 1.0
+        "maxGrossExposure": 1.2
       },
       "schemaVersion": "3.0",
       "supersedesArtifactId": null,
@@ -31,29 +31,29 @@
       "targets": [
         {
           "currency": "CNY",
-          "instrument": "CN.XSHG.ETF.510300",
-          "score": 1.25,
+          "instrument": "CN.XSHG.EQUITY.600000",
+          "score": 0.8,
           "targetWeight": 0.6
         },
         {
           "currency": "USD",
-          "fxAvailableAt": "2024-01-05T07:55:00+08:00",
-          "fxQuoteId": "USDCNY.CFETS.20240105T075500+0800",
-          "fxRateToBase": 7.15,
-          "instrument": "US.NYSE.EQUITY.ABC",
-          "score": 0.8,
+          "fxAvailableAt": "2026-09-14T14:00:00+08:00",
+          "fxQuoteId": "USD/CNY@20260914T1400+08",
+          "fxRateToBase": 7.1,
+          "instrument": "US.XNAS.EQUITY.AAPL",
+          "score": 0.7,
           "targetWeight": 0.3
         }
       ],
       "timing": {
-        "asOfTime": "2024-01-05T08:00:00+08:00",
-        "producedAt": "2024-01-05T08:06:00+08:00",
-        "signalTime": "2024-01-05T08:05:00+08:00",
-        "tradeNotBefore": "2024-01-05T09:30:00+08:00",
-        "validFrom": "2024-01-05T08:30:00+08:00",
-        "validUntil": "2024-01-05T15:00:00+08:00"
+        "asOfTime": "2026-09-14T15:00:00+08:00",
+        "producedAt": "2026-09-14T15:06:00+08:00",
+        "signalTime": "2026-09-14T15:05:00+08:00",
+        "tradeNotBefore": "2026-09-15T09:30:00+08:00",
+        "validFrom": "2026-09-15T09:20:00+08:00",
+        "validUntil": "2026-09-15T15:00:00+08:00"
       },
-      "valuationBasis": "as_of_time_base_currency_notional"
+      "valuationBasis": "AS_OF_MARK"
     }
   },
   "bestTrial": {
