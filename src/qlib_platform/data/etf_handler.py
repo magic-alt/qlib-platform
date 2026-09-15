@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from qlib.contrib.data.handler import Alpha158
 
 ETF_CORE_FEATURE_EXPRESSIONS = (
@@ -34,8 +36,28 @@ ETF_CORE_FEATURE_NAMES = (
 )
 
 
+def etf_shared_processors(processors: object) -> object:
+    """Remove only the stock-specific universe processor from an ETF handler pipeline."""
+
+    if not isinstance(processors, list):
+        return processors
+    return [
+        processor
+        for processor in processors
+        if not (
+            isinstance(processor, dict)
+            and processor.get("class") == "AshareUniverseFilter"
+        )
+    ]
+
+
 class AshareEtfCore(Alpha158):
     """Technical/liquidity ETF feature set with no stock fundamental dependencies."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        if "shared_processors" in kwargs:
+            kwargs["shared_processors"] = etf_shared_processors(kwargs["shared_processors"])
+        super().__init__(*args, **kwargs)
 
     def get_feature_config(self):
         return list(ETF_CORE_FEATURE_EXPRESSIONS), list(ETF_CORE_FEATURE_NAMES)
