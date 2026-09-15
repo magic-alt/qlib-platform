@@ -1,0 +1,92 @@
+{
+  "artifactContractV3": {
+    "parentArtifactIds": [
+      "art_9999999999999999999999999999999999999999999999999999999999999999"
+    ],
+    "schemaVersion": "3.0",
+    "strategyPolicyId": "cross_market_fixture_policy_v1",
+    "targetInstruction": {
+      "baseCurrency": "CNY",
+      "calendar": {
+        "calendarId": "cn_us_cross_market_fixture_v1",
+        "versionSha256": "e2cc484392ea6ef9942a7f5ae1f19eb8ad963a69b03a83d6a05ccc6e1dca14b5"
+      },
+      "cashWeight": 0.1,
+      "cashWeightDelta": null,
+      "fx": {
+        "maxAgeSeconds": 14400
+      },
+      "instructionType": "TARGETS",
+      "omittedInstrumentPolicy": "ZERO_TARGET",
+      "policy": {
+        "strategyPolicySha256": "24a28ddd4a626c81b4d2cda076a2366a53840eae463097a7cc2a9cdb76bb0581"
+      },
+      "risk": {
+        "maxAbsNetExposure": 1.0,
+        "maxGrossExposure": 1.0
+      },
+      "schemaVersion": "3.0",
+      "supersedesArtifactId": null,
+      "targetSemantics": "FULL_SNAPSHOT",
+      "targets": [
+        {
+          "currency": "CNY",
+          "instrument": "CN.XSHG.ETF.510300",
+          "score": 1.25,
+          "targetWeight": 0.6
+        },
+        {
+          "currency": "USD",
+          "fxAvailableAt": "2024-01-05T07:55:00+08:00",
+          "fxQuoteId": "USDCNY.CFETS.20240105T075500+0800",
+          "fxRateToBase": 7.15,
+          "instrument": "US.NYSE.EQUITY.ABC",
+          "score": 0.8,
+          "targetWeight": 0.3
+        }
+      ],
+      "timing": {
+        "asOfTime": "2024-01-05T08:00:00+08:00",
+        "producedAt": "2024-01-05T08:06:00+08:00",
+        "signalTime": "2024-01-05T08:05:00+08:00",
+        "tradeNotBefore": "2024-01-05T09:30:00+08:00",
+        "validFrom": "2024-01-05T08:30:00+08:00",
+        "validUntil": "2024-01-05T15:00:00+08:00"
+      },
+      "valuationBasis": "as_of_time_base_currency_notional"
+    }
+  },
+  "bestTrial": {
+    "selectionScore": 0.123,
+    "trialId": "trial-v3-fixture"
+  },
+  "dataset": {
+    "dataReleaseId": "ds_1111111111111111111111111111111111111111111111111111111111111111",
+    "semantic_contract": {
+      "data_release_id": "ds_1111111111111111111111111111111111111111111111111111111111111111",
+      "universe_release_id": "universe-release-v3-fixture"
+    },
+    "universeReleaseId": "universe-release-v3-fixture"
+  },
+  "externalRunId": "run-v3-producer-fixture",
+  "finalHoldoutAccess": {
+    "opened": false,
+    "sealed": true
+  },
+  "metrics": {
+    "ic": 0.051,
+    "maxDrawdown": 0.08
+  },
+  "model": {
+    "name": "ridge",
+    "parameters": {
+      "alpha": 1.0
+    }
+  },
+  "name": "artifact-contract-v3-producer-fixture",
+  "promotion": {
+    "gate": "fixture",
+    "status": "RESEARCH_PROMOTED"
+  },
+  "runKind": "research"
+}
