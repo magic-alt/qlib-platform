@@ -171,6 +171,8 @@ def execute_order(
             "fees": float(fee_detail["total"]),
             "commission": float(fee_detail["commission"]),
             "transfer_fee": float(fee_detail["transfer_fee"]),
+            "regulatory_fee": float(fee_detail["regulatory_fee"]),
+            "exchange_handling_fee": float(fee_detail["exchange_handling_fee"]),
             "stamp_tax": float(fee_detail["stamp_tax"]),
             "fee_regime_id": str(fee_detail["fee_regime_id"]),
             "participation_rate": quantity / float(row["volume"]),
