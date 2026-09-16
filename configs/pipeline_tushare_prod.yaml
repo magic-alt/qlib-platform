@@ -1,0 +1,104 @@
+extends: pipeline_tushare_dev.yaml
+
+# Production identity is explicit and machine-validated. This profile intentionally
+# has no usable local fallback root: QLIB_PROD_ROOT must resolve the environment.
+config_schema_version: "1.0"
+environment: prod
+mode: standalone
+project_root: .
+project_root_env: QLIB_PROD_ROOT
+
+storage:
+  # Empty means <resolved QLIB_PROD_ROOT>/registry/qlib.sqlite.
+  registry_path: ""
+
+data_source:
+  kind: tushare
+  tushare:
+    # Secrets are references only; never inline tokens into serialized config.
+    token_env: TUSHARE_TOKEN
+    calls_per_minute: 180
+  runtime:
+    max_attempts: 6
+    base_sleep_seconds: 2.0
+    max_sleep_seconds: 60.0
+    jitter_ratio: 0.15
+  optional_endpoints:
+    # Required research endpoints may never be disabled in prod.
+    daily: true
+    adj_factor: true
+    daily_basic: true
+    moneyflow: true
+    stock_st: true
+    suspend_d: true
+    stk_limit: true
+
+release_store:
+  kind: file
+  # Empty derives an isolated store at <resolved QLIB_PROD_ROOT>/releases.
+  root: ""
+  publish_on_sync: true
+  immutable: true
+  active_keep: 1
+
+qlib:
+  # Data roots derive only from QLIB_PROD_ROOT. An optional source checkout may
+  # still be supplied by QLIB_REPO, but it cannot redirect production data.
+  repo_path: ""
+  repo_path_env: QLIB_REPO
+  dataset_dir: ""
+  versions_root: ""
+  dataset_name: cn_tushare_prod
+  dataset_version: production
+  dataset_ref: production-current
+
+research:
+  # Dirty source revisions may be diagnosed in dev, but never promoted by prod.
+  allow_dirty_research: false
+
+production:
+  daily_run:
+    schedule:
+      time: "18:30"
+      timezone: Asia/Shanghai
+    freshness:
+      min_market_coverage_ratio: 0.95
+      max_universe_snapshot_age_calendar_days: 45
+    verification:
+      mode: deep
+      sample_size: 64
+      workers: 4
+    regression:
+      enabled: false
+    notify: true
+
+production_policy:
+  schema_version: "1.0"
+  release:
+    validate_before_activation: true
+    atomic_active_pointer: true
+  coverage:
+    required_endpoints:
+      daily:
+        max_staleness_sessions: 0
+        min_rows: 250
+        min_previous_session_ratio: 0.95
+      adj_factor:
+        max_staleness_sessions: 0
+        min_rows: 250
+        min_previous_session_ratio: 0.95
+      daily_basic:
+        max_staleness_sessions: 0
+        min_rows: 250
+        min_previous_session_ratio: 0.95
+  retention:
+    bronze_days: 730
+    silver_days: 730
+    artifacts_days: 365
+    logs_days: 180
+    release_min_count: 32
+    protect_referenced_objects: true
+  config_migration:
+    unknown_version: fail
+    defaults_change: explicit_migration
+    rollback: previous_config_and_active_release
