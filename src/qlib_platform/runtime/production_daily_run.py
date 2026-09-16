@@ -90,7 +90,9 @@ class DailyResearchRun(base.DailyResearchRun):
         state.setdefault("config_sha256", str(plan.get("config_sha256") or ""))
         state.setdefault("provider_watermarks", plan.get("watermarks", {}))
         state.setdefault("endpoint_gaps", plan.get("endpoint_gaps", {}))
-        state["schema_version"] = DAILY_RUN_CONTRACT_VERSION
+        # Keep the persisted state schema at the base runner's 1.0 so PR #138 state
+        # remains resumable. The strengthened audit semantics are versioned separately.
+        state["daily_run_contract_version"] = DAILY_RUN_CONTRACT_VERSION
         state["checkpoint_contract_version"] = CHECKPOINT_CONTRACT_VERSION
         state["run_attempt"] = int(state.get("run_attempt") or 0) + 1
         state["attempt_started_at_utc"] = datetime.now(timezone.utc).isoformat()
@@ -155,7 +157,11 @@ class DailyResearchRun(base.DailyResearchRun):
         elif name == "feature_materialization":
             feature_root = Path(str(output.get("feature_root") or ""))
             instrument_root = Path(str(output.get("instrument_root") or ""))
-            feature_count = sum(1 for path in feature_root.rglob("*") if path.is_file()) if feature_root.is_dir() else 0
+            feature_count = (
+                sum(1 for path in feature_root.rglob("*") if path.is_file())
+                if feature_root.is_dir()
+                else 0
+            )
             instrument_count = (
                 sum(1 for path in instrument_root.rglob("*") if path.is_file())
                 if instrument_root.is_dir()
@@ -220,7 +226,11 @@ class DailyResearchRun(base.DailyResearchRun):
         try:
             return base._read_json(path)
         except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
-            return {"status": "CORRUPT", "path": str(path), "error": f"{type(exc).__name__}: {exc}"}
+            return {
+                "status": "CORRUPT",
+                "path": str(path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
     def _business_run_id(self, plan: Mapping[str, Any], state: Mapping[str, Any]) -> str:
         dataset = self._step(state, "dataset_verify").get("output", {})
@@ -355,21 +365,29 @@ class DailyResearchRun(base.DailyResearchRun):
             handle.write(f"- Git commit: `{lineage['code'].get('git_commit') or 'N/A'}`\n")
             handle.write(
                 "- Provider watermarks at plan: `"
-                + json.dumps(lineage["provider"]["watermarks_at_plan"], sort_keys=True, default=str)
+                + json.dumps(
+                    lineage["provider"]["watermarks_at_plan"],
+                    sort_keys=True,
+                    default=str,
+                )
                 + "`\n"
             )
             handle.write(
-                f"- Universe: `{json.dumps(lineage['universe']['configuration'], sort_keys=True, default=str)}`\n"
+                "- Universe: `"
+                + json.dumps(
+                    lineage["universe"]["configuration"],
+                    sort_keys=True,
+                    default=str,
+                )
+                + "`\n"
             )
             handle.write(f"- Benchmark: `{lineage['benchmark']['symbol'] or 'N/A'}`\n")
-            handle.write(
-                f"- Automatic model selection/promotion: `false/false`\n"
-            )
+            handle.write("- Automatic model selection/promotion: `false/false`\n")
         return path
 
     def _enrich_manifest(self, path: Path, plan: Mapping[str, Any]) -> Path:
         payload = base._read_json(path)
-        payload["schema_version"] = DAILY_RUN_CONTRACT_VERSION
+        payload["daily_run_contract_version"] = DAILY_RUN_CONTRACT_VERSION
         payload["checkpoint_contract_version"] = CHECKPOINT_CONTRACT_VERSION
         payload["business_run_id"] = self._business_run_id(plan, payload)
         payload["lineage"] = self._lineage(plan, payload)
@@ -420,7 +438,9 @@ class DailyResearchRun(base.DailyResearchRun):
             active_end = self.sync._manifest_end(active[0])
             if active_end is not None:
                 blocked = [
-                    trade_date for trade_date in dates if pd.Timestamp(trade_date).normalize() <= active_end
+                    trade_date
+                    for trade_date in dates
+                    if pd.Timestamp(trade_date).normalize() <= active_end
                 ]
                 if blocked:
                     raise ValueError(
