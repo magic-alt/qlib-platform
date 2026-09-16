@@ -118,9 +118,7 @@ def _parse_capabilities(manifest: Mapping[str, Any]) -> list[Capability]:
 
         owner = str(item.get("owner", defaults.get("owner", "qlib-compat"))).strip()
         version = str(item.get("version", defaults.get("version", qlib_version))).strip()
-        os_matrix = _string_tuple(
-            item.get("os", defaults.get("os", ())), field=f"{capability_id}.os"
-        )
+        os_matrix = _string_tuple(item.get("os", defaults.get("os", ())), field=f"{capability_id}.os")
         python_matrix = _string_tuple(
             item.get("python", defaults.get("python", ())), field=f"{capability_id}.python"
         )
@@ -132,9 +130,7 @@ def _parse_capabilities(manifest: Mapping[str, Any]) -> list[Capability]:
             evidence.get("negative", default_evidence.get("negative", ())),
             field=f"{capability_id}.evidence.negative",
         )
-        negative_required = bool(
-            item.get("negative_required", defaults.get("negative_required", False))
-        )
+        negative_required = bool(item.get("negative_required", defaults.get("negative_required", False)))
         deviation_value = item.get("known_deviation", defaults.get("known_deviation"))
         known_deviation = None if deviation_value is None else str(deviation_value).strip() or None
 
