@@ -1,0 +1,47 @@
+schema_version: official_parity_profile_v1
+profile_id: qlib_official_alpha158_lgb_v1
+scope: official-parity
+workflow_file: qlib_official_alpha158_lgb_v1.workflow.yaml
+workflow_sha256: 0cbe1f729f43a2b8cd735759e6244c2e9f8db967555bfe24a7143fce4605d680
+automatic_model_selection: false
+automatic_promotion: false
+
+upstream:
+  repository: microsoft/qlib
+  commit: 79633dd9506ea689e5400dea0197717b5b3d74b7
+  path: examples/benchmarks/LightGBM/workflow_config_lightgbm_Alpha158.yaml
+  benchmark_readme_path: examples/benchmarks/README.md
+  protocol_note: frozen before observing local Tushare parity results
+
+# Process-level seeds only. The frozen upstream LightGBM kwargs are not rewritten.
+seeds: [0, 1]
+
+engine_tolerances:
+  metric_max_abs: 1.0e-8
+  prediction_max_abs: 1.0e-8
+  portfolio_max_abs: 1.0e-8
+
+official_reference:
+  ic: 0.0448
+  icir: 0.3660
+  rank_ic: 0.0469
+  rank_icir: 0.3877
+  annualized_return: 0.0901
+  information_ratio: 1.0164
+  max_drawdown: -0.1038
+
+# Pre-registered before a local Tushare result is inspected. Signal metrics are
+# primary; portfolio metrics are secondary. A miss remains FAIL and is attributed
+# instead of being repaired by tuning Alpha158, labels, LightGBM, costs or strategy.
+vendor_tolerances:
+  ic: {absolute: 0.015, severity: primary}
+  icir: {absolute: 0.15, severity: primary}
+  rank_ic: {absolute: 0.015, severity: primary}
+  rank_icir: {absolute: 0.15, severity: primary}
+  annualized_return: {absolute: 0.06, severity: secondary}
+  information_ratio: {absolute: 0.60, severity: secondary}
+  max_drawdown: {absolute: 0.08, severity: secondary}
+
+golden_checks:
+  csi300_rebalance_minimum: 2
+  corporate_action_minimum: 2

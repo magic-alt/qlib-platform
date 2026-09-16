@@ -3,3 +3,4 @@ tests/fixtures/artifact_v2/*.json text eol=lf
 tests/fixtures/artifact_v2/golden_v2/** text eol=lf
 tests/fixtures/artifact_v3/*.json text eol=lf
 tests/fixtures/artifact_v3/golden_v3/** text eol=lf
+configs/research/qlib_official_alpha158_lgb_v1.workflow.yaml text eol=lf
