@@ -507,7 +507,10 @@ def test_main_plan_and_failed_run_exit_codes(tmp_path: Path, monkeypatch: pytest
         ],
     )
     assert parity.main() == 0
-    assert json.loads((plan_dir / "plan.json").read_text(encoding="utf-8"))["scientific_identity"] == "science-id"
+    assert (
+        json.loads((plan_dir / "plan.json").read_text(encoding="utf-8"))["scientific_identity"]
+        == "science-id"
+    )
 
     failed = tmp_path / "failed.json"
     failed.write_text(json.dumps({"status": "FAIL"}), encoding="utf-8")
