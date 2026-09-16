@@ -1,3 +1,6 @@
+config_schema_version: "1.0"
+environment: dev
+
 experiment:
   data_release: cn_tushare_v1
   alpha:

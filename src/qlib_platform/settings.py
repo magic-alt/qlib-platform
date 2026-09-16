@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from qlib_platform.production_policy import environment_name, validate_production_policy
 from qlib_platform.runtime.runtime_resources import resource_path
 
 _ENV_PATTERN = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
@@ -178,7 +179,14 @@ class Settings:
         project_root = Path(root_override or str(data["project_root"])).expanduser()
         if not project_root.is_absolute():
             project_root = (config_path.parent.parent / project_root).resolve()
+        else:
+            project_root = project_root.resolve()
         paths = Paths.from_root(project_root)
+
+        # Production validation deliberately runs before mkdirs() or any provider
+        # construction. Unsafe flags, inline secrets, ambiguous roots, weak coverage,
+        # or mutable-release settings therefore fail without writing local state.
+        validate_production_policy(data, project_root=project_root)
         if create_dirs:
             paths.mkdirs()
 
@@ -207,6 +215,13 @@ class Settings:
             qlib_data_uri = (paths.root / "qlib" / "current").resolve()
 
         return cls(config_path, data, paths, token, qlib_repo, qlib_data_uri)
+
+    @property
+    def environment(self) -> str:
+        return environment_name(self.data) or "unspecified"
+
+    def production_policy_report(self) -> dict[str, Any]:
+        return validate_production_policy(self.data, project_root=self.paths.root)
 
     @property
     def data_source_config(self) -> dict[str, Any]:

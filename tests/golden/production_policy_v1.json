@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "1.0",
+  "configSchemaVersion": "1.0",
+  "environment": "prod",
+  "status": "ENFORCED",
+  "passed": true,
+  "secrets": {
+    "tushareTokenRef": "TUSHARE_TOKEN",
+    "inlineSecretsAllowed": false
+  },
+  "retry": {
+    "max_attempts": 6,
+    "base_sleep_seconds": 2.0,
+    "max_sleep_seconds": 60.0,
+    "jitter_ratio": 0.15
+  },
+  "release": {
+    "immutable": true,
+    "publishOnSync": true,
+    "validate_before_activation": true,
+    "atomic_active_pointer": true
+  },
+  "coverage": {
+    "daily": {
+      "max_staleness_sessions": 0,
+      "min_rows": 250,
+      "min_previous_session_ratio": 0.95
+    },
+    "adj_factor": {
+      "max_staleness_sessions": 0,
+      "min_rows": 250,
+      "min_previous_session_ratio": 0.95
+    },
+    "daily_basic": {
+      "max_staleness_sessions": 0,
+      "min_rows": 250,
+      "min_previous_session_ratio": 0.95
+    }
+  },
+  "retention": {
+    "bronze_days": 730,
+    "silver_days": 730,
+    "releases_days": 1095,
+    "artifacts_days": 365,
+    "logs_days": 180,
+    "release_min_count": 32,
+    "protect_referenced_objects": true
+  },
+  "timezones": {
+    "market": "Asia/Shanghai",
+    "scheduler": "Asia/Shanghai"
+  },
+  "configMigration": {
+    "unknown_version": "fail",
+    "defaults_change": "explicit_migration",
+    "rollback": "previous_config_and_active_release"
+  }
+}
