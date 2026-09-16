@@ -5,7 +5,11 @@ import re
 
 import pandas as pd
 
-from qlib_platform.backtesting.market_rule_set import MarketRuleSet, production_realism_rule_set
+from qlib_platform.backtesting.market_rule_set import (
+    FeeRegime,
+    MarketRuleSet,
+    production_realism_rule_set,
+)
 
 
 class AShareMarketRules:
@@ -99,8 +103,8 @@ class AShareMarketRules:
         if any(not 0 < value < 1 for value in price_limits):
             raise ValueError("price-limit assumptions must be in (0, 1)")
 
-    def fee_regime_for(self, trade_date: object):
-        return self.market_rule_set.fee_regime_for(trade_date)
+    def fee_regime_for(self, trade_date: object, venue: str = "SSE_SZSE") -> FeeRegime:
+        return self.market_rule_set.fee_regime_for(trade_date, venue)
 
     def identity_manifest(self) -> dict[str, object]:
         return {
@@ -135,6 +139,15 @@ def _is_star(board: object | None) -> bool:
 
 def _is_beijing(board: object | None) -> bool:
     return _board_name(board) in {"BSE", "BEIJING", "北交所"}
+
+
+def fee_venue(instrument: str, board: object | None = None) -> str:
+    """Return the statutory fee venue for a normalized A-share identifier."""
+
+    code = str(instrument).upper().strip()
+    if _is_beijing(board) or code.endswith(".BJ") or code.startswith("BJ"):
+        return "BSE"
+    return "SSE_SZSE"
 
 
 def normalize_buy_quantity(instrument: str, quantity: float, rules: AShareMarketRules) -> int:
