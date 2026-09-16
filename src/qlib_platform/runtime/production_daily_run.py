@@ -178,9 +178,7 @@ class DailyResearchRun(base.DailyResearchRun):
             feature_root = Path(str(output.get("feature_root") or ""))
             instrument_root = Path(str(output.get("instrument_root") or ""))
             feature_count = (
-                sum(1 for path in feature_root.rglob("*") if path.is_file())
-                if feature_root.is_dir()
-                else 0
+                sum(1 for path in feature_root.rglob("*") if path.is_file()) if feature_root.is_dir() else 0
             )
             instrument_count = (
                 sum(1 for path in instrument_root.rglob("*") if path.is_file())
@@ -475,9 +473,7 @@ class DailyResearchRun(base.DailyResearchRun):
             active_end = self.sync._manifest_end(active[0])
             if active_end is not None:
                 blocked = [
-                    trade_date
-                    for trade_date in dates
-                    if pd.Timestamp(trade_date).normalize() <= active_end
+                    trade_date for trade_date in dates if pd.Timestamp(trade_date).normalize() <= active_end
                 ]
                 if blocked:
                     raise ValueError(
