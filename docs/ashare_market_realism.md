@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: backtesting
+applies_to_commit: 3a0e087cf1f14b33b9ba9b0edce883bc672b7ccd
+last_verified: 2026-09-16
+---
+
 # A-share market realism contract
 
 This document defines the deterministic A-share market rules used by qlib-platform research backtests. The contract deliberately separates upstream Qlib parity from the platform's China-market realism extension.
