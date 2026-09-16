@@ -27,6 +27,7 @@ class RuleEvidence:
 @dataclass(frozen=True)
 class FeeRegime:
     regime_id: str
+    venue: str
     effective_from: str
     effective_to: str | None
     sell_stamp_tax_bps: float
@@ -36,11 +37,11 @@ class FeeRegime:
     source: str
     fixture: str
 
-    def contains(self, trade_date: object) -> bool:
+    def contains(self, trade_date: object, venue: str) -> bool:
         date = pd.Timestamp(trade_date).normalize()
         start = pd.Timestamp(self.effective_from).normalize()
         end = pd.Timestamp(self.effective_to).normalize() if self.effective_to else None
-        return date >= start and (end is None or date <= end)
+        return self.venue == venue and date >= start and (end is None or date <= end)
 
 
 @dataclass(frozen=True)
@@ -58,12 +59,18 @@ class MarketRuleSet:
     def fingerprint(self) -> str:
         return sha256_json(self.to_manifest())
 
-    def fee_regime_for(self, trade_date: object) -> FeeRegime:
-        matches = [regime for regime in self.fee_regimes if regime.contains(trade_date)]
+    def fee_regime_for(self, trade_date: object, venue: str = "SSE_SZSE") -> FeeRegime:
+        normalized_venue = str(venue).strip().upper()
+        matches = [
+            regime
+            for regime in self.fee_regimes
+            if regime.contains(trade_date, normalized_venue)
+        ]
         if len(matches) != 1:
             date = pd.Timestamp(trade_date).strftime("%Y-%m-%d")
             raise ValueError(
-                f"market rule set {self.market_rule_set_id} has no unique fee regime for {date}"
+                f"market rule set {self.market_rule_set_id} has no unique fee regime "
+                f"for {normalized_venue} on {date}"
             )
         return matches[0]
 
@@ -78,6 +85,106 @@ class MarketRuleSet:
             "rules": [asdict(rule) for rule in self.rules],
             "feeRegimes": [asdict(regime) for regime in self.fee_regimes],
         }
+
+
+def _sse_szse_fee_regimes() -> tuple[FeeRegime, ...]:
+    fixture = "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries"
+    return (
+        FeeRegime(
+            "cn_equity_fee_2015_08_01",
+            "SSE_SZSE",
+            "2015-08-01",
+            "2022-04-28",
+            10.0,
+            0.2,
+            0.2,
+            0.487,
+            "ChinaClear transfer-fee schedule; CSRC regulatory fee 0.002%; SSE/SZSE A-share handling fee 0.00487%; sell stamp tax 0.1%",
+            fixture,
+        ),
+        FeeRegime(
+            "cn_equity_fee_2022_04_29",
+            "SSE_SZSE",
+            "2022-04-29",
+            "2023-08-27",
+            10.0,
+            0.1,
+            0.2,
+            0.487,
+            "ChinaClear A-share transfer-fee reduction effective 2022-04-29; CSRC regulatory fee 0.002%; SSE/SZSE handling fee 0.00487%; sell stamp tax 0.1%",
+            fixture,
+        ),
+        FeeRegime(
+            "cn_equity_fee_2023_08_28",
+            "SSE_SZSE",
+            "2023-08-28",
+            None,
+            5.0,
+            0.1,
+            0.2,
+            0.341,
+            "MOF/STA Announcement No.39 (2023); ChinaClear A-share transfer fee; CSRC regulatory fee 0.002%; SSE/SZSE handling fee reduced to 0.00341%",
+            fixture,
+        ),
+    )
+
+
+def _bse_fee_regimes() -> tuple[FeeRegime, ...]:
+    fixture = "tests/test_ashare_fee_schedule.py::test_bse_fee_schedule_is_venue_and_date_aware"
+    common_source = (
+        "ChinaClear Beijing-market A-share transfer fee; CSRC regulatory fee; "
+        "BSE ordinary-share bilateral handling-fee notices"
+    )
+    return (
+        FeeRegime(
+            "bse_equity_fee_2021_11_15",
+            "BSE",
+            "2021-11-15",
+            "2022-04-28",
+            10.0,
+            0.2,
+            0.2,
+            5.0,
+            f"{common_source}; BSE handling fee 0.5‰; sell stamp tax 0.1%",
+            fixture,
+        ),
+        FeeRegime(
+            "bse_equity_fee_2022_04_29",
+            "BSE",
+            "2022-04-29",
+            "2022-11-30",
+            10.0,
+            0.1,
+            0.2,
+            5.0,
+            f"{common_source}; A-share transfer fee reduced to 0.01‰; BSE handling fee 0.5‰",
+            fixture,
+        ),
+        FeeRegime(
+            "bse_equity_fee_2022_12_01",
+            "BSE",
+            "2022-12-01",
+            "2023-08-27",
+            10.0,
+            0.1,
+            0.2,
+            2.5,
+            f"{common_source}; BSE handling fee reduced to 0.25‰ from 2022-12-01",
+            fixture,
+        ),
+        FeeRegime(
+            "bse_equity_fee_2023_08_28",
+            "BSE",
+            "2023-08-28",
+            None,
+            5.0,
+            0.1,
+            0.2,
+            1.25,
+            f"{common_source}; BSE handling fee reduced to 0.125‰ from 2023-08-28; sell stamp tax halved",
+            fixture,
+        ),
+    )
 
 
 def production_realism_rule_set() -> MarketRuleSet:
@@ -178,41 +285,7 @@ def production_realism_rule_set() -> MarketRuleSet:
                 "tests/test_ashare_market_realism_conformance.py::test_listing_lifecycle_rejects_prelisting_and_delisted_rows",
             ),
         ),
-        fee_regimes=(
-            FeeRegime(
-                "cn_equity_fee_2015_08_01",
-                "2015-08-01",
-                "2022-04-28",
-                10.0,
-                0.2,
-                0.2,
-                0.487,
-                "ChinaClear transfer-fee schedule; CSRC regulatory fee 0.002%; SSE/SZSE A-share handling fee 0.00487%; sell stamp tax 0.1%",
-                "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries",
-            ),
-            FeeRegime(
-                "cn_equity_fee_2022_04_29",
-                "2022-04-29",
-                "2023-08-27",
-                10.0,
-                0.1,
-                0.2,
-                0.487,
-                "ChinaClear transfer-fee reduction effective 2022-04-29; CSRC regulatory fee 0.002%; SSE/SZSE handling fee 0.00487%; sell stamp tax 0.1%",
-                "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries",
-            ),
-            FeeRegime(
-                "cn_equity_fee_2023_08_28",
-                "2023-08-28",
-                None,
-                5.0,
-                0.1,
-                0.2,
-                0.341,
-                "MOF/STA Announcement No.39 (2023); ChinaClear transfer-fee schedule; CSRC regulatory fee 0.002%; SSE/SZSE handling fee reduced to 0.00341%",
-                "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries",
-            ),
-        ),
+        fee_regimes=(*_sse_szse_fee_regimes(), *_bse_fee_regimes()),
     )
 
 
@@ -231,7 +304,11 @@ def qlib_official_parity_rule_set() -> MarketRuleSet:
 
 def resolve_market_rule_set(profile: str | None) -> MarketRuleSet:
     normalized = str(profile or "production_realism_v1").strip().lower().replace("-", "_")
-    if normalized in {"production_realism", "production_realism_v1", "cn_cash_equity_production_realism_v1"}:
+    if normalized in {
+        "production_realism",
+        "production_realism_v1",
+        "cn_cash_equity_production_realism_v1",
+    }:
         return production_realism_rule_set()
     if normalized in {"official_parity", "official_parity_v1", "qlib_official_parity_v1"}:
         return qlib_official_parity_rule_set()
