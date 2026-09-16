@@ -74,6 +74,11 @@ production:
 
 production_policy:
   schema_version: "1.0"
+  # These are always resolved relative to QLIB_PROD_ROOT, never cwd/home.
+  paths:
+    artifacts: artifacts
+    cache: cache
+    logs: logs
   release:
     validate_before_activation: true
     atomic_active_pointer: true
@@ -94,6 +99,7 @@ production_policy:
   retention:
     bronze_days: 730
     silver_days: 730
+    releases_days: 1095
     artifacts_days: 365
     logs_days: 180
     release_min_count: 32
