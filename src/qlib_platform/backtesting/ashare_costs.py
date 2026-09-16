@@ -17,19 +17,28 @@ def execution_fee_breakdown(
     if trade_date is None:
         transfer_bps = rules.transfer_fee_bps
         stamp_bps = rules.sell_stamp_tax_bps
+        regulatory_bps = 0.0
+        handling_bps = 0.0
         regime_id = "configured_current_fee_assumption"
     else:
         regime = rules.fee_regime_for(trade_date)
         transfer_bps = regime.transfer_fee_bps
         stamp_bps = regime.sell_stamp_tax_bps
+        regulatory_bps = regime.regulatory_fee_bps
+        handling_bps = regime.exchange_handling_fee_bps
         regime_id = regime.regime_id
     transfer = notional * transfer_bps / 10_000.0
+    regulatory = notional * regulatory_bps / 10_000.0
+    exchange_handling = notional * handling_bps / 10_000.0
     stamp = notional * stamp_bps / 10_000.0 if side == "SELL" else 0.0
+    total = commission + transfer + regulatory + exchange_handling + stamp
     return {
         "commission": float(commission),
         "transfer_fee": float(transfer),
+        "regulatory_fee": float(regulatory),
+        "exchange_handling_fee": float(exchange_handling),
         "stamp_tax": float(stamp),
-        "total": float(commission + transfer + stamp),
+        "total": float(total),
         "fee_regime_id": regime_id,
     }
 
