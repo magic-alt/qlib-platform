@@ -209,7 +209,7 @@ def _release_violations(config: Mapping[str, Any]) -> list[str]:
     return violations
 
 
-def _retention_violations(config: Mapping[str,Any]) -> list[str]:
+def _retention_violations(config: Mapping[str, Any]) -> list[str]:
     policy = _mapping(config.get("production_policy", {}), "production_policy")
     retention = _mapping(policy.get("retention", {}), "production_policy.retention")
     violations: list[str] = []
