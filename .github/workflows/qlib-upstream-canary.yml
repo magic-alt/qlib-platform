@@ -1,0 +1,72 @@
+name: Qlib Upstream Canary
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-drift:
+    name: upstream-${{ matrix.channel }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [latest-release, upstream-main]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Install isolated upstream candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/qlib-canary"
+          canary_python="$RUNNER_TEMP/qlib-canary/bin/python"
+          "$canary_python" -m pip install --upgrade pip
+          if [[ "${{ matrix.channel }}" == "latest-release" ]]; then
+            "$canary_python" -m pip install pyqlib 'PyYAML>=6,<7'
+          else
+            "$canary_python" -m pip install 'git+https://github.com/microsoft/qlib.git@main' 'PyYAML>=6,<7'
+          fi
+      - name: Probe declared Qlib surface without blocking on version drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/qlib-canary-${{ matrix.channel }}.json"
+          PYTHONPATH="$GITHUB_WORKSPACE/src" \
+            "$RUNNER_TEMP/qlib-canary/bin/python" \
+            -m qlib_platform.qlib_compat.cli capability-check \
+            --allow-version-drift \
+            --output "$report"
+      - name: Publish drift summary
+        if: always()
+        shell: bash
+        run: |
+          report="$RUNNER_TEMP/qlib-canary-${{ matrix.channel }}.json"
+          echo "## Qlib canary: ${{ matrix.channel }}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ ! -f "$report" ]]; then
+            echo "Candidate installation or probe failed before a report was produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          REPORT="$report" python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path(os.environ["REPORT"]).read_text(encoding="utf-8"))
+          print(f"- expected: `{payload['expectedQlibVersion']}`")
+          print(f"- actual: `{payload['actualQlibVersion']}`")
+          print(f"- drift detected: `{payload['driftDetected']}`")
+          print(f"- required failures: `{payload['requiredFailures']}`")
+          print(f"- runtime statuses: `{payload['certificationSummary']['runtimeStatusCounts']}`")
+          print("\nThis scheduled canary is informational and is not a required pull-request gate.")
+          PY
