@@ -142,9 +142,7 @@ def test_matrix_rejects_invalid_certification_and_evidence_shapes() -> None:
 
 
 def test_matrix_rejects_invalid_defaults_and_sequence_metadata() -> None:
-    invalid_defaults = _schema2_manifest(
-        {"id": "core.qlib", "target": "qlib", "level": "required"}
-    )
+    invalid_defaults = _schema2_manifest({"id": "core.qlib", "target": "qlib", "level": "required"})
     invalid_defaults["matrix_defaults"] = "not-a-mapping"
     with pytest.raises(ValueError, match="matrix_defaults must be a mapping"):
         materialize_capability_matrix(invalid_defaults)
