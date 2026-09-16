@@ -1,15 +1,67 @@
 from __future__ import annotations
 
 from math import sqrt
+from typing import Any
 
 from qlib_platform.backtesting.ashare_rules import AShareMarketRules
 
 
-def execution_fees(notional: float, side: str, rules: AShareMarketRules) -> float:
+def execution_fee_breakdown(
+    notional: float,
+    side: str,
+    rules: AShareMarketRules,
+    *,
+    trade_date: object | None = None,
+    venue: str = "SSE_SZSE",
+) -> dict[str, Any]:
     commission = max(rules.min_commission, notional * rules.commission_bps / 10_000.0)
-    transfer = notional * rules.transfer_fee_bps / 10_000.0
-    stamp = notional * rules.sell_stamp_tax_bps / 10_000.0 if side == "SELL" else 0.0
-    return commission + transfer + stamp
+    if trade_date is None:
+        transfer_bps = rules.transfer_fee_bps
+        stamp_bps = rules.sell_stamp_tax_bps
+        regulatory_bps = 0.0
+        handling_bps = 0.0
+        regime_id = "configured_current_fee_assumption"
+    else:
+        regime = rules.fee_regime_for(trade_date, venue)
+        transfer_bps = regime.transfer_fee_bps
+        stamp_bps = regime.sell_stamp_tax_bps
+        regulatory_bps = regime.regulatory_fee_bps
+        handling_bps = regime.exchange_handling_fee_bps
+        regime_id = regime.regime_id
+    transfer = notional * transfer_bps / 10_000.0
+    regulatory = notional * regulatory_bps / 10_000.0
+    exchange_handling = notional * handling_bps / 10_000.0
+    stamp = notional * stamp_bps / 10_000.0 if side == "SELL" else 0.0
+    total = commission + transfer + regulatory + exchange_handling + stamp
+    return {
+        "commission": float(commission),
+        "transfer_fee": float(transfer),
+        "regulatory_fee": float(regulatory),
+        "exchange_handling_fee": float(exchange_handling),
+        "stamp_tax": float(stamp),
+        "total": float(total),
+        "fee_regime_id": regime_id,
+        "fee_venue": str(venue).strip().upper(),
+    }
+
+
+def execution_fees(
+    notional: float,
+    side: str,
+    rules: AShareMarketRules,
+    *,
+    trade_date: object | None = None,
+    venue: str = "SSE_SZSE",
+) -> float:
+    return float(
+        execution_fee_breakdown(
+            notional,
+            side,
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )["total"]
+    )
 
 
 def impacted_fill_price(

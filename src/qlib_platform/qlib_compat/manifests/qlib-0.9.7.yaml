@@ -164,6 +164,7 @@ capabilities:
     target: "qlib.backtest.exchange:Exchange"
     level: required
     certification: certified
+    known_deviation: "Official Qlib 0.9.7 Exchange parity does not certify the platform's dated A-share T+1, odd-lot, board/ST price-limit, listing-lifecycle, historical-fee, and explicit corporate-action realism contract; production realism is provided by the versioned local cn_cash_equity_production_realism_v1 adapter."
     evidence:
       positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: backtest.api, target: qlib.backtest, level: required}

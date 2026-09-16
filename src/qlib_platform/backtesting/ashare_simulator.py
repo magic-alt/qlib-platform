@@ -4,6 +4,10 @@ from typing import Any
 
 import pandas as pd
 
+from qlib_platform.backtesting.ashare_corporate_actions import (
+    apply_corporate_actions,
+    normalize_corporate_actions,
+)
 from qlib_platform.backtesting.ashare_engine import execute_order
 from qlib_platform.backtesting.ashare_rules import (
     AShareMarketRules,
@@ -40,6 +44,7 @@ def _mark_account(state: SimulationState, market: pd.DataFrame, trade_date: pd.T
             "equity": state.cash + market_value,
         }
     )
+    state.record_positions(trade_date)
 
 
 def _result(
@@ -52,6 +57,8 @@ def _result(
     fills = pd.DataFrame(state.fills)
     rejections = pd.DataFrame(state.rejections)
     account = pd.DataFrame(state.account_rows)
+    daily_positions = pd.DataFrame(state.position_rows)
+    corporate_actions = pd.DataFrame(state.corporate_action_rows)
     positions = pd.DataFrame(
         [
             {
@@ -84,8 +91,23 @@ def _result(
         ),
         "max_participation_rate": rules.max_participation_rate,
         "t_plus_one": True,
+        "market_rule_set_id": rules.market_rule_set_id,
+        "market_rule_set_sha256": rules.market_rule_set.fingerprint,
+        "cost_model_id": rules.cost_model_id,
+        "fill_model_id": rules.fill_model_id,
+        "price_basis": rules.price_basis,
+        "corporate_action_mode": rules.market_rule_set.corporate_action_mode,
+        "corporate_action_events": int(len(corporate_actions)),
     }
-    return AShareSimulationResult(fills, rejections, account, positions, summary)
+    return AShareSimulationResult(
+        fills=fills,
+        rejections=rejections,
+        daily_account=account,
+        positions=positions,
+        summary=summary,
+        daily_positions=daily_positions,
+        corporate_actions=corporate_actions,
+    )
 
 
 def simulate_ashare_orders(
@@ -94,28 +116,46 @@ def simulate_ashare_orders(
     *,
     initial_cash: float = 500_000.0,
     rules: AShareMarketRules | None = None,
+    corporate_actions: pd.DataFrame | None = None,
 ) -> AShareSimulationResult:
-    """Research-only A-share simulator with T+1, limits, liquidity and impact."""
+    """Research-only A-share simulator with versioned deterministic market rules."""
 
     resolved = rules or AShareMarketRules()
     if initial_cash <= 0:
         raise ValueError("initial_cash must be positive")
     market = normalize_market_data(bars, resolved)
     order_frame = normalize_orders(orders)
+    action_frame = normalize_corporate_actions(corporate_actions)
+    if not action_frame.empty and resolved.price_basis != "raw_unadjusted":
+        raise ValueError(
+            "corporate actions require raw_unadjusted execution/NAV prices; adjusted prices would double count"
+        )
     market_lookup = market.set_index(["trade_date", "instrument"], drop=False)
     trading_dates = pd.DatetimeIndex(market["trade_date"].unique()).sort_values()
     unknown_dates = pd.DatetimeIndex(order_frame["trade_date"].unique()).difference(trading_dates)
     if len(unknown_dates):
         raise ValueError(f"orders reference dates absent from market data: {list(unknown_dates[:5])}")
+    action_dates = (
+        pd.DatetimeIndex(action_frame["effective_date"].unique())
+        if not action_frame.empty
+        else pd.DatetimeIndex([])
+    )
+    unknown_action_dates = action_dates.difference(trading_dates)
+    if len(unknown_action_dates):
+        raise ValueError(
+            "corporate actions reference dates absent from the simulator trading calendar: "
+            f"{list(unknown_action_dates[:5])}"
+        )
 
     state = SimulationState(initial_cash)
     next_date = _next_dates(trading_dates)
     for trade_date in trading_dates:
         state.release_t_plus_one(trade_date)
+        apply_corporate_actions(state, action_frame, trade_date, rules=resolved)
         for _, order in order_frame.loc[order_frame["trade_date"] == trade_date].iterrows():
             key = (trade_date, str(order["instrument"]))
             if key not in market_lookup.index:
-                state.reject(order, "missing_market_data", int(order["quantity"]))
+                state.reject(order, "missing_market_data", int(order["quantity"]), rules=resolved)
                 continue
             row = market_lookup.loc[key]
             if isinstance(row, pd.DataFrame):  # pragma: no cover - normalized input prevents this

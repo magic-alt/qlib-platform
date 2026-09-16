@@ -3,12 +3,20 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from qlib_platform.backtesting.ashare_costs import execution_fees, impacted_fill_price
+from qlib_platform.backtesting.ashare_costs import (
+    execution_fee_breakdown,
+    execution_fees,
+    impacted_fill_price,
+)
 from qlib_platform.backtesting.ashare_rules import (
     AShareMarketRules,
     as_bool,
+    fee_venue,
+    lifecycle_rejection,
     normalize_buy_quantity,
+    normalize_sell_quantity,
     resolve_limits,
+    row_is_suspended,
 )
 from qlib_platform.backtesting.ashare_state import SimulationState
 
@@ -31,6 +39,8 @@ def _fit_buy_to_cash(
     price: float,
     cash: float,
     rules: AShareMarketRules,
+    trade_date: pd.Timestamp,
+    venue: str,
 ) -> int:
     """Return the largest legal buy quantity whose notional plus fees fits cash."""
 
@@ -47,7 +57,13 @@ def _fit_buy_to_cash(
             low = mid + 1
             continue
         notional = candidate * price
-        total_cash = notional + execution_fees(notional, "BUY", rules)
+        total_cash = notional + execution_fees(
+            notional,
+            "BUY",
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )
         if total_cash <= cash + 1e-9:
             best = max(best, candidate)
             low = mid + 1
@@ -69,9 +85,18 @@ def execute_order(
     side = str(order["side"])
     requested = int(order["quantity"])
     key = (trade_date, instrument)
-    reference = float(row[rules.deal_price_column])
-    state.requested_notional += requested * reference
 
+    lifecycle_reason = lifecycle_rejection(row)
+    if lifecycle_reason is not None:
+        state.reject(order, lifecycle_reason, requested, rules=rules)
+        return
+    if row_is_suspended(row) or float(row["volume"]) <= 0:
+        state.reject(order, "suspended_or_zero_volume", requested, rules=rules)
+        return
+
+    reference = float(row[rules.deal_price_column])
+    venue = fee_venue(instrument, row.get("board"))
+    state.requested_notional += requested * reference
     daily_capacity = int(np.floor(float(row["volume"]) * rules.max_participation_rate))
     remaining_capacity = max(0, daily_capacity - state.volume_used[key])
     capacity_notional = daily_capacity * reference
@@ -79,14 +104,11 @@ def execute_order(
         state.total_capacity_notional += capacity_notional
         state.capacity_counted.add(key)
 
-    if as_bool(row, "paused") or float(row["volume"]) <= 0:
-        state.reject(order, "suspended_or_zero_volume", requested)
-        return
     if side == "BUY" and (as_bool(row, "is_limit_up") or as_bool(row, "limit_up_locked")):
-        state.reject(order, "limit_up_no_buy_liquidity", requested)
+        state.reject(order, "limit_up_no_buy_liquidity", requested, rules=rules)
         return
     if side == "SELL" and (as_bool(row, "is_limit_down") or as_bool(row, "limit_down_locked")):
-        state.reject(order, "limit_down_no_sell_liquidity", requested)
+        state.reject(order, "limit_down_no_sell_liquidity", requested, rules=rules)
         return
 
     limit_up, limit_down = resolve_limits(row, rules)
@@ -94,10 +116,18 @@ def execute_order(
     if side == "BUY":
         quantity = normalize_buy_quantity(instrument, quantity, rules)
     else:
-        quantity = min(quantity, state.positions[instrument].available)
+        available = state.positions[instrument].available
+        quantity = normalize_sell_quantity(instrument, quantity, available, rules)
     if quantity <= 0:
-        reason = "t_plus_one_or_no_position" if side == "SELL" else "volume_below_buy_lot"
-        state.reject(order, reason, requested)
+        if side == "SELL":
+            reason = (
+                "t_plus_one_or_no_position"
+                if state.positions[instrument].available <= 0
+                else "illegal_sell_lot_or_odd_lot_partial"
+            )
+        else:
+            reason = "volume_below_buy_lot"
+        state.reject(order, reason, requested, rules=rules)
         return
 
     price, impact_bps = impacted_fill_price(
@@ -111,29 +141,50 @@ def execute_order(
         limit_down=limit_down,
     )
     if not _order_limit_allows(order, side, price):
-        state.reject(order, "order_limit_not_marketable", requested)
+        state.reject(order, "order_limit_not_marketable", requested, rules=rules)
         return
 
     if side == "BUY":
-        quantity = _fit_buy_to_cash(instrument, quantity, price, state.cash, rules)
+        quantity = _fit_buy_to_cash(
+            instrument,
+            quantity,
+            price,
+            state.cash,
+            rules,
+            trade_date,
+            venue,
+        )
         if quantity <= 0:
-            state.reject(order, "insufficient_cash", requested)
+            state.reject(order, "insufficient_cash", requested, rules=rules)
             return
         notional = quantity * price
-        fee = execution_fees(notional, side, rules)
-        state.cash -= notional + fee
+        fee_detail = execution_fee_breakdown(
+            notional,
+            side,
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )
+        state.cash -= notional + float(fee_detail["total"])
         state.positions[instrument].total += quantity
         if next_trade_date is not None:
             state.unlocks[next_trade_date].append((instrument, quantity))
     else:
         notional = quantity * price
-        fee = execution_fees(notional, side, rules)
+        fee_detail = execution_fee_breakdown(
+            notional,
+            side,
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )
         state.positions[instrument].total -= quantity
         state.positions[instrument].available -= quantity
-        state.cash += notional - fee
+        state.cash += notional - float(fee_detail["total"])
 
     state.volume_used[key] += quantity
     state.filled_notional += notional
+    position = state.positions[instrument]
     state.fills.append(
         {
             "order_id": order["order_id"],
@@ -146,7 +197,14 @@ def execute_order(
             "reference_price": reference,
             "fill_price": price,
             "notional": notional,
-            "fees": fee,
+            "fees": float(fee_detail["total"]),
+            "commission": float(fee_detail["commission"]),
+            "transfer_fee": float(fee_detail["transfer_fee"]),
+            "regulatory_fee": float(fee_detail["regulatory_fee"]),
+            "exchange_handling_fee": float(fee_detail["exchange_handling_fee"]),
+            "stamp_tax": float(fee_detail["stamp_tax"]),
+            "fee_regime_id": str(fee_detail["fee_regime_id"]),
+            "fee_venue": str(fee_detail["fee_venue"]),
             "participation_rate": quantity / float(row["volume"]),
             "impact_bps": impact_bps,
             "capacity_quantity_before_order": remaining_capacity,
@@ -154,5 +212,11 @@ def execute_order(
             "capacity_notional": capacity_notional,
             "limit_up": limit_up,
             "limit_down": limit_down,
+            "cash_after": state.cash,
+            "position_total_after": position.total,
+            "position_available_after": position.available,
+            "market_rule_set_id": rules.market_rule_set_id,
+            "cost_model_id": rules.cost_model_id,
+            "fill_model_id": rules.fill_model_id,
         }
     )
