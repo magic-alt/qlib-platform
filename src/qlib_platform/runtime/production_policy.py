@@ -57,9 +57,7 @@ def _walk(value: object, prefix: str = "") -> list[tuple[str, str, object]]:
 def environment_name(config: Mapping[str, Any]) -> str:
     value = str(config.get("environment") or "").strip().lower()
     if value and value not in ENVIRONMENTS:
-        raise ProductionPolicyError(
-            f"environment must be one of {sorted(ENVIRONMENTS)}; got {value!r}"
-        )
+        raise ProductionPolicyError(f"environment must be one of {sorted(ENVIRONMENTS)}; got {value!r}")
     return value
 
 
@@ -189,9 +187,7 @@ def _coverage_violations(config: Mapping[str, Any]) -> list[str]:
         if min_rows < 1:
             violations.append(f"{endpoint} production coverage min_rows must be positive")
         if max_staleness != 0:
-            violations.append(
-                f"{endpoint} max_staleness_sessions must be 0 for daily prod publication"
-            )
+            violations.append(f"{endpoint} max_staleness_sessions must be 0 for daily prod publication")
         if not 0 < ratio <= 1:
             violations.append(f"{endpoint} min_previous_session_ratio must be in (0, 1]")
     return violations
@@ -345,19 +341,9 @@ def validate_production_policy(config: Mapping[str, Any], *, project_root: Path)
             if registry_raw
             else str(project_root / "registry" / "qlib.sqlite")
         ),
-        "releaseStore": (
-            str(Path(release_raw).resolve()) if release_raw else str(project_root / "releases")
-        ),
-        "qlibDataset": (
-            str(Path(dataset_raw).resolve())
-            if dataset_raw
-            else str(project_root / "qlib" / "current")
-        ),
-        "qlibVersions": (
-            str(Path(versions_raw).resolve())
-            if versions_raw
-            else str(project_root / "qlib" / "versions")
-        ),
+        "releaseStore": (str(Path(release_raw).resolve()) if release_raw else str(project_root / "releases")),
+        "qlibDataset": (str(Path(dataset_raw).resolve()) if dataset_raw else str(project_root / "qlib" / "current")),
+        "qlibVersions": (str(Path(versions_raw).resolve()) if versions_raw else str(project_root / "qlib" / "versions")),
         "stateRoot": str(project_root / "state"),
         "qualityRoot": str(project_root / "quality"),
         "outputRoot": str(project_root / "output"),
@@ -391,9 +377,7 @@ def validate_production_policy(config: Mapping[str, Any], *, project_root: Path)
         "configMigration": dict(
             _mapping(policy.get("config_migration", {}), "production_policy.config_migration")
         ),
-        "unsafeChecks": sorted(
-            _UNSAFE_TRUE_KEYS | {"failure_policy=test_coverage_mode", "migration_mode"}
-        ),
+        "unsafeChecks": sorted(_UNSAFE_TRUE_KEYS | {"failure_policy=test_coverage_mode", "migration_mode"}),
     }
 
 

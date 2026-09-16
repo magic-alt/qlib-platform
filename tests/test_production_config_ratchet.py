@@ -229,9 +229,7 @@ def test_prod_requires_secret_reference_to_resolve_before_write(
     [
         (lambda payload: payload.__setitem__("config_schema_version", "2.0"), "config_schema_version"),
         (
-            lambda payload: payload["production_policy"]["paths"].__setitem__(
-                "logs", "../escaped-logs"
-            ),
+            lambda payload: payload["production_policy"]["paths"].__setitem__("logs", "../escaped-logs"),
             "paths.logs",
         ),
         (
@@ -239,15 +237,11 @@ def test_prod_requires_secret_reference_to_resolve_before_write(
             "immutable",
         ),
         (
-            lambda payload: payload["production_policy"]["retention"].__setitem__(
-                "releases_days", 0
-            ),
+            lambda payload: payload["production_policy"]["retention"].__setitem__("releases_days", 0),
             "releases_days",
         ),
         (
-            lambda payload: payload["production"]["daily_run"]["schedule"].__setitem__(
-                "timezone", ""
-            ),
+            lambda payload: payload["production"]["daily_run"]["schedule"].__setitem__("timezone", ""),
             "schedule.timezone",
         ),
         (

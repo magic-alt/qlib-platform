@@ -8,17 +8,11 @@ import pytest
 from qlib_platform.settings import Settings
 
 
-def test_production_policy_matches_v1_golden(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_production_policy_matches_v1_golden(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("QLIB_PROD_ROOT", str(tmp_path / "prod"))
     monkeypatch.setenv("TUSHARE_TOKEN", "GOLDEN_SECRET_SENTINEL")
-    report = Settings.load(
-        "configs/pipeline_tushare_prod.yaml", create_dirs=False
-    ).production_policy_report()
-    golden = json.loads(
-        Path("tests/golden/production_policy_v1.json").read_text(encoding="utf-8")
-    )
+    report = Settings.load("configs/pipeline_tushare_prod.yaml", create_dirs=False).production_policy_report()
+    golden = json.loads(Path("tests/golden/production_policy_v1.json").read_text(encoding="utf-8"))
 
     stable = {
         key: report[key]
