@@ -171,9 +171,7 @@ def test_sync_input_change_invalidates_checkpoint_and_downstream_reuse(tmp_path:
     assert state["steps"]["factor_reconcile"]["invalidated_reason"] == "input_sha256_changed"
 
 
-def test_sync_raw_promote_semantic_checkpoint_fails_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_sync_raw_promote_semantic_checkpoint_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     settings = _settings(tmp_path)
     _calendar(settings)
     service = AuditedResumableDailySyncService(settings)
@@ -182,11 +180,7 @@ def test_sync_raw_promote_semantic_checkpoint_fails_closed(
         service._verify_raw_promote_output({"output": []})
     service._verify_raw_promote_output({"output": {"raw_changes": "legacy"}})
     service._verify_raw_promote_output(
-        {
-            "output": {
-                "raw_changes": [None, {}, {"dataset": "daily", "trade_date": "20260811"}]
-            }
-        }
+        {"output": {"raw_changes": [None, {}, {"dataset": "daily", "trade_date": "20260811"}]}}
     )
 
     record = {
@@ -235,9 +229,7 @@ def test_sync_checkpoint_artifact_roots_are_hashed(tmp_path: Path):
     assert service._checkpoint_artifacts(plan_id, "metadata_refresh") == {}
 
 
-def test_sync_qlib_publish_artifact_hashes_resolved_manifest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def test_sync_qlib_publish_artifact_hashes_resolved_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     settings = _settings(tmp_path)
     _calendar(settings)
     service = AuditedResumableDailySyncService(settings)
