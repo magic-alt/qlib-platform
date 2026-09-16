@@ -26,6 +26,9 @@ _SECRET_VALUE_KEYS = {
     "apikey",
     "dsn",
     "webhook_url",
+    "client_secret",
+    "access_key",
+    "secret_key",
 }
 
 
@@ -82,7 +85,13 @@ def _secret_violations(config: Mapping[str, Any]) -> list[str]:
     for path, key, value in _walk(config):
         if key.endswith("_env") or key.endswith("_secret_ref") or key.endswith("_secret_name"):
             continue
-        if key in _SECRET_VALUE_KEYS and value not in {None, ""}:
+        secret_like = (
+            key in _SECRET_VALUE_KEYS
+            or key.endswith("_token")
+            or key.endswith("_password")
+            or key.endswith("_secret")
+        )
+        if secret_like and value not in {None, ""}:
             violations.append(f"{path} must use an env/secret reference instead of an inline value")
     return violations
 
@@ -110,6 +119,20 @@ def _path_violations(config: Mapping[str, Any], project_root: Path) -> list[str]
         raw = str(owner.get(key) or "").strip()
         if raw and not Path(raw).expanduser().is_absolute():
             violations.append(f"{label} must be empty (derive from project_root) or absolute in prod")
+
+    policy = _mapping(config.get("production_policy", {}), "production_policy")
+    policy_paths = _mapping(policy.get("paths", {}), "production_policy.paths")
+    for name in ("artifacts", "cache", "logs"):
+        raw = str(policy_paths.get(name) or "").strip()
+        if not raw:
+            violations.append(f"production_policy.paths.{name} is required")
+            continue
+        candidate = Path(raw).expanduser()
+        resolved = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
+        try:
+            resolved.relative_to(project_root)
+        except ValueError:
+            violations.append(f"production_policy.paths.{name} must resolve under project_root")
     return violations
 
 
@@ -130,6 +153,16 @@ def _retry_violations(config: Mapping[str, Any]) -> list[str]:
     return violations
 
 
+def _required_endpoint_violations(config: Mapping[str, Any]) -> list[str]:
+    source = _mapping(config.get("data_source", {}), "data_source")
+    endpoints = _mapping(source.get("optional_endpoints", {}), "data_source.optional_endpoints")
+    violations: list[str] = []
+    for endpoint in _REQUIRED_ENDPOINTS:
+        if endpoints.get(endpoint) is not True:
+            violations.append(f"required production endpoint cannot be disabled: {endpoint}")
+    return violations
+
+
 def _coverage_policy(config: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     policy = _mapping(config.get("production_policy", {}), "production_policy")
     coverage = _mapping(policy.get("coverage", {}), "production_policy.coverage")
@@ -139,7 +172,10 @@ def _coverage_policy(config: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     )
     result: dict[str, dict[str, Any]] = {}
     for endpoint in _REQUIRED_ENDPOINTS:
-        item = _mapping(endpoints.get(endpoint, {}), f"production_policy.coverage.required_endpoints.{endpoint}")
+        item = _mapping(
+            endpoints.get(endpoint, {}),
+            f"production_policy.coverage.required_endpoints.{endpoint}",
+        )
         result[endpoint] = item
     return result
 
@@ -153,7 +189,9 @@ def _coverage_violations(config: Mapping[str, Any]) -> list[str]:
         if min_rows < 1:
             violations.append(f"{endpoint} production coverage min_rows must be positive")
         if max_staleness != 0:
-            violations.append(f"{endpoint} max_staleness_sessions must be 0 for daily prod publication")
+            violations.append(
+                f"{endpoint} max_staleness_sessions must be 0 for daily prod publication"
+            )
         if not 0 < ratio <= 1:
             violations.append(f"{endpoint} min_previous_session_ratio must be in (0, 1]")
     return violations
@@ -181,7 +219,14 @@ def _retention_violations(config: Mapping[str, Any]) -> list[str]:
     violations: list[str] = []
     if retention.get("protect_referenced_objects") is not True:
         violations.append("production retention must protect run-manifest referenced objects")
-    for key in ("bronze_days", "silver_days", "artifacts_days", "logs_days", "release_min_count"):
+    for key in (
+        "bronze_days",
+        "silver_days",
+        "releases_days",
+        "artifacts_days",
+        "logs_days",
+        "release_min_count",
+    ):
         value = retention.get(key)
         if not isinstance(value, int) or value < 1:
             violations.append(f"production retention {key} must be a positive integer")
@@ -209,7 +254,8 @@ def _migration_violations(config: Mapping[str, Any]) -> list[str]:
     violations: list[str] = []
     if schema_version != CONFIG_SCHEMA_VERSION:
         violations.append(
-            f"unsupported production config_schema_version {schema_version or 'missing'}; expected {CONFIG_SCHEMA_VERSION}"
+            "unsupported production config_schema_version "
+            f"{schema_version or 'missing'}; expected {CONFIG_SCHEMA_VERSION}"
         )
     if policy_version != PRODUCTION_POLICY_SCHEMA_VERSION:
         violations.append(
@@ -223,6 +269,18 @@ def _migration_violations(config: Mapping[str, Any]) -> list[str]:
     if not str(migration.get("rollback") or "").strip():
         violations.append("production config migration requires an explicit rollback policy")
     return violations
+
+
+def _resolved_policy_paths(config: Mapping[str, Any], project_root: Path) -> dict[str, str]:
+    policy = _mapping(config.get("production_policy", {}), "production_policy")
+    raw_paths = _mapping(policy.get("paths", {}), "production_policy.paths")
+    resolved: dict[str, str] = {}
+    for name in ("artifacts", "cache", "logs"):
+        raw = str(raw_paths[name]).strip()
+        candidate = Path(raw).expanduser()
+        path = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
+        resolved[name] = str(path)
+    return resolved
 
 
 def validate_production_policy(config: Mapping[str, Any], *, project_root: Path) -> dict[str, Any]:
@@ -247,8 +305,11 @@ def validate_production_policy(config: Mapping[str, Any], *, project_root: Path)
     token_env = str(tushare.get("token_env") or "").strip()
     if not token_env:
         violations.append("data_source.tushare.token_env is required in prod")
+    elif not os.getenv(token_env, "").strip():
+        violations.append(f"production secret environment variable is not set: {token_env}")
 
     violations.extend(_retry_violations(config))
+    violations.extend(_required_endpoint_violations(config))
     violations.extend(_coverage_violations(config))
     violations.extend(_release_violations(config))
     violations.extend(_retention_violations(config))
@@ -275,16 +336,34 @@ def validate_production_policy(config: Mapping[str, Any], *, project_root: Path)
     production = _mapping(config.get("production", {}), "production")
     daily_run = _mapping(production.get("daily_run", {}), "production.daily_run")
     schedule = _mapping(daily_run.get("schedule", {}), "production.daily_run.schedule")
+    policy_paths = _resolved_policy_paths(config, project_root)
 
     resolved_paths = {
         "projectRoot": str(project_root),
-        "registry": str(Path(registry_raw).resolve()) if registry_raw else str(project_root / "registry" / "qlib.sqlite"),
-        "releaseStore": str(Path(release_raw).resolve()) if release_raw else str(project_root / "releases"),
-        "qlibDataset": str(Path(dataset_raw).resolve()) if dataset_raw else str(project_root / "qlib" / "current"),
-        "qlibVersions": str(Path(versions_raw).resolve()) if versions_raw else str(project_root / "qlib" / "versions"),
+        "registry": (
+            str(Path(registry_raw).resolve())
+            if registry_raw
+            else str(project_root / "registry" / "qlib.sqlite")
+        ),
+        "releaseStore": (
+            str(Path(release_raw).resolve()) if release_raw else str(project_root / "releases")
+        ),
+        "qlibDataset": (
+            str(Path(dataset_raw).resolve())
+            if dataset_raw
+            else str(project_root / "qlib" / "current")
+        ),
+        "qlibVersions": (
+            str(Path(versions_raw).resolve())
+            if versions_raw
+            else str(project_root / "qlib" / "versions")
+        ),
         "stateRoot": str(project_root / "state"),
         "qualityRoot": str(project_root / "quality"),
         "outputRoot": str(project_root / "output"),
+        "artifactRoot": policy_paths["artifacts"],
+        "cacheRoot": policy_paths["cache"],
+        "logRoot": policy_paths["logs"],
     }
     return {
         "schemaVersion": PRODUCTION_POLICY_SCHEMA_VERSION,
@@ -312,7 +391,9 @@ def validate_production_policy(config: Mapping[str, Any], *, project_root: Path)
         "configMigration": dict(
             _mapping(policy.get("config_migration", {}), "production_policy.config_migration")
         ),
-        "unsafeChecks": sorted(_UNSAFE_TRUE_KEYS | {"failure_policy=test_coverage_mode", "migration_mode"}),
+        "unsafeChecks": sorted(
+            _UNSAFE_TRUE_KEYS | {"failure_policy=test_coverage_mode", "migration_mode"}
+        ),
     }
 
 
