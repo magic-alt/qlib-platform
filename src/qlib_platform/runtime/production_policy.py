@@ -209,7 +209,7 @@ def _release_violations(config: Mapping[str, Any]) -> list[str]:
     return violations
 
 
-def _retention_violations(config: Mapping[str, Any]) -> list[str]:
+def _retention_violations(config: Mapping[str,Any]) -> list[str]:
     policy = _mapping(config.get("production_policy", {}), "production_policy")
     retention = _mapping(policy.get("retention", {}), "production_policy.retention")
     violations: list[str] = []
@@ -342,8 +342,12 @@ def validate_production_policy(config: Mapping[str, Any], *, project_root: Path)
             else str(project_root / "registry" / "qlib.sqlite")
         ),
         "releaseStore": (str(Path(release_raw).resolve()) if release_raw else str(project_root / "releases")),
-        "qlibDataset": (str(Path(dataset_raw).resolve()) if dataset_raw else str(project_root / "qlib" / "current")),
-        "qlibVersions": (str(Path(versions_raw).resolve()) if versions_raw else str(project_root / "qlib" / "versions")),
+        "qlibDataset": (
+            str(Path(dataset_raw).resolve()) if dataset_raw else str(project_root / "qlib" / "current")
+        ),
+        "qlibVersions": (
+            str(Path(versions_raw).resolve()) if versions_raw else str(project_root / "qlib" / "versions")
+        ),
         "stateRoot": str(project_root / "state"),
         "qualityRoot": str(project_root / "quality"),
         "outputRoot": str(project_root / "output"),
