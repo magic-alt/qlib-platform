@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -300,6 +299,11 @@ def test_business_identity_ignores_plan_attempt_but_tracks_frozen_inputs(tmp_pat
     state_b = _daily_state(apply_state)
     state_b["plan_id"] = "another-transient-plan"
     state_b["run_attempt"] = 9
+    state_b_steps = state_b["steps"]
+    assert isinstance(state_b_steps, dict)
+    state_b_regression = state_b_steps["regression_backtest"]
+    assert isinstance(state_b_regression, dict)
+    state_b_regression["input_sha256"] = "regression-random-plan-b"
 
     first = runner._business_run_id(plan_a, state_a)
     second = runner._business_run_id(plan_b, state_b)
