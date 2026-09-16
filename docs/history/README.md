@@ -17,6 +17,9 @@ handoff contracts.
   [local example](https://github.com/magic-alt/qlib-platform/tree/main/examples/local_qlib_backtest).
 - [Full walk-forward acceptance](../full_walk_forward_acceptance.md) — frozen certification protocol
   bound to the certified baseline.
+- [2026-09-16 local market-data refresh](operations/data_refresh_20260916.md) — historical operations
+  record for the provider-neutral Bronze refresh, extended endpoint verification, and legacy symbol-layout
+  cleanup.
 
 Historical order-like structures are research simulation/audit representations. They are not the current
 qlib-to-platform handoff, which is only a DataRelease-bound `TARGET_PORTFOLIO`.
