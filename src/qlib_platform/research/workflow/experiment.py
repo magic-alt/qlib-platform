@@ -89,6 +89,7 @@ class ResearchExperimentSpec:
         execution_contract = execution_contract_from_mapping(
             research,
             default_profile="qlib_official_parity_v1",
+            execution_engine_id="qlib_exchange_v0.9.7",
         )
         configured_release = str(experiment.get("data_release") or "").strip()
         if configured_release and configured_release != canonical.dataset.dataset_id:
