@@ -78,22 +78,18 @@ Qlib 0.9.7 `Exchange` remains the owner of the official-parity lane. Its generic
 Therefore:
 
 1. upstream Qlib is not monkey-patched to pretend that it implements the full production-realism contract;
-2. official Alpha158 parity runs bind `qlib_official_parity_v1`;
-3. the production-realism contract is a versioned local research adapter;
-4. a future Qlib/LEAN secondary execution validation must report the active rule/cost/fill identities and attribute deviations to those dimensions.
+2. official Alpha158 parity runs bind `qlib_official_parity_v1` and `qlib_exchange_v0.9.7`;
+3. the production-realism contract is a versioned local research adapter executed by `deterministic_ashare_simulator_v1`;
+4. binding `production_realism_v1` to Qlib's generic Exchange fails closed instead of relabeling upstream behavior;
+5. a future Qlib/LEAN secondary execution validation must report the active rule/cost/fill/engine identities and attribute deviations to those dimensions.
 
-This separation preserves upstream parity while making China-market extensions explicit, testable and replaceable.
+This separation preserves upstream parity while making China-market extensions explicit, testable and replaceable. The same known deviation is recorded on `backtest.exchange` in the Qlib capability matrix.
 
 ## Configuration and identity
 
-Governed Qlib research defaults to the official-parity rule identity to avoid silently changing the frozen benchmark protocol. A caller that explicitly selects a production-realism research adapter uses:
+Governed Qlib `train-select` research defaults to the official-parity rule identity and explicitly binds `qlib_exchange_v0.9.7`. It must not be relabeled as production realism. The deterministic A-share simulator binds `production_realism_v1` to `deterministic_ashare_simulator_v1`; unbound contracts may be inspected for planning, but they are not evidence that an engine executed those semantics.
 
-```yaml
-research:
-  market_rule_profile: production_realism_v1
-```
-
-Changing `market_rule_profile`, the resolved rule-set version, cost model, fill model, broker-cost assumption, deal price, trade unit or participation rate changes the execution-contract hash. Resolved `ResearchExperimentSpec` objects bind that contract, so a market-rule change changes `researchExperimentId` even when the model, alpha and dataset are unchanged.
+Changing the resolved rule-set version, execution engine, cost model, fill model, broker-cost assumption, deal price, trade unit or participation rate changes the execution-contract hash. Resolved `ResearchExperimentSpec` objects bind the Qlib execution contract, so a market-rule or engine change changes `researchExperimentId` even when the model, alpha and dataset are unchanged.
 
 ## Offline conformance corpus
 
