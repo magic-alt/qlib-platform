@@ -42,13 +42,15 @@ def normalize_corporate_actions(actions: pd.DataFrame | None) -> pd.DataFrame:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     cash_rows = frame["event_type"] == "CASH_DIVIDEND"
     share_rows = frame["event_type"] == "SHARE_MULTIPLIER"
-    if frame.loc[cash_rows, "cash_per_share"].isna().any() or (
-        frame.loc[cash_rows, "cash_per_share"] < 0
-    ).any():
+    if (
+        frame.loc[cash_rows, "cash_per_share"].isna().any()
+        or (frame.loc[cash_rows, "cash_per_share"] < 0).any()
+    ):
         raise ValueError("CASH_DIVIDEND requires non-negative cash_per_share")
-    if frame.loc[share_rows, "share_multiplier"].isna().any() or (
-        frame.loc[share_rows, "share_multiplier"] <= 0
-    ).any():
+    if (
+        frame.loc[share_rows, "share_multiplier"].isna().any()
+        or (frame.loc[share_rows, "share_multiplier"] <= 0).any()
+    ):
         raise ValueError("SHARE_MULTIPLIER requires positive share_multiplier")
     if frame.duplicated(["event_id"]).any():
         raise ValueError("corporate action event_id must be unique")
@@ -105,12 +107,8 @@ def apply_corporate_actions(
                 "effective_date": trade_date,
                 "instrument": instrument,
                 "event_type": event_type,
-                "cash_per_share": (
-                    float(row.cash_per_share) if pd.notna(row.cash_per_share) else None
-                ),
-                "share_multiplier": (
-                    float(row.share_multiplier) if pd.notna(row.share_multiplier) else None
-                ),
+                "cash_per_share": (float(row.cash_per_share) if pd.notna(row.cash_per_share) else None),
+                "share_multiplier": (float(row.share_multiplier) if pd.notna(row.share_multiplier) else None),
                 "cash_before": cash_before,
                 "cash_delta": cash_delta,
                 "cash_after": state.cash,
