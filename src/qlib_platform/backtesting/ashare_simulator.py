@@ -135,7 +135,11 @@ def simulate_ashare_orders(
     unknown_dates = pd.DatetimeIndex(order_frame["trade_date"].unique()).difference(trading_dates)
     if len(unknown_dates):
         raise ValueError(f"orders reference dates absent from market data: {list(unknown_dates[:5])}")
-    action_dates = pd.DatetimeIndex(action_frame["effective_date"].unique()) if not action_frame.empty else pd.DatetimeIndex([])
+    action_dates = (
+        pd.DatetimeIndex(action_frame["effective_date"].unique())
+        if not action_frame.empty
+        else pd.DatetimeIndex([])
+    )
     unknown_action_dates = action_dates.difference(trading_dates)
     if len(unknown_action_dates):
         raise ValueError(
