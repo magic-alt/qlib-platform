@@ -194,9 +194,7 @@ class AuditedResumableDailySyncService(ResumableCertifiedDailySyncService):
                 raise SyncPlanInvalidatedError(f"completed checkpoint artifact is missing: {name}: {path}")
             actual_sha = sha256_file(path)
             if actual_sha != expected_sha:
-                raise SyncPlanInvalidatedError(
-                    f"completed checkpoint artifact hash mismatch: {name}: {path}"
-                )
+                raise SyncPlanInvalidatedError(f"completed checkpoint artifact hash mismatch: {name}: {path}")
 
         if name == "raw_promote":
             self._verify_raw_promote_output(record)
