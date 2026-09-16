@@ -11,6 +11,7 @@ from qlib_platform.backtesting.ashare_costs import (
 from qlib_platform.backtesting.ashare_rules import (
     AShareMarketRules,
     as_bool,
+    fee_venue,
     lifecycle_rejection,
     normalize_buy_quantity,
     normalize_sell_quantity,
@@ -39,6 +40,7 @@ def _fit_buy_to_cash(
     cash: float,
     rules: AShareMarketRules,
     trade_date: pd.Timestamp,
+    venue: str,
 ) -> int:
     """Return the largest legal buy quantity whose notional plus fees fits cash."""
 
@@ -55,7 +57,13 @@ def _fit_buy_to_cash(
             low = mid + 1
             continue
         notional = candidate * price
-        total_cash = notional + execution_fees(notional, "BUY", rules, trade_date=trade_date)
+        total_cash = notional + execution_fees(
+            notional,
+            "BUY",
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )
         if total_cash <= cash + 1e-9:
             best = max(best, candidate)
             low = mid + 1
@@ -87,6 +95,7 @@ def execute_order(
         return
 
     reference = float(row[rules.deal_price_column])
+    venue = fee_venue(instrument, row.get("board"))
     state.requested_notional += requested * reference
     daily_capacity = int(np.floor(float(row["volume"]) * rules.max_participation_rate))
     remaining_capacity = max(0, daily_capacity - state.volume_used[key])
@@ -136,19 +145,39 @@ def execute_order(
         return
 
     if side == "BUY":
-        quantity = _fit_buy_to_cash(instrument, quantity, price, state.cash, rules, trade_date)
+        quantity = _fit_buy_to_cash(
+            instrument,
+            quantity,
+            price,
+            state.cash,
+            rules,
+            trade_date,
+            venue,
+        )
         if quantity <= 0:
             state.reject(order, "insufficient_cash", requested, rules=rules)
             return
         notional = quantity * price
-        fee_detail = execution_fee_breakdown(notional, side, rules, trade_date=trade_date)
+        fee_detail = execution_fee_breakdown(
+            notional,
+            side,
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )
         state.cash -= notional + float(fee_detail["total"])
         state.positions[instrument].total += quantity
         if next_trade_date is not None:
             state.unlocks[next_trade_date].append((instrument, quantity))
     else:
         notional = quantity * price
-        fee_detail = execution_fee_breakdown(notional, side, rules, trade_date=trade_date)
+        fee_detail = execution_fee_breakdown(
+            notional,
+            side,
+            rules,
+            trade_date=trade_date,
+            venue=venue,
+        )
         state.positions[instrument].total -= quantity
         state.positions[instrument].available -= quantity
         state.cash += notional - float(fee_detail["total"])
@@ -175,6 +204,7 @@ def execute_order(
             "exchange_handling_fee": float(fee_detail["exchange_handling_fee"]),
             "stamp_tax": float(fee_detail["stamp_tax"]),
             "fee_regime_id": str(fee_detail["fee_regime_id"]),
+            "fee_venue": str(fee_detail["fee_venue"]),
             "participation_rate": quantity / float(row["volume"]),
             "impact_bps": impact_bps,
             "capacity_quantity_before_order": remaining_capacity,
