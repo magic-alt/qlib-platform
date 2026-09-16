@@ -55,7 +55,7 @@ def _json_sha256(payload: Any) -> str:
 class AuditedResumableDailySyncService(ResumableCertifiedDailySyncService):
     """Add integrity-certified checkpoints to the #129 resumable sync path.
 
-    The ingestion algorithm remains the implementation merged in PR #138.  This
+    The ingestion algorithm remains the implementation merged in PR #138. This
     subclass only strengthens its persisted checkpoint contract so a completed node
     is reusable when its immutable inputs, semantic output and declared artifacts
     still verify.
@@ -159,24 +159,28 @@ class AuditedResumableDailySyncService(ResumableCertifiedDailySyncService):
                     f"{dataset}:{trade_date} expected={expected} current={current}"
                 )
 
-    def _step_done(self, state: Mapping[str, Any], name: str) -> bool:
-        if not super()._step_done(state, name):
-            return False
-        mutable_state = state if isinstance(state, dict) else dict(state)
-        steps = mutable_state.get("steps", {})
+    def _verify_checkpoint_record(self, state: dict[str, Any], name: str) -> bool:
+        steps = state.get("steps", {})
         record = steps.get(name, {}) if isinstance(steps, Mapping) else {}
-        if not isinstance(record, dict):
+        if not isinstance(record, dict) or record.get("status") != "SUCCEEDED":
             return False
 
-        # Upgrade a successful PR #138-era checkpoint in place. This preserves crash
-        # recovery while making every subsequent reuse integrity-verifiable.
+        # Upgrade a successful PR #138-era checkpoint in place. We cannot recreate a
+        # historical digest that was never persisted, but we can establish an audited
+        # baseline before the parent runner is allowed to reuse it.
         if record.get("checkpoint_contract_version") != CHECKPOINT_CONTRACT_VERSION:
-            self._certify_record(mutable_state, name)
-            record = mutable_state.get("steps", {}).get(name, {})
+            self._certify_record(state, name)
+            record = state.get("steps", {}).get(name, {})
+            if not isinstance(record, dict):
+                return False
 
         output = record.get("output", {})
-        expected_input = self._step_input_sha256(mutable_state, name)
+        expected_input = self._step_input_sha256(state, name)
         if record.get("input_sha256") != expected_input:
+            record["status"] = "INVALIDATED"
+            record["invalidated_at_utc"] = datetime.now(timezone.utc).isoformat()
+            record["invalidated_reason"] = "input_sha256_changed"
+            self._save_apply_state(state)
             return False
         if record.get("output_sha256") != _json_sha256(output):
             raise SyncPlanInvalidatedError(f"completed checkpoint output hash mismatch: {name}")
@@ -187,9 +191,7 @@ class AuditedResumableDailySyncService(ResumableCertifiedDailySyncService):
         for raw_path, expected_sha in artifacts.items():
             path = Path(str(raw_path))
             if not path.is_file():
-                raise SyncPlanInvalidatedError(
-                    f"completed checkpoint artifact is missing: {name}: {path}"
-                )
+                raise SyncPlanInvalidatedError(f"completed checkpoint artifact is missing: {name}: {path}")
             actual_sha = sha256_file(path)
             if actual_sha != expected_sha:
                 raise SyncPlanInvalidatedError(
@@ -199,6 +201,14 @@ class AuditedResumableDailySyncService(ResumableCertifiedDailySyncService):
         if name == "raw_promote":
             self._verify_raw_promote_output(record)
         return True
+
+    def _validate_existing_checkpoints(self, state: dict[str, Any]) -> None:
+        for name in SYNC_STEP_ORDER:
+            steps = state.get("steps", {})
+            record = steps.get(name, {}) if isinstance(steps, Mapping) else {}
+            if not isinstance(record, Mapping) or record.get("status") != "SUCCEEDED":
+                continue
+            self._verify_checkpoint_record(state, name)
 
     def apply_plan(self, plan_id: str, *, force_full: bool = False) -> Path:
         plan = self.load_plan(plan_id)
@@ -210,4 +220,5 @@ class AuditedResumableDailySyncService(ResumableCertifiedDailySyncService):
         state["run_attempt"] = int(state.get("run_attempt") or 0) + 1
         state["attempt_started_at_utc"] = datetime.now(timezone.utc).isoformat()
         self._save_apply_state(state)
+        self._validate_existing_checkpoints(state)
         return super().apply_plan(plan_id, force_full=force_full)
