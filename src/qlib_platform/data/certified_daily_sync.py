@@ -7,6 +7,7 @@ import pandas as pd
 from qlib_platform.data.production_daily_sync import ProductionDailySyncService
 from qlib_platform.data.quality import assert_quality, validate_raw_day, write_report
 from qlib_platform.data.universe import configured_universe
+from qlib_platform.production_policy import required_endpoint_coverage
 
 
 def _daily_run_freshness_config(settings_data: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -27,7 +28,12 @@ class CertifiedDailySyncService(ProductionDailySyncService):
         resolved = as_of
         if resolved is None:
             resolved = self._eligible_date(None).strftime("%Y-%m-%d")
-        return super().create_plan(as_of=resolved, mode=mode)
+        path = super().create_plan(as_of=resolved, mode=mode)
+        if self.settings.environment == "prod":
+            plan = self.load_plan(path.parent.name)
+            plan["production_policy"] = self.settings.production_policy_report()
+            self._save_plan(plan)
+        return path
 
     def _validate_staged_overlay(self, plan: Mapping[str, Any]) -> None:
         """Validate candidate required rows before mutating canonical Bronze."""
@@ -149,11 +155,45 @@ class CertifiedDailySyncService(ProductionDailySyncService):
             "minimum_ratio": minimum_ratio,
         }
 
+    def _required_endpoint_policy_gate(self, target_session: str) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for endpoint in ("daily", "adj_factor", "daily_basic"):
+            policy = required_endpoint_coverage(self.settings.data, endpoint)
+            if not policy:
+                continue
+            dates = [date for date in self.store.list_dates(endpoint) if date <= target_session]
+            previous = next((date for date in reversed(dates) if date < target_session), None)
+            current = self.store.read(endpoint, target_session)
+            current_rows = len(current)
+            previous_rows = len(self.store.read(endpoint, previous)) if previous is not None else 0
+            coverage_ratio = current_rows / max(1, previous_rows) if previous is not None else None
+            minimum_rows = int(policy["min_rows"])
+            minimum_ratio = float(policy["min_previous_session_ratio"])
+            fresh = current_rows >= minimum_rows and (
+                coverage_ratio is None or coverage_ratio >= minimum_ratio
+            )
+            result[endpoint] = {
+                "fresh": fresh,
+                "target_session": target_session,
+                "previous_session": previous,
+                "rows": current_rows,
+                "previous_rows": previous_rows if previous is not None else None,
+                "coverage_ratio": coverage_ratio,
+                "policy": dict(policy),
+            }
+        return result
+
     def _freshness_gate(self, plan: Mapping[str, Any]) -> dict[str, Any]:
         result = super()._freshness_gate(plan)
         failures = [str(value) for value in result.get("failures", [])]
         target_session = str(plan["target_session"])
         target = pd.Timestamp(target_session).normalize()
+
+        required_endpoint_policy = self._required_endpoint_policy_gate(target_session)
+        result["required_endpoint_policy"] = required_endpoint_policy
+        for endpoint, status in required_endpoint_policy.items():
+            if not bool(status.get("fresh")):
+                failures.append(f"required_endpoint_policy:{endpoint}:{target_session}")
 
         market_cross_section = self._market_cross_section_gate(target_session)
         result["market_cross_section"] = market_cross_section
@@ -230,6 +270,6 @@ class CertifiedDailySyncService(ProductionDailySyncService):
             if not fresh:
                 failures.append(f"universe:{name}:{target_session}")
 
-        result["failures"] = failures
+        result["failures"] = list(dict.fromkeys(failures))
         result["passed"] = not failures
         return result
