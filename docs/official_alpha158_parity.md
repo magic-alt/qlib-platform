@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: research
+applies_to_commit: 6772f066721bd5397213505edaecedcc83525d11
+last_verified: 2026-09-16
+---
+
 # Official Alpha158 / LightGBM parity lane
 
 Issue #130 adds a control experiment that is intentionally isolated from the normal qlib-platform research program. It answers one question only: whether an immutable A-share DatasetVersion built from a frozen Tushare release can reproduce the Microsoft Qlib Alpha158/LightGBM benchmark within a tolerance registered before the local result is inspected.
