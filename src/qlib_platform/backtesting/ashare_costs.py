@@ -1,15 +1,47 @@
 from __future__ import annotations
 
 from math import sqrt
+from typing import Any
 
 from qlib_platform.backtesting.ashare_rules import AShareMarketRules
 
 
-def execution_fees(notional: float, side: str, rules: AShareMarketRules) -> float:
+def execution_fee_breakdown(
+    notional: float,
+    side: str,
+    rules: AShareMarketRules,
+    *,
+    trade_date: object | None = None,
+) -> dict[str, Any]:
     commission = max(rules.min_commission, notional * rules.commission_bps / 10_000.0)
-    transfer = notional * rules.transfer_fee_bps / 10_000.0
-    stamp = notional * rules.sell_stamp_tax_bps / 10_000.0 if side == "SELL" else 0.0
-    return commission + transfer + stamp
+    if trade_date is None:
+        transfer_bps = rules.transfer_fee_bps
+        stamp_bps = rules.sell_stamp_tax_bps
+        regime_id = "configured_current_fee_assumption"
+    else:
+        regime = rules.fee_regime_for(trade_date)
+        transfer_bps = regime.transfer_fee_bps
+        stamp_bps = regime.sell_stamp_tax_bps
+        regime_id = regime.regime_id
+    transfer = notional * transfer_bps / 10_000.0
+    stamp = notional * stamp_bps / 10_000.0 if side == "SELL" else 0.0
+    return {
+        "commission": float(commission),
+        "transfer_fee": float(transfer),
+        "stamp_tax": float(stamp),
+        "total": float(commission + transfer + stamp),
+        "fee_regime_id": regime_id,
+    }
+
+
+def execution_fees(
+    notional: float,
+    side: str,
+    rules: AShareMarketRules,
+    *,
+    trade_date: object | None = None,
+) -> float:
+    return float(execution_fee_breakdown(notional, side, rules, trade_date=trade_date)["total"])
 
 
 def impacted_fill_price(
