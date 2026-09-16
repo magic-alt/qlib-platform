@@ -234,14 +234,17 @@ def execution_contract_from_mapping(
     research: Mapping[str, object] | None,
     *,
     default_profile: str = "qlib_official_parity_v1",
-    execution_engine_id: str = "qlib_exchange_v0.9.7",
+    execution_engine_id: str = "unbound_execution_contract_v1",
 ) -> dict[str, Any]:
     cfg = research if isinstance(research, Mapping) else {}
     rule_set = resolve_market_rule_set(str(cfg.get("market_rule_profile") or default_profile))
     engine_id = str(execution_engine_id).strip()
     if not engine_id:
         raise ValueError("execution_engine_id is required")
-    if rule_set.profile_id == "production_realism_v1" and engine_id != "deterministic_ashare_simulator_v1":
+    if rule_set.profile_id == "production_realism_v1" and engine_id not in {
+        "unbound_execution_contract_v1",
+        "deterministic_ashare_simulator_v1",
+    }:
         raise ValueError(
             "production_realism_v1 cannot be labeled on a Qlib generic Exchange run; "
             "use deterministic_ashare_simulator_v1 or keep qlib_official_parity_v1"
