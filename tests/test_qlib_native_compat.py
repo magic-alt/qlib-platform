@@ -49,6 +49,16 @@ def test_generic_factory_accepts_arbitrary_importable_class_without_registry() -
     assert instance.label == "custom"
 
 
+def test_generic_factory_propagates_upstream_import_failure() -> None:
+    with pytest.raises(ImportError):
+        init_qlib_object(
+            QlibObjectSpec(
+                class_name="MissingModel",
+                module_path="module_that_must_not_exist_for_qlib_platform_test",
+            )
+        )
+
+
 def test_native_qrun_delegates_to_upstream_without_rewriting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -71,6 +81,20 @@ def test_native_qrun_delegates_to_upstream_without_rewriting(
     assert workflow.read_bytes() == original
 
 
+def test_native_qrun_propagates_upstream_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import qlib.cli.run
+
+    workflow = tmp_path / "workflow.yaml"
+    workflow.write_text("task: {model: broken}\n", encoding="utf-8")
+
+    def fail_workflow(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("upstream qrun failure")
+
+    monkeypatch.setattr(qlib.cli.run, "workflow", fail_workflow)
+    with pytest.raises(RuntimeError, match="upstream qrun failure"):
+        run_qrun(workflow)
+
+
 def test_native_task_train_delegates_exact_task(monkeypatch: pytest.MonkeyPatch) -> None:
     import qlib.model.trainer
 
@@ -91,6 +115,17 @@ def test_native_task_train_delegates_exact_task(monkeypatch: pytest.MonkeyPatch)
 
     assert result is recorder
     assert captured == {"task": task, "experiment_name": "native-task"}
+
+
+def test_native_task_train_propagates_upstream_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    import qlib.model.trainer
+
+    def fail_task_train(task: dict[str, Any], experiment_name: str = "workflow") -> object:
+        raise ValueError("upstream trainer failure")
+
+    monkeypatch.setattr(qlib.model.trainer, "task_train", fail_task_train)
+    with pytest.raises(ValueError, match="upstream trainer failure"):
+        task_train_native({"model": {"class": "Broken"}})
 
 
 def test_importing_compat_layer_does_not_monkey_patch_qlib() -> None:

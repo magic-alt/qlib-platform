@@ -27,11 +27,14 @@ jobs:
       - run: python -m pip install -c constraints/ci.txt -e '.[dev]'
       - name: Verify native Qlib core capability contract
         run: python -m qlib_platform.qlib_compat capability-check
-      - name: Verify generic passthrough and Recorder federation
+      - name: Render auditable compatibility matrix
+        run: python -m qlib_platform.qlib_compat matrix --output artifacts/validation/qlib_compatibility_matrix.json
+      - name: Verify generic passthrough, matrix semantics, and Recorder federation
         run: >-
           python -m pytest -q
           tests/test_qlib_native_compat.py
           tests/test_qlib_capability_manifest.py
+          tests/test_qlib_upstream_matrix.py
           tests/test_qlib_recorder_federation.py
           tests/test_qlib_packaging_contract.py
 

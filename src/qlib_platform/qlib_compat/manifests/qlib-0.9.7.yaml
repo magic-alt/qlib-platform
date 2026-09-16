@@ -1,11 +1,30 @@
-schema_version: 1
-contract: qlib-native-superset-v1
+schema_version: 2
+contract: qlib-upstream-compatibility-v2
 qlib_version: "0.9.7"
 policy:
   native_passthrough: true
   platform_allowlist_required: false
   monkey_patch_upstream: false
   certified_platform_lane_is_opt_in: true
+  full_compatibility_claim_requires_matrix_gate: true
+certification_gate:
+  full_compatibility_threshold: 1.0
+  terminology:
+    certified: "Behavioral parity is backed by named conformance evidence."
+    upstream-native: "Passed through to upstream Qlib without a platform behavior certification claim."
+    not-certified: "Declared upstream surface with no compatibility commitment."
+    unsupported: "Explicitly excluded or blocked by a documented deviation."
+matrix_defaults:
+  certification: upstream-native
+  owner: qlib-compat
+  version: "0.9.7"
+  os: [ubuntu-latest]
+  python: ["3.11"]
+  evidence:
+    positive: []
+    negative: []
+  negative_required: false
+  known_deviation: null
 known_upstream_exceptions:
   - id: qlib.rl.order_execution.dependencies
     status: blocked_upstream_security
@@ -14,29 +33,91 @@ known_upstream_exceptions:
     behavior: "Native Qlib RL remains unblocked for user-managed environments, but qlib-platform does not bundle the vulnerable legacy dependency chain."
 capabilities:
   - {id: core.qlib, target: qlib, level: required}
-  - {id: core.object_factory, target: "qlib.utils:init_instance_by_config", level: required}
-  - {id: workflow.qrun, target: "qlib.cli.run:workflow", level: required}
-  - {id: workflow.task_train, target: "qlib.model.trainer:task_train", level: required}
+  - id: core.object_factory
+    target: "qlib.utils:init_instance_by_config"
+    level: required
+    certification: certified
+    negative_required: true
+    evidence:
+      positive: ["tests/test_qlib_native_compat.py::test_generic_factory_accepts_arbitrary_importable_class_without_registry"]
+      negative: ["tests/test_qlib_native_compat.py::test_generic_factory_propagates_upstream_import_failure"]
+  - id: workflow.qrun
+    target: "qlib.cli.run:workflow"
+    level: required
+    certification: certified
+    negative_required: true
+    evidence:
+      positive:
+        - "tests/test_qlib_native_compat.py::test_native_qrun_delegates_to_upstream_without_rewriting"
+        - "tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"
+      negative: ["tests/test_qlib_native_compat.py::test_native_qrun_propagates_upstream_failure"]
+  - id: workflow.task_train
+    target: "qlib.model.trainer:task_train"
+    level: required
+    certification: certified
+    negative_required: true
+    evidence:
+      positive: ["tests/test_qlib_native_compat.py::test_native_task_train_delegates_exact_task"]
+      negative: ["tests/test_qlib_native_compat.py::test_native_task_train_propagates_upstream_failure"]
   - {id: workflow.experiment_manager, target: "qlib.workflow:R", level: required}
-  - {id: workflow.recorder, target: "qlib.workflow.recorder:Recorder", level: required}
+  - id: workflow.recorder
+    target: "qlib.workflow.recorder:Recorder"
+    level: required
+    certification: certified
+    evidence:
+      positive:
+        - "tests/test_qlib_recorder_federation.py"
+        - "tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"
   - {id: workflow.experiment, target: "qlib.workflow.exp:Experiment", level: required}
-  - {id: workflow.signal_record, target: "qlib.workflow.record_temp:SignalRecord", level: required}
-  - {id: workflow.portfolio_analysis_record, target: "qlib.workflow.record_temp:PortAnaRecord", level: required}
+  - id: workflow.signal_record
+    target: "qlib.workflow.record_temp:SignalRecord"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
+  - id: workflow.signal_analysis_record
+    target: "qlib.workflow.record_temp:SigAnaRecord"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
+  - id: workflow.portfolio_analysis_record
+    target: "qlib.workflow.record_temp:PortAnaRecord"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: data.provider, target: "qlib.data:D", level: required}
   - {id: data.dataset, target: "qlib.data.dataset:Dataset", level: required}
-  - {id: data.dataset_h, target: "qlib.data.dataset:DatasetH", level: required}
+  - id: data.dataset_h
+    target: "qlib.data.dataset:DatasetH"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: data.ts_dataset_h, target: "qlib.data.dataset:TSDatasetH", level: required}
   - {id: data.handler, target: "qlib.data.dataset.handler:DataHandler", level: required}
   - {id: data.handler_lp, target: "qlib.data.dataset.handler:DataHandlerLP", level: required}
   - {id: data.processor, target: "qlib.data.dataset.processor:Processor", level: required}
-  - {id: data.alpha158, target: "qlib.contrib.data.handler:Alpha158", level: required}
+  - id: data.alpha158
+    target: "qlib.contrib.data.handler:Alpha158"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: data.alpha360, target: "qlib.contrib.data.handler:Alpha360", level: required}
   - {id: data.highfreq_handler, target: qlib.contrib.data.highfreq_handler, level: required}
   - {id: data.highfreq_processor, target: qlib.contrib.data.highfreq_processor, level: required}
   - {id: data.multi_timeseries_dataset, target: "qlib.contrib.data.dataset:MTSDatasetH", level: optional, extra: pytorch}
   - {id: model.base, target: "qlib.model.base:Model", level: required}
   - {id: model.linear, target: "qlib.contrib.model.linear:LinearModel", level: optional, extra: sklearn}
-  - {id: model.lightgbm, target: "qlib.contrib.model.gbdt:LGBModel", level: optional, extra: lightgbm}
+  - id: model.lightgbm
+    target: "qlib.contrib.model.gbdt:LGBModel"
+    level: optional
+    extra: lightgbm
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: model.double_ensemble, target: "qlib.contrib.model.double_ensemble:DEnsembleModel", level: optional, extra: lightgbm}
   - {id: model.highfreq_gbdt, target: qlib.contrib.model.highfreq_gdbt_model, level: optional, extra: lightgbm}
   - {id: model.xgboost, target: "qlib.contrib.model.xgboost:XGBModel", level: optional, extra: xgboost}
@@ -69,17 +150,33 @@ capabilities:
   - {id: model.pytorch_tra, target: qlib.contrib.model.pytorch_tra, level: optional, extra: pytorch}
   - {id: model.tcn_core, target: qlib.contrib.model.tcn, level: optional, extra: pytorch}
   - {id: strategy.base, target: "qlib.strategy.base:BaseStrategy", level: required}
+  - id: strategy.topk_dropout
+    target: "qlib.contrib.strategy:TopkDropoutStrategy"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: strategy.signal, target: qlib.contrib.strategy.signal_strategy, level: required}
   - {id: strategy.rule, target: qlib.contrib.strategy.rule_strategy, level: required}
   - {id: strategy.optimizer, target: qlib.contrib.strategy.optimizer, level: required}
   - {id: backtest.executor, target: "qlib.backtest.executor:BaseExecutor", level: required}
-  - {id: backtest.exchange, target: "qlib.backtest.exchange:Exchange", level: required}
+  - id: backtest.exchange
+    target: "qlib.backtest.exchange:Exchange"
+    level: required
+    certification: certified
+    evidence:
+      positive: ["tests/test_qlib_real_conformance.py::test_real_qlib_097_alpha158_qrun_is_behaviorally_preserved"]
   - {id: backtest.api, target: qlib.backtest, level: required}
   - {id: workflow.rolling, target: qlib.contrib.rolling, level: required}
   - {id: online.workflow, target: qlib.workflow.online, level: required}
   - {id: online.contrib, target: qlib.contrib.online, level: required}
   - {id: reinforcement_learning, target: qlib.rl, level: required}
-  - {id: reinforcement_learning.order_execution, target: qlib.rl.order_execution, level: optional, extra: upstream-rl-legacy}
+  - id: reinforcement_learning.order_execution
+    target: qlib.rl.order_execution
+    level: optional
+    extra: upstream-rl-legacy
+    certification: unsupported
+    known_deviation: "Bundling the Qlib 0.9.7 legacy RL dependency chain would reintroduce tianshou<=0.4.10 and protobuf~=3.19.0."
   - {id: meta.data_selection, target: qlib.contrib.meta.data_selection, level: optional, extra: pytorch}
   - {id: report.graph, target: qlib.contrib.report.graph, level: optional, extra: analysis}
   - {id: report.analysis_model, target: qlib.contrib.report.analysis_model, level: optional, extra: analysis}
