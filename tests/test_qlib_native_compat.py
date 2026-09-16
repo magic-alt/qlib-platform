@@ -81,9 +81,7 @@ def test_native_qrun_delegates_to_upstream_without_rewriting(
     assert workflow.read_bytes() == original
 
 
-def test_native_qrun_propagates_upstream_failure(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_native_qrun_propagates_upstream_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import qlib.cli.run
 
     workflow = tmp_path / "workflow.yaml"
