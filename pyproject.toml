@@ -68,6 +68,7 @@ tq-research = "qlib_platform.research.workflow.governed_quickstart:main"
 tq-research-summary = "qlib_platform.research.reporting.summary:main"
 tq-research-console = "qlib_platform.research.reporting.research_console:main"
 tq-render-scheduler = "qlib_platform.runtime.scheduler:main"
+tq-daily-run = "qlib_platform.runtime.production_daily_run:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
 from qlib_platform.runtime.runtime_resources import resource_argument, resource_path
+from qlib_platform.settings import Settings
 
 
 def _absolute_existing(value: str, *, file: bool = False) -> Path:
@@ -15,14 +18,46 @@ def _absolute_existing(value: str, *, file: bool = False) -> Path:
     return path
 
 
+def _schedule(settings: Settings) -> tuple[str, str]:
+    production = settings.data.get("production", {})
+    production = production if isinstance(production, Mapping) else {}
+    daily = production.get("daily_run", {})
+    daily = daily if isinstance(daily, Mapping) else {}
+    schedule = daily.get("schedule", {})
+    schedule = schedule if isinstance(schedule, Mapping) else {}
+    value = str(schedule.get("time") or "18:30")
+    datetime.strptime(value, "%H:%M")
+    timezone_name = str(
+        schedule.get("timezone")
+        or (
+            settings.data.get("data_sync", {}) if isinstance(settings.data.get("data_sync"), Mapping) else {}
+        ).get("timezone", "Asia/Shanghai")
+    )
+    if not timezone_name.strip():
+        raise ValueError("production.daily_run.schedule.timezone must not be empty")
+    return value, timezone_name
+
+
 def render(
-    kind: str, working_directory: Path, python_exe: Path, config_path: Path, output: Path
+    kind: str,
+    working_directory: Path,
+    python_exe: Path,
+    config_path: Path,
+    output: Path,
+    *,
+    schedule_time: str = "18:30",
+    schedule_timezone: str = "Asia/Shanghai",
 ) -> list[Path]:
+    parsed = datetime.strptime(schedule_time, "%H:%M")
     templates = resource_path("deploy")
-    replacements = {
+    replacements: dict[str, Any] = {
         "@REPO_ROOT@": str(working_directory),
         "@PYTHON_EXE@": str(python_exe),
         "@CONFIG_PATH@": str(config_path),
+        "@SCHEDULE_TIME@": schedule_time,
+        "@SCHEDULE_HOUR@": str(parsed.hour),
+        "@SCHEDULE_MINUTE@": str(parsed.minute),
+        "@SCHEDULE_TIMEZONE@": schedule_timezone,
     }
     sources: tuple[Path, ...]
     if kind == "systemd":
@@ -68,12 +103,16 @@ def main() -> None:
         config = local_config if local_config.is_file() else resource_path(requested_config).resolve()
     if not config.is_file():
         raise FileNotFoundError(config)
+    settings = Settings.load(config, require_tushare=False, create_dirs=False)
+    schedule_time, schedule_timezone = _schedule(settings)
     paths = render(
         args.kind,
         working_directory,
         python_exe,
         config,
         Path(args.output_dir).expanduser().resolve(),
+        schedule_time=schedule_time,
+        schedule_timezone=schedule_timezone,
     )
     for path in paths:
         print(path)

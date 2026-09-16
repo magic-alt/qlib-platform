@@ -17,6 +17,10 @@ storage:
   registry_path: ""
 
 data_source:
+  # Keep standalone source selection backward compatible. The registry now treats
+  # an inherited but incomplete MySQL block as unavailable, so a normal standalone
+  # installation falls back to TuShare while a fully configured MySQL source can
+  # still be selected without changing this profile.
   kind: auto
 
 release_store:
@@ -39,3 +43,28 @@ qlib:
   dataset_name: cn_standalone
   dataset_version: local
   dataset_ref: standalone-current
+
+production:
+  daily_run:
+    # Canonical schedule source consumed by tq-render-scheduler. OS-specific
+    # systemd/launchd definitions must not carry an independent clock value.
+    schedule:
+      time: "18:30"
+      timezone: Asia/Shanghai
+    freshness:
+      # Reject an apparently complete target day when its market cross-section is
+      # materially smaller than the previous trading session.
+      min_market_coverage_ratio: 0.95
+      # CSI300/index_weight is snapshot-oriented. An older PIT snapshot may remain
+      # effective, but beyond this age it is treated as provider/metadata staleness.
+      max_universe_snapshot_age_calendar_days: 45
+    verification:
+      mode: sampled
+      sample_size: 64
+      workers: 2
+    # Frozen Alpha158/Qlib baseline regression is supported by tq-daily-run but
+    # remains opt-in because it is intentionally much heavier than data ingestion.
+    # Enable only after the local official-parity baseline (#130) is certified.
+    regression:
+      enabled: false
+    notify: true
