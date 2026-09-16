@@ -89,18 +89,23 @@ def _normalize(value: Any) -> Any:
 
 def _identity(value: Any) -> str:
     payload = json.dumps(
-        _normalize(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        _normalize(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
     ).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(_normalize(payload), ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(_normalize(payload), ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
     )
-    os.replace(tmp, path)
+    os.replace(temporary, path)
     return path
 
 
@@ -187,7 +192,10 @@ def load_profile(path: str | Path) -> tuple[Path, dict[str, Any], Path, dict[str
     profile = _load_yaml(profile_path)
     if profile.get("schema_version") != PROFILE_SCHEMA or profile.get("scope") != "official-parity":
         raise ValueError("invalid official parity profile contract")
-    if profile.get("automatic_model_selection") is not False or profile.get("automatic_promotion") is not False:
+    if (
+        profile.get("automatic_model_selection") is not False
+        or profile.get("automatic_promotion") is not False
+    ):
         raise ValueError("official parity must disable model selection and promotion")
     workflow_raw = Path(str(profile.get("workflow_file") or ""))
     workflow_path = (
@@ -205,14 +213,17 @@ def load_profile(path: str | Path) -> tuple[Path, dict[str, Any], Path, dict[str
     seeds = profile.get("seeds", [])
     if not isinstance(seeds, list) or len({int(value) for value in seeds}) < 2:
         raise ValueError("official parity requires at least two distinct seeds")
-    refs, rules = profile.get("official_reference", {}), profile.get("vendor_tolerances", {})
+    references = profile.get("official_reference", {})
+    rules = profile.get("vendor_tolerances", {})
     engine = profile.get("engine_tolerances", {})
-    if not all(isinstance(item, Mapping) for item in (refs, rules, engine)):
+    if not all(isinstance(item, Mapping) for item in (references, rules, engine)):
         raise ValueError("parity references/tolerances must be mappings")
     for metric in METRIC_KEYS:
         rule = rules.get(metric)
-        if metric not in refs or not isinstance(rule, Mapping) or float(rule.get("absolute", 0)) <= 0:
+        if metric not in references or not isinstance(rule, Mapping):
             raise ValueError(f"missing preregistered vendor contract for {metric}")
+        if float(rule.get("absolute", 0)) <= 0:
+            raise ValueError(f"invalid vendor tolerance for {metric}")
         severity = "primary" if metric in PRIMARY_METRICS else "secondary"
         if rule.get("severity") != severity:
             raise ValueError(f"invalid severity for {metric}: expected {severity}")
@@ -222,17 +233,13 @@ def load_profile(path: str | Path) -> tuple[Path, dict[str, Any], Path, dict[str
     return profile_path, profile, workflow_path, workflow
 
 
-def render_runtime_workflow(
-    workflow: Mapping[str, Any], provider_uri: Path, destination: Path
-) -> Path:
+def render_runtime_workflow(workflow: Mapping[str, Any], provider_uri: Path, destination: Path) -> Path:
     validate_official_workflow(workflow)
     rendered = json.loads(json.dumps(_normalize(workflow)))
     rendered["qlib_init"]["provider_uri"] = str(provider_uri.resolve())
     validate_official_workflow(rendered)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        yaml.safe_dump(rendered, sort_keys=False, allow_unicode=True), encoding="utf-8"
-    )
+    destination.write_text(yaml.safe_dump(rendered, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return destination
 
 
@@ -253,24 +260,26 @@ def _casefold_child(root: Path, name: str) -> Path | None:
     return next((child for child in root.iterdir() if child.name.casefold() == name.casefold()), None)
 
 
-def audit_dataset_semantics(
-    resolved: ResolvedDataset, manifest: Mapping[str, Any]
-) -> dict[str, Any]:
+def _provider_fields(path: Path | None) -> set[str]:
+    if path is None or not path.is_dir():
+        return set()
+    return {
+        item.name.split(".", 1)[0].lower()
+        for item in path.iterdir()
+        if item.is_file() and item.name.endswith(".day.bin")
+    }
+
+
+def audit_dataset_semantics(resolved: ResolvedDataset, manifest: Mapping[str, Any]) -> dict[str, Any]:
     root = resolved.data_path
     checks: list[dict[str, Any]] = []
 
     def add(name: str, passed: bool, category: str, **evidence: Any) -> None:
-        checks.append(
-            {"name": name, "passed": bool(passed), "category": category, "evidence": evidence}
-        )
+        checks.append({"name": name, "passed": bool(passed), "category": category, "evidence": evidence})
 
     calendar_path = root / "calendars" / "day.txt"
     dates = (
-        [
-            line.strip()
-            for line in calendar_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        [line.strip() for line in calendar_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         if calendar_path.is_file()
         else []
     )
@@ -285,18 +294,15 @@ def audit_dataset_semantics(
 
     universe_path = root / "instruments" / "csi300.txt"
     lines = (
-        [
-            line.strip()
-            for line in universe_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
+        [line.strip() for line in universe_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         if universe_path.is_file()
         else []
     )
     intervals = [parts for line in lines if len(parts := line.split()) >= 3]
-    interval_ok = bool(intervals) and len(intervals) == len(lines) and all(
-        parts[0].lower().startswith(("sh", "sz")) and parts[1] <= parts[2]
-        for parts in intervals
+    interval_ok = (
+        bool(intervals)
+        and len(intervals) == len(lines)
+        and all(parts[0].lower().startswith(("sh", "sz")) and parts[1] <= parts[2] for parts in intervals)
     )
     add(
         "csi300_point_in_time_intervals",
@@ -308,25 +314,19 @@ def audit_dataset_semantics(
     )
 
     benchmark = _casefold_child(root / "features", "sh000300")
+    benchmark_fields = _provider_fields(benchmark)
     add(
         "benchmark_sh000300",
-        bool(benchmark and benchmark.is_dir()),
+        "close" in benchmark_fields,
         "data",
         path=str(benchmark or ""),
+        available=sorted(benchmark_fields),
     )
 
     sample_symbol = intervals[0][0] if intervals else ""
     sample = _casefold_child(root / "features", sample_symbol) if sample_symbol else None
-    available = (
-        {
-            item.name.split(".", 1)[0].lower()
-            for item in sample.iterdir()
-            if item.is_file() and item.name.endswith(".day.bin")
-        }
-        if sample and sample.is_dir()
-        else set()
-    )
-    required = {"open", "high", "low", "close", "volume", "factor"}
+    available = _provider_fields(sample)
+    required = {"open", "high", "low", "close", "volume", "money", "vwap", "factor"}
     add(
         "ohlcv_factor_fields",
         required.issubset(available),
@@ -366,9 +366,7 @@ def audit_dataset_semantics(
         valid_partitions,
         "data",
         partition_count=len(partitions),
-        total_bytes=sum(
-            int(item.get("bytes") or 0) for item in partitions if isinstance(item, Mapping)
-        ),
+        total_bytes=sum(int(item.get("bytes") or 0) for item in partitions if isinstance(item, Mapping)),
     )
     return {"passed": all(item["passed"] for item in checks), "checks": checks}
 
@@ -475,9 +473,7 @@ def _frame_hash(value: Any) -> str:
     if not isinstance(frame, pd.DataFrame):
         raise TypeError("parity artifacts must be pandas Series/DataFrame")
     normalized = frame.sort_index().reindex(sorted(frame.columns), axis=1)
-    return hashlib.sha256(
-        pd.util.hash_pandas_object(normalized, index=True).values.tobytes()
-    ).hexdigest()
+    return hashlib.sha256(pd.util.hash_pandas_object(normalized, index=True).values.tobytes()).hexdigest()
 
 
 def _collect_recorder(experiment_name: str) -> dict[str, Any]:
@@ -489,9 +485,9 @@ def _collect_recorder(experiment_name: str) -> dict[str, Any]:
         raise RuntimeError(f"expected one recorder in {experiment_name}, got {len(recorders)}")
     recorder = next(iter(recorders.values()))
     raw_metrics = {str(key): float(value) for key, value in recorder.list_metrics().items()}
-    missing = [key for key in METRIC_KEYS.values() if key not in raw_metrics]
-    if missing:
-        raise RuntimeError(f"official recorder missing metrics: {missing}")
+    missing_metrics = [key for key in METRIC_KEYS.values() if key not in raw_metrics]
+    if missing_metrics:
+        raise RuntimeError(f"official recorder missing metrics: {missing_metrics}")
 
     objects: dict[str, Any] = {}
     schema: set[str] = set()
@@ -513,9 +509,7 @@ def _collect_recorder(experiment_name: str) -> dict[str, Any]:
             "predictions": _frame_hash(objects["pred.pkl"]),
             "ic_series": _frame_hash(objects["sig_analysis/ic.pkl"]),
             "rank_ic_series": _frame_hash(objects["sig_analysis/ric.pkl"]),
-            "portfolio_report": _frame_hash(
-                objects["portfolio_analysis/report_normal_1day.pkl"]
-            ),
+            "portfolio_report": _frame_hash(objects["portfolio_analysis/report_normal_1day.pkl"]),
         },
     }
 
@@ -564,18 +558,21 @@ def _numeric_frame_delta(left: Any, right: Any) -> float:
 
 
 def compare_engine_parity(
-    native: Mapping[str, Any], platform: Mapping[str, Any], profile: Mapping[str, Any]
+    native: Mapping[str, Any],
+    platform: Mapping[str, Any],
+    profile: Mapping[str, Any],
 ) -> dict[str, Any]:
     limits = profile["engine_tolerances"]
     metric_deltas = {
         metric: abs(float(native["metrics"][metric]) - float(platform["metrics"][metric]))
         for metric in METRIC_KEYS
     }
-    objects_left, objects_right = native["objects"], platform["objects"]
-    prediction_delta = _numeric_frame_delta(objects_left["pred.pkl"], objects_right["pred.pkl"])
+    native_objects = native["objects"]
+    platform_objects = platform["objects"]
+    prediction_delta = _numeric_frame_delta(native_objects["pred.pkl"], platform_objects["pred.pkl"])
     portfolio_delta = _numeric_frame_delta(
-        objects_left["portfolio_analysis/report_normal_1day.pkl"],
-        objects_right["portfolio_analysis/report_normal_1day.pkl"],
+        native_objects["portfolio_analysis/report_normal_1day.pkl"],
+        platform_objects["portfolio_analysis/report_normal_1day.pkl"],
     )
     schema_equal = native["artifact_schema"] == platform["artifact_schema"]
     passed = (
@@ -595,9 +592,7 @@ def compare_engine_parity(
     }
 
 
-def _attribution(
-    metric: str, data_audit: Mapping[str, Any], golden: Mapping[str, Any]
-) -> dict[str, str]:
+def _attribution(metric: str, data_audit: Mapping[str, Any], golden: Mapping[str, Any]) -> dict[str, Any]:
     failures = [
         item
         for item in data_audit.get("checks", [])
@@ -618,7 +613,7 @@ def _attribution(
     if metric in {"icir", "rank_icir"}:
         return {
             "category": "model",
-            "evidence": "inspect model/data interaction and seed stability",
+            "evidence": "inspect model/data interaction and repetition stability",
         }
     return {
         "category": "backtest",
@@ -680,13 +675,13 @@ def _serializable_lane(result: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _package_versions() -> dict[str, str]:
-    result = {}
+    versions = {}
     for package in ("qlib-platform", "pyqlib", "lightgbm", "numpy", "pandas", "tushare"):
         try:
-            result[package] = importlib.metadata.version(package)
+            versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
-            result[package] = "not-installed"
-    return result
+            versions[package] = "not-installed"
+    return versions
 
 
 def _write_markdown(report: Mapping[str, Any], path: Path) -> Path:
@@ -714,16 +709,18 @@ def _write_markdown(report: Mapping[str, Any], path: Path) -> Path:
             f"{row['local_mean']:.6f} | {row['delta']:.6f} | {row['absolute_tolerance']:.6f} | "
             f"{'PASS' if row['passed'] else 'FAIL'} | {category} |"
         )
-    lines += [
-        "",
-        "## Governance",
-        "",
-        "- Frozen upstream workflow hash is verified before execution.",
-        "- Runtime mutation is limited to `qlib_init.provider_uri` for the resolved immutable DatasetVersion.",
-        "- Failed parity remains FAIL; Alpha158, label, model, costs and strategy are never retuned automatically.",
-        "- Automatic model selection and promotion are disabled.",
-        "",
-    ]
+    lines.extend(
+        [
+            "",
+            "## Governance",
+            "",
+            "- Frozen upstream workflow hash is verified before execution.",
+            "- Runtime mutation is limited to `qlib_init.provider_uri`.",
+            "- Failed parity remains FAIL; parameters are never retuned automatically.",
+            "- Automatic model selection and promotion are disabled.",
+            "",
+        ]
+    )
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
 
@@ -748,14 +745,14 @@ def run_official_parity(
     output.mkdir(parents=True, exist_ok=True)
     _write_json(output / "plan.json", plan)
     runtime_workflow = render_runtime_workflow(
-        workflow, Path(plan["dataset"]["provider_uri"]), output / "runtime_workflow.yaml"
+        workflow,
+        Path(plan["dataset"]["provider_uri"]),
+        output / "runtime_workflow.yaml",
     )
 
     resolved = resolve_dataset(settings, dataset_ref, allow_legacy=False)
     verification: dict[str, object] = {}
-    verify_dataset_manifest(
-        resolved.manifest_path, mode="sampled", sample_size=64, evidence=verification
-    )
+    verify_dataset_manifest(resolved.manifest_path, mode="sampled", sample_size=64, evidence=verification)
 
     seeds = [int(value) for value in profile["seeds"]]
     native = lane_runner(
@@ -812,9 +809,9 @@ def run_official_parity(
         "automatic_model_selection": False,
         "automatic_promotion": False,
     }
-    path = _write_json(output / "parity_report.json", report)
+    report_path = _write_json(output / "parity_report.json", report)
     _write_markdown(report, output / "parity_report.md")
-    return path
+    return report_path
 
 
 def _parser() -> argparse.ArgumentParser:
