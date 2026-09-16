@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 from qlib_platform.alpha.base import AlphaPackSpec
+from qlib_platform.backtesting.market_rule_set import execution_contract_from_mapping
 from qlib_platform.canonical_config import CanonicalConfig
 from qlib_platform.lineage import sha256_json
 from qlib_platform.models.model_runtime import ResolvedRuntime
@@ -42,6 +43,11 @@ class ResearchExperimentSpec:
     hypothesis_role: str | None = None
     hypothesis_definition_sha256: str | None = None
     hypothesis_binding_sha256: str | None = None
+    market_rule_set_id: str | None = None
+    market_rule_set_sha256: str | None = None
+    cost_model_id: str | None = None
+    fill_model_id: str | None = None
+    execution_contract_sha256: str | None = None
 
     @property
     def experiment_id(self) -> str:
@@ -78,6 +84,12 @@ class ResearchExperimentSpec:
     ) -> "ResearchExperimentSpec":
         experiment = settings.data.get("experiment", {})
         experiment = experiment if isinstance(experiment, Mapping) else {}
+        research = settings.data.get("research", {})
+        research = research if isinstance(research, Mapping) else {}
+        execution_contract = execution_contract_from_mapping(
+            research,
+            default_profile="qlib_official_parity_v1",
+        )
         configured_release = str(experiment.get("data_release") or "").strip()
         if configured_release and configured_release != canonical.dataset.dataset_id:
             raise ValueError("experiment.data_release does not match the pinned DataRelease")
@@ -155,4 +167,9 @@ class ResearchExperimentSpec:
             hypothesis_role=hypothesis_role,
             hypothesis_definition_sha256=hypothesis_definition_sha256,
             hypothesis_binding_sha256=hypothesis_binding_sha256,
+            market_rule_set_id=str(execution_contract["marketRuleSetId"]),
+            market_rule_set_sha256=str(execution_contract["marketRuleSetSha256"]),
+            cost_model_id=str(execution_contract["costModelId"]),
+            fill_model_id=str(execution_contract["fillModelId"]),
+            execution_contract_sha256=str(execution_contract["executionContractSha256"]),
         )
