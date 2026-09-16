@@ -79,29 +79,21 @@ def test_price_limit_regime_boundaries() -> None:
         == 0.20
     )
     assert (
-        infer_price_limit_pct(
-            board="MAIN", is_st=True, listing_days=20, rules=rules, trade_date="2026-07-03"
-        )
+        infer_price_limit_pct(board="MAIN", is_st=True, listing_days=20, rules=rules, trade_date="2026-07-03")
         == 0.05
     )
     assert (
-        infer_price_limit_pct(
-            board="MAIN", is_st=True, listing_days=20, rules=rules, trade_date="2026-07-06"
-        )
+        infer_price_limit_pct(board="MAIN", is_st=True, listing_days=20, rules=rules, trade_date="2026-07-06")
         == 0.10
     )
     assert (
-        infer_price_limit_pct(
-            board="MAIN", is_st=False, listing_days=0, rules=rules, trade_date="2023-04-10"
-        )
+        infer_price_limit_pct(board="MAIN", is_st=False, listing_days=0, rules=rules, trade_date="2023-04-10")
         is None
     )
     assert infer_price_limit_pct(board="BSE", is_st=False, listing_days=0, rules=rules) is None
     assert infer_price_limit_pct(board="BSE", is_st=False, listing_days=1, rules=rules) == 0.30
     with pytest.raises(ValueError, match="asymmetric"):
-        infer_price_limit_pct(
-            board="MAIN", is_st=False, listing_days=0, rules=rules, trade_date="2022-01-04"
-        )
+        infer_price_limit_pct(board="MAIN", is_st=False, listing_days=0, rules=rules, trade_date="2022-01-04")
 
 
 def test_t_plus_one_and_sellable_quantity_ledger() -> None:
@@ -113,9 +105,27 @@ def test_t_plus_one_and_sellable_quantity_ledger() -> None:
     )
     orders = pd.DataFrame(
         [
-            {"order_id": "buy", "trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 200},
-            {"order_id": "same-day-sell", "trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
-            {"order_id": "next-day-sell", "trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
+            {
+                "order_id": "buy",
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 200,
+            },
+            {
+                "order_id": "same-day-sell",
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
+            {
+                "order_id": "next-day-sell",
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
         ]
     )
 
@@ -123,8 +133,12 @@ def test_t_plus_one_and_sellable_quantity_ledger() -> None:
 
     assert list(result.fills["order_id"]) == ["buy", "next-day-sell"]
     assert result.rejections.iloc[0]["reason"] == "t_plus_one_or_no_position"
-    first_day = result.daily_positions.loc[result.daily_positions["trade_date"] == pd.Timestamp("2026-01-05")].iloc[0]
-    second_day = result.daily_positions.loc[result.daily_positions["trade_date"] == pd.Timestamp("2026-01-06")].iloc[0]
+    first_day = result.daily_positions.loc[
+        result.daily_positions["trade_date"] == pd.Timestamp("2026-01-05")
+    ].iloc[0]
+    second_day = result.daily_positions.loc[
+        result.daily_positions["trade_date"] == pd.Timestamp("2026-01-06")
+    ].iloc[0]
     assert int(first_day["quantity"]) == 200
     assert int(first_day["available_quantity"]) == 0
     assert int(second_day["quantity"]) == 100
@@ -135,9 +149,24 @@ def test_board_lot_and_odd_lot_sell_semantics() -> None:
     bars = pd.DataFrame([_bar("2026-01-05"), _bar("2026-01-06"), _bar("2026-01-07")])
     orders = pd.DataFrame(
         [
-            {"trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 100},
-            {"trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
-            {"trade_date": "2026-01-07", "instrument": "000001.SZ", "side": "SELL", "quantity": 50},
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-07",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 50,
+            },
         ]
     )
     actions = pd.DataFrame(
@@ -162,16 +191,52 @@ def test_star_odd_lot_tail_is_sold_in_full() -> None:
     instrument = "688981.SH"
     bars = pd.DataFrame(
         [
-            _bar("2026-01-05", instrument=instrument, open_=50.0, close=50.0, prev_close=49.0, board="STAR"),
-            _bar("2026-01-06", instrument=instrument, open_=50.0, close=50.0, prev_close=50.0, board="STAR"),
-            _bar("2026-01-07", instrument=instrument, open_=50.0, close=50.0, prev_close=50.0, board="STAR"),
+            _bar(
+                "2026-01-05",
+                instrument=instrument,
+                open_=50.0,
+                close=50.0,
+                prev_close=49.0,
+                board="STAR",
+            ),
+            _bar(
+                "2026-01-06",
+                instrument=instrument,
+                open_=50.0,
+                close=50.0,
+                prev_close=50.0,
+                board="STAR",
+            ),
+            _bar(
+                "2026-01-07",
+                instrument=instrument,
+                open_=50.0,
+                close=50.0,
+                prev_close=50.0,
+                board="STAR",
+            ),
         ]
     )
     orders = pd.DataFrame(
         [
-            {"trade_date": "2026-01-05", "instrument": instrument, "side": "BUY", "quantity": 399},
-            {"trade_date": "2026-01-06", "instrument": instrument, "side": "SELL", "quantity": 200},
-            {"trade_date": "2026-01-07", "instrument": instrument, "side": "SELL", "quantity": 199},
+            {
+                "trade_date": "2026-01-05",
+                "instrument": instrument,
+                "side": "BUY",
+                "quantity": 399,
+            },
+            {
+                "trade_date": "2026-01-06",
+                "instrument": instrument,
+                "side": "SELL",
+                "quantity": 200,
+            },
+            {
+                "trade_date": "2026-01-07",
+                "instrument": instrument,
+                "side": "SELL",
+                "quantity": 199,
+            },
         ]
     )
 
@@ -190,9 +255,27 @@ def test_limit_fillability_is_directional() -> None:
     )
     up_orders = pd.DataFrame(
         [
-            {"order_id": "seed", "trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 200},
-            {"order_id": "buy-up", "trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "BUY", "quantity": 100},
-            {"order_id": "sell-up", "trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
+            {
+                "order_id": "seed",
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 200,
+            },
+            {
+                "order_id": "buy-up",
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
+            {
+                "order_id": "sell-up",
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
         ]
     )
     up = simulate_ashare_orders(up_bars, up_orders, initial_cash=100_000)
@@ -208,9 +291,27 @@ def test_limit_fillability_is_directional() -> None:
     )
     down_orders = pd.DataFrame(
         [
-            {"order_id": "seed", "trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 200},
-            {"order_id": "buy-down", "trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "BUY", "quantity": 100},
-            {"order_id": "sell-down", "trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
+            {
+                "order_id": "seed",
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 200,
+            },
+            {
+                "order_id": "buy-down",
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
+            {
+                "order_id": "sell-down",
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
         ]
     )
     down = simulate_ashare_orders(down_bars, down_orders, initial_cash=100_000)
@@ -230,11 +331,36 @@ def test_suspension_and_missing_bar_are_distinct() -> None:
     )
     orders = pd.DataFrame(
         [
-            {"trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 100},
-            {"trade_date": "2026-01-06", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
-            {"trade_date": "2026-01-07", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
-            {"trade_date": "2026-01-07", "instrument": "000002.SZ", "side": "BUY", "quantity": 100},
-            {"trade_date": "2026-01-08", "instrument": "000001.SZ", "side": "SELL", "quantity": 100},
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-06",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-07",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-07",
+                "instrument": "000002.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-08",
+                "instrument": "000001.SZ",
+                "side": "SELL",
+                "quantity": 100,
+            },
         ]
     )
 
@@ -253,7 +379,14 @@ def test_corporate_action_nav_continuity_and_adjusted_price_guard() -> None:
         ]
     )
     orders = pd.DataFrame(
-        [{"trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 1000}]
+        [
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 1000,
+            }
+        ]
     )
     actions = pd.DataFrame(
         [
@@ -293,8 +426,18 @@ def test_listing_lifecycle_rejects_prelisting_and_delisted_rows() -> None:
     )
     orders = pd.DataFrame(
         [
-            {"trade_date": "2026-01-05", "instrument": "000001.SZ", "side": "BUY", "quantity": 100},
-            {"trade_date": "2026-01-05", "instrument": "000002.SZ", "side": "BUY", "quantity": 100},
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "000001.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
+            {
+                "trade_date": "2026-01-05",
+                "instrument": "000002.SZ",
+                "side": "BUY",
+                "quantity": 100,
+            },
         ]
     )
 
