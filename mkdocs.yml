@@ -117,6 +117,7 @@ nav:
       - Artifact Contract v3: artifact_contract_v3.md
       - Artifact Contract v2: artifact_contract_v2.md
       - Operations Runbook: OPERATIONS_RUNBOOK.md
+      - Production Config Ratchet: operations/production_config_ratchet.md
       - Daily Research: operations/daily-research.md
       - Health & Observability: operations/health-and-observability.md
       - Outbox Delivery: operations/outbox.md
