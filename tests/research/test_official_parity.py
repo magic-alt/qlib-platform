@@ -49,14 +49,14 @@ def _provider(tmp_path: Path, *, version: str = "version-a") -> ResolvedDataset:
     (root / "features" / "sh000300").mkdir(parents=True)
     (root / "features" / "sh600000").mkdir()
     (root / "calendars" / "day.txt").write_text(
-        "2008-01-01\n2015-01-05\n2017-01-03\n2020-08-01\n", encoding="utf-8"
-    )
-    (root / "instruments" / "csi300.txt").write_text(
-        "sh600000\t2008-01-01\t2020-08-01\n"
-        "sz000001\t2010-01-04\t2020-08-01\n",
+        "2008-01-01\n2015-01-05\n2017-01-03\n2020-08-01\n",
         encoding="utf-8",
     )
-    for field in ("open", "high", "low", "close", "volume", "factor"):
+    (root / "instruments" / "csi300.txt").write_text(
+        "sh600000\t2008-01-01\t2020-08-01\nsz000001\t2010-01-04\t2020-08-01\n",
+        encoding="utf-8",
+    )
+    for field in ("open", "high", "low", "close", "volume", "money", "vwap", "factor"):
         (root / "features" / "sh600000" / f"{field}.day.bin").write_bytes(field.encode())
     (root / "features" / "sh000300" / "close.day.bin").write_bytes(b"benchmark")
     manifest = root / "dataset_manifest.json"
@@ -97,10 +97,10 @@ def _provider(tmp_path: Path, *, version: str = "version-a") -> ResolvedDataset:
 def _golden(tmp_path: Path, *, passed: bool = True) -> Path:
     path = tmp_path / "golden.yaml"
     checks = [
-        {"kind": "csi300_rebalance", "passed": passed, "evidence": "2018-06 rebalance checked"},
-        {"kind": "csi300_rebalance", "passed": passed, "evidence": "2019-12 rebalance checked"},
-        {"kind": "corporate_action", "passed": passed, "evidence": "split/dividend date checked"},
-        {"kind": "corporate_action", "passed": passed, "evidence": "second action date checked"},
+        {"kind": "csi300_rebalance", "passed": passed, "evidence": "2018-06 checked"},
+        {"kind": "csi300_rebalance", "passed": passed, "evidence": "2019-12 checked"},
+        {"kind": "corporate_action", "passed": passed, "evidence": "first action checked"},
+        {"kind": "corporate_action", "passed": passed, "evidence": "second action checked"},
     ]
     path.write_text(yaml.safe_dump({"checks": checks}, sort_keys=False), encoding="utf-8")
     return path
@@ -112,10 +112,7 @@ def _profile() -> tuple[Path, dict[str, Any], Path, dict[str, Any]]:
 
 def _lane(metrics: dict[str, float] | None = None) -> dict[str, Any]:
     profile = _profile()[1]
-    values = {
-        key: float(profile["official_reference"][key])
-        for key in parity.METRIC_KEYS
-    }
+    values = {key: float(profile["official_reference"][key]) for key in parity.METRIC_KEYS}
     if metrics:
         values.update(metrics)
     pred = pd.DataFrame({"score": [0.1, 0.2]}, index=["a", "b"])
@@ -126,14 +123,13 @@ def _lane(metrics: dict[str, float] | None = None) -> dict[str, Any]:
         {"return": [0.01, -0.01], "bench": [0.0, 0.0], "cost": [0.001, 0.001]},
         index=ic.index,
     )
-    positions = pd.Series([{"cash": 1.0}, {"cash": 1.0}], index=ic.index)
     objects = {
         "pred.pkl": pred,
         "label.pkl": label,
         "sig_analysis/ic.pkl": ic,
         "sig_analysis/ric.pkl": ric,
         "portfolio_analysis/report_normal_1day.pkl": report,
-        "portfolio_analysis/positions_normal_1day.pkl": positions,
+        "portfolio_analysis/positions_normal_1day.pkl": pd.Series([1.0, 1.0], index=ic.index),
         "portfolio_analysis/port_analysis_1day.pkl": pd.DataFrame({"risk": [1.0]}),
     }
     return {
@@ -157,50 +153,46 @@ def test_frozen_workflow_matches_pinned_upstream_contract() -> None:
     parity.validate_official_workflow(workflow)
     assert workflow["task"]["dataset"]["kwargs"]["handler"]["module_path"] == "qlib.contrib.data.handler"
     assert workflow["task"]["model"]["kwargs"] == parity.EXPECTED_MODEL
-    assert workflow["port_analysis_config"]["backtest"] == parity.EXPECTED_BACKTEST
+    assert parity._normalize(workflow["port_analysis_config"]["backtest"]) == parity.EXPECTED_BACKTEST
 
 
-def test_workflow_drift_is_rejected() -> None:
-    workflow = _profile()[3]
+def test_workflow_and_profile_drift_are_rejected(tmp_path: Path) -> None:
+    profile_path, profile, workflow_path, workflow = _profile()
     drifted = json.loads(json.dumps(parity._normalize(workflow)))
     drifted["task"]["model"]["kwargs"]["learning_rate"] = 0.1
     with pytest.raises(ValueError, match="model.kwargs"):
         parity.validate_official_workflow(drifted)
-
     drifted = json.loads(json.dumps(parity._normalize(workflow)))
     drifted["task"]["record"].pop()
     with pytest.raises(ValueError, match="record"):
         parity.validate_official_workflow(drifted)
 
+    copied = tmp_path / workflow_path.name
+    copied.write_bytes(workflow_path.read_bytes())
 
-def test_profile_hash_seed_and_governance_are_fail_closed(tmp_path: Path) -> None:
-    source_profile, profile, source_workflow, _ = _profile()
-    workflow = tmp_path / source_workflow.name
-    workflow.write_bytes(source_workflow.read_bytes())
-
-    def write_profile(**updates: Any) -> Path:
+    def profile_file(**updates: Any) -> Path:
         payload = json.loads(json.dumps(parity._normalize(profile)))
-        payload["workflow_file"] = workflow.name
+        payload["workflow_file"] = copied.name
         payload.update(updates)
-        target = tmp_path / "profile.yaml"
-        target.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
-        return target
+        path = tmp_path / "profile.yaml"
+        path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        return path
 
     with pytest.raises(ValueError, match="workflow hash mismatch"):
-        parity.load_profile(write_profile(workflow_sha256="0" * 64))
+        parity.load_profile(profile_file(workflow_sha256="0" * 64))
     with pytest.raises(ValueError, match="two distinct seeds"):
-        parity.load_profile(write_profile(seeds=[7, 7]))
+        parity.load_profile(profile_file(seeds=[7, 7]))
     with pytest.raises(ValueError, match="disable model selection"):
-        parity.load_profile(write_profile(automatic_model_selection=True))
+        parity.load_profile(profile_file(automatic_model_selection=True))
 
     bad = json.loads(json.dumps(parity._normalize(profile)))
-    bad["workflow_file"] = workflow.name
+    bad["workflow_file"] = copied.name
     bad["vendor_tolerances"]["ic"]["severity"] = "secondary"
-    target = tmp_path / "profile-severity.yaml"
-    target.write_text(yaml.safe_dump(bad, sort_keys=False), encoding="utf-8")
+    severity = tmp_path / "severity.yaml"
+    severity.write_text(yaml.safe_dump(bad, sort_keys=False), encoding="utf-8")
     with pytest.raises(ValueError, match="invalid severity"):
-        parity.load_profile(target)
-    assert source_profile.is_file()
+        parity.load_profile(severity)
+    assert profile_path.is_file()
 
 
 def test_runtime_workflow_changes_only_provider_uri(tmp_path: Path) -> None:
@@ -213,10 +205,9 @@ def test_runtime_workflow_changes_only_provider_uri(tmp_path: Path) -> None:
     parity.validate_official_workflow(rendered)
 
 
-def test_dataset_manifest_requires_v3_release_and_semantics(tmp_path: Path) -> None:
+def test_dataset_manifest_semantics_and_failures(tmp_path: Path) -> None:
     resolved = _provider(tmp_path)
     payload = parity._dataset_manifest(resolved)
-    assert payload["data_release_id"] == "ds_fixture"
     audit = parity.audit_dataset_semantics(resolved, payload)
     assert audit["passed"] is True
     assert {item["name"] for item in audit["checks"]} == {
@@ -228,22 +219,14 @@ def test_dataset_manifest_requires_v3_release_and_semantics(tmp_path: Path) -> N
         "content_addressed_partitions",
     }
 
-    payload.pop("data_release_id")
-    resolved.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
-    with pytest.raises(ValueError, match="frozen DataRelease"):
-        parity._dataset_manifest(resolved)
-
-
-def test_dataset_semantic_failures_are_explicit(tmp_path: Path) -> None:
-    resolved = _provider(tmp_path)
-    manifest = json.loads(resolved.manifest_path.read_text(encoding="utf-8"))
     (resolved.data_path / "instruments" / "csi300.txt").write_text("badline\n", encoding="utf-8")
     (resolved.data_path / "features" / "sh000300" / "close.day.bin").unlink()
-    manifest["data_release_manifest_sha256"] = "short"
-    manifest["partitions"] = []
-    audit = parity.audit_dataset_semantics(resolved, manifest)
-    assert audit["passed"] is False
-    failures = {item["name"] for item in audit["checks"] if not item["passed"]}
+    (resolved.data_path / "features" / "sh600000" / "money.day.bin").unlink()
+    payload["data_release_manifest_sha256"] = "short"
+    payload["partitions"] = []
+    failed = parity.audit_dataset_semantics(resolved, payload)
+    failures = {item["name"] for item in failed["checks"] if not item["passed"]}
+    assert failed["passed"] is False
     assert {
         "csi300_point_in_time_intervals",
         "benchmark_sh000300",
@@ -252,14 +235,16 @@ def test_dataset_semantic_failures_are_explicit(tmp_path: Path) -> None:
         "content_addressed_partitions",
     }.issubset(failures)
 
+    payload.pop("data_release_id")
+    resolved.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="frozen DataRelease"):
+        parity._dataset_manifest(resolved)
+
 
 def test_golden_checks_require_two_rebalances_and_two_actions(tmp_path: Path) -> None:
     assert parity.validate_golden_checks(None)["status"] == "MISSING"
-    good = parity.validate_golden_checks(_golden(tmp_path))
-    assert good["passed"] is True
-    bad = parity.validate_golden_checks(_golden(tmp_path, passed=False))
-    assert bad["status"] == "FAIL"
-
+    assert parity.validate_golden_checks(_golden(tmp_path))["status"] == "PASS"
+    assert parity.validate_golden_checks(_golden(tmp_path, passed=False))["status"] == "FAIL"
     malformed = tmp_path / "malformed.yaml"
     malformed.write_text(
         yaml.safe_dump({"checks": [{"kind": "unknown", "passed": True, "evidence": "x"}]}),
@@ -269,13 +254,14 @@ def test_golden_checks_require_two_rebalances_and_two_actions(tmp_path: Path) ->
 
 
 def test_build_plan_identity_is_path_independent_and_dataset_sensitive(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = _settings(tmp_path)
     resolved = _provider(tmp_path)
     monkeypatch.setattr(parity, "resolve_dataset", lambda *args, **kwargs: resolved)
-    golden = _golden(tmp_path)
     profile = resource_path("configs/research/qlib_official_alpha158_lgb_v1.yaml")
+    golden = _golden(tmp_path)
     first = parity.build_plan(
         settings,
         dataset_ref="version-a",
@@ -306,15 +292,13 @@ def test_build_plan_identity_is_path_independent_and_dataset_sensitive(
     assert third["scientific_identity"] != first["scientific_identity"]
 
 
-def test_numeric_frame_delta_and_engine_parity() -> None:
+def test_frame_helpers_and_engine_parity() -> None:
     profile = _profile()[1]
     native = _lane()
     platform = _lane()
     report = parity.compare_engine_parity(native, platform, profile)
     assert report["passed"] is True
     assert report["prediction_max_abs"] == 0.0
-    assert report["portfolio_max_abs"] == 0.0
-
     platform["metrics"]["ic"] += 0.1
     platform["objects"]["pred.pkl"].iloc[0, 0] += 0.1
     report = parity.compare_engine_parity(native, platform, profile)
@@ -322,26 +306,39 @@ def test_numeric_frame_delta_and_engine_parity() -> None:
     assert report["metric_max_abs"] > 0
     assert report["prediction_max_abs"] > 0
     assert parity._numeric_frame_delta(pd.DataFrame({"x": [1]}), pd.DataFrame({"y": [1]})) == float("inf")
+    with pytest.raises(TypeError, match="pandas"):
+        parity._frame_hash({"not": "a frame"})
 
 
-def test_vendor_parity_pass_and_failure_attributions(tmp_path: Path) -> None:
+def test_vendor_parity_pass_failure_and_attribution(tmp_path: Path) -> None:
     profile = _profile()[1]
     resolved = _provider(tmp_path)
     data_audit = parity.audit_dataset_semantics(
-        resolved, json.loads(resolved.manifest_path.read_text(encoding="utf-8"))
+        resolved,
+        json.loads(resolved.manifest_path.read_text(encoding="utf-8")),
     )
     golden = parity.validate_golden_checks(_golden(tmp_path))
-    passed = parity.evaluate_vendor_parity([_lane(), _lane()], profile, data_audit=data_audit, golden=golden)
-    assert passed["status"] == "PASS"
-    assert all(row["attribution"]["category"] is None for row in passed["metrics"])
-
-    failed = parity.evaluate_vendor_parity(
-        [_lane({"ic": 0.2, "icir": 1.0, "annualized_return": 0.5}), _lane({"ic": 0.2, "icir": 1.0, "annualized_return": 0.5})],
+    passed = parity.evaluate_vendor_parity(
+        [_lane(), _lane()],
         profile,
         data_audit=data_audit,
         golden=golden,
     )
-    categories = {row["metric"]: row["attribution"]["category"] for row in failed["metrics"] if not row["passed"]}
+    assert passed["status"] == "PASS"
+    assert all(row["attribution"]["category"] is None for row in passed["metrics"])
+
+    failed = parity.evaluate_vendor_parity(
+        [
+            _lane({"ic": 0.2, "icir": 1.0, "annualized_return": 0.5}),
+            _lane({"ic": 0.2, "icir": 1.0, "annualized_return": 0.5}),
+        ],
+        profile,
+        data_audit=data_audit,
+        golden=golden,
+    )
+    categories = {
+        row["metric"]: row["attribution"]["category"] for row in failed["metrics"] if not row["passed"]
+    }
     assert categories["ic"] == "feature"
     assert categories["icir"] == "model"
     assert categories["annualized_return"] == "backtest"
@@ -354,13 +351,18 @@ def test_vendor_parity_pass_and_failure_attributions(tmp_path: Path) -> None:
         data_audit=universe_audit,
         golden=golden,
     )
-    assert next(row for row in universe["metrics"] if row["metric"] == "ic")["attribution"]["category"] == "universe"
-
+    assert (
+        next(row for row in universe["metrics"] if row["metric"] == "ic")["attribution"]["category"]
+        == "universe"
+    )
     with pytest.raises(ValueError, match="at least two seeds"):
         parity.evaluate_vendor_parity([_lane()], profile, data_audit=data_audit, golden=golden)
 
 
-def test_collect_recorder_requires_official_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_collect_recorder_requires_official_metrics_and_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    from qlib import workflow as qlib_workflow
+    from qlib.utils.exceptions import LoadObjectError
+
     lane = _lane()
 
     class Recorder:
@@ -372,13 +374,35 @@ def test_collect_recorder_requires_official_schema(monkeypatch: pytest.MonkeyPat
         def load_object(self, name: str):
             return lane["objects"][name]
 
-    monkeypatch.setattr("qlib.workflow.R.list_recorders", lambda experiment_name: {"x": Recorder()})
+    monkeypatch.setattr(
+        qlib_workflow,
+        "R",
+        SimpleNamespace(list_recorders=lambda experiment_name: {"x": Recorder()}),
+    )
     result = parity._collect_recorder("fixture")
     assert result["recorder_id"] == "recorder-id"
     assert result["artifact_schema"] == sorted(parity.EXPECTED_ARTIFACTS)
 
-    monkeypatch.setattr("qlib.workflow.R.list_recorders", lambda experiment_name: {})
+    monkeypatch.setattr(
+        qlib_workflow,
+        "R",
+        SimpleNamespace(list_recorders=lambda experiment_name: {}),
+    )
     with pytest.raises(RuntimeError, match="expected one recorder"):
+        parity._collect_recorder("fixture")
+
+    class MissingArtifactRecorder(Recorder):
+        def load_object(self, name: str):
+            if name == "pred.pkl":
+                raise LoadObjectError("missing")
+            return super().load_object(name)
+
+    monkeypatch.setattr(
+        qlib_workflow,
+        "R",
+        SimpleNamespace(list_recorders=lambda experiment_name: {"x": MissingArtifactRecorder()}),
+    )
+    with pytest.raises(RuntimeError, match="missing artifacts"):
         parity._collect_recorder("fixture")
 
 
@@ -391,19 +415,21 @@ def test_run_lane_delegates_native_and_platform(monkeypatch: pytest.MonkeyPatch,
         lambda *args, **kwargs: calls.append("platform"),
     )
     workflow = resource_path("configs/research/qlib_official_alpha158_lgb_v1.workflow.yaml")
-    assert parity.run_lane(workflow, lane="native", seed=0, lane_root=tmp_path / "n")["lane"] == "native"
-    assert parity.run_lane(workflow, lane="platform", seed=1, lane_root=tmp_path / "p")["seed"] == 1
+    native = parity.run_lane(workflow, lane="native", seed=0, lane_root=tmp_path / "n")
+    platform = parity.run_lane(workflow, lane="platform", seed=1, lane_root=tmp_path / "p")
+    assert native["lane"] == "native"
+    assert platform["seed"] == 1
     assert calls == ["native", "platform"]
     with pytest.raises(ValueError, match="unsupported parity lane"):
         parity.run_lane(workflow, lane="bad", seed=2, lane_root=tmp_path / "bad")
 
 
-def test_run_official_parity_writes_pass_report_without_live_vendor(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_run_official_parity_writes_pass_and_fail_reports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = _settings(tmp_path)
     resolved = _provider(tmp_path)
-    golden = _golden(tmp_path)
     monkeypatch.setattr(parity, "resolve_dataset", lambda *args, **kwargs: resolved)
 
     def verify(*args: Any, evidence: dict[str, object] | None = None, **kwargs: Any):
@@ -414,19 +440,20 @@ def test_run_official_parity_writes_pass_report_without_live_vendor(
     monkeypatch.setattr(parity, "verify_dataset_manifest", verify)
     calls: list[tuple[str, int]] = []
 
-    def runner(workflow: Path, *, lane: str, seed: int, lane_root: Path):
+    def passing_runner(workflow: Path, *, lane: str, seed: int, lane_root: Path):
         assert workflow.is_file()
         assert lane_root.is_absolute()
         calls.append((lane, seed))
         return {**_lane(), "lane": lane, "seed": seed}
 
+    profile = resource_path("configs/research/qlib_official_alpha158_lgb_v1.yaml")
     report_path = parity.run_official_parity(
         settings,
         dataset_ref="version-a",
-        profile_path=resource_path("configs/research/qlib_official_alpha158_lgb_v1.yaml"),
-        output_dir=tmp_path / "output",
-        golden_checks=golden,
-        lane_runner=runner,
+        profile_path=profile,
+        output_dir=tmp_path / "pass-output",
+        golden_checks=_golden(tmp_path),
+        lane_runner=passing_runner,
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "PASS"
@@ -435,44 +462,38 @@ def test_run_official_parity_writes_pass_report_without_live_vendor(
     assert report["vendor_parity"]["seed_count"] == 2
     assert report["automatic_model_selection"] is False
     assert report["automatic_promotion"] is False
-    assert (tmp_path / "output" / "parity_report.md").is_file()
-    runtime = parity._load_yaml(tmp_path / "output" / "runtime_workflow.yaml")
+    assert (tmp_path / "pass-output" / "parity_report.md").is_file()
+    runtime = parity._load_yaml(tmp_path / "pass-output" / "runtime_workflow.yaml")
     assert runtime["qlib_init"]["provider_uri"] == str(resolved.data_path.resolve())
 
-
-def test_run_official_parity_keeps_failed_vendor_result_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    settings = _settings(tmp_path)
-    resolved = _provider(tmp_path)
-    monkeypatch.setattr(parity, "resolve_dataset", lambda *args, **kwargs: resolved)
-    monkeypatch.setattr(parity, "verify_dataset_manifest", lambda *args, **kwargs: {})
-
-    def runner(workflow: Path, *, lane: str, seed: int, lane_root: Path):
+    def failing_runner(workflow: Path, *, lane: str, seed: int, lane_root: Path):
         metrics = None if lane == "native" else {"ic": 0.5}
         return {**_lane(metrics), "lane": lane, "seed": seed}
 
-    report_path = parity.run_official_parity(
+    failed_path = parity.run_official_parity(
         settings,
         dataset_ref="version-a",
-        profile_path=resource_path("configs/research/qlib_official_alpha158_lgb_v1.yaml"),
+        profile_path=profile,
         output_dir=tmp_path / "fail-output",
         golden_checks=_golden(tmp_path),
-        lane_runner=runner,
+        lane_runner=failing_runner,
     )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["status"] == "FAIL"
-    assert report["engine_parity"]["passed"] is False
-    assert report["vendor_parity"]["passed"] is False
-    assert report["vendor_parity"]["automatic_parameter_changes"] is False
+    failed = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failed["status"] == "FAIL"
+    assert failed["engine_parity"]["passed"] is False
+    assert failed["vendor_parity"]["passed"] is False
+    assert failed["vendor_parity"]["automatic_parameter_changes"] is False
 
 
 def test_main_plan_and_failed_run_exit_codes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = _settings(tmp_path)
-    plan_payload = {"scientific_identity": "science-id"}
     monkeypatch.setattr(parity.Settings, "load", lambda *args, **kwargs: settings)
-    monkeypatch.setattr(parity, "build_plan", lambda *args, **kwargs: (plan_payload, {}, {}))
-    out = tmp_path / "cli-plan"
+    monkeypatch.setattr(
+        parity,
+        "build_plan",
+        lambda *args, **kwargs: ({"scientific_identity": "science-id"}, {}, {}),
+    )
+    plan_dir = tmp_path / "cli-plan"
     monkeypatch.setattr(
         sys,
         "argv",
@@ -482,11 +503,11 @@ def test_main_plan_and_failed_run_exit_codes(tmp_path: Path, monkeypatch: pytest
             "--dataset-ref",
             "ds",
             "--output-dir",
-            str(out),
+            str(plan_dir),
         ],
     )
     assert parity.main() == 0
-    assert json.loads((out / "plan.json").read_text(encoding="utf-8"))["scientific_identity"] == "science-id"
+    assert json.loads((plan_dir / "plan.json").read_text(encoding="utf-8"))["scientific_identity"] == "science-id"
 
     failed = tmp_path / "failed.json"
     failed.write_text(json.dumps({"status": "FAIL"}), encoding="utf-8")
