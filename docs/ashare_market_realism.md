@@ -32,21 +32,27 @@ Key certified semantics are:
 - **Listing lifecycle** — `PRE_LISTING`/`NOT_LISTED` and `DELISTED`/`POST_DELISTING` states are explicitly non-tradable, supporting a PIT universe without silently backfilling future listings or dead securities.
 - **Capacity hook** — deterministic market conformance is separate from liquidity assumptions. `max_participation_rate`, spread, slippage and square-root impact remain explicit research parameters rather than alpha logic.
 
-## Dated fee schedule
+## Dated and venue-aware fee schedule
 
 For the production-realism simulator, `commission_bps` is a **broker net-commission assumption**. It is added to the explicitly modeled statutory/market charges below. If a broker quote is an all-in commission that already contains exchange handling or regulatory charges, it must be decomposed before being used here; otherwise the backtest would double count those costs.
 
-| Regime | Effective interval | Sell stamp tax | Transfer fee | CSRC regulatory fee | Exchange handling fee |
-| --- | --- | ---: | ---: | ---: | ---: |
-| `cn_equity_fee_2015_08_01` | 2015-08-01 .. 2022-04-28 | 10 bps | 0.2 bps | 0.2 bps | 0.487 bps |
-| `cn_equity_fee_2022_04_29` | 2022-04-29 .. 2023-08-27 | 10 bps | 0.1 bps | 0.2 bps | 0.487 bps |
-| `cn_equity_fee_2023_08_28` | 2023-08-28 .. current | 5 bps | 0.1 bps | 0.2 bps | 0.341 bps |
+The fee selector uses both **trade date** and **venue**. `SSE_SZSE` and `BSE` therefore cannot silently share the same exchange-handling fee.
 
-The implementation records broker commission, transfer fee, regulatory fee, exchange handling fee, stamp tax, total fees and the selected `fee_regime_id` on every fill. The schedule intentionally fails closed outside its certified history instead of extrapolating a current fee backward.
+| Venue | Regime | Effective interval | Sell stamp tax | Transfer fee | CSRC regulatory fee | Exchange handling fee |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| SSE/SZSE | `cn_equity_fee_2015_08_01` | 2015-08-01 .. 2022-04-28 | 10 bps | 0.2 bps | 0.2 bps | 0.487 bps |
+| SSE/SZSE | `cn_equity_fee_2022_04_29` | 2022-04-29 .. 2023-08-27 | 10 bps | 0.1 bps | 0.2 bps | 0.487 bps |
+| SSE/SZSE | `cn_equity_fee_2023_08_28` | 2023-08-28 .. current | 5 bps | 0.1 bps | 0.2 bps | 0.341 bps |
+| BSE | `bse_equity_fee_2021_11_15` | 2021-11-15 .. 2022-04-28 | 10 bps | 0.2 bps | 0.2 bps | 5.0 bps |
+| BSE | `bse_equity_fee_2022_04_29` | 2022-04-29 .. 2022-11-30 | 10 bps | 0.1 bps | 0.2 bps | 5.0 bps |
+| BSE | `bse_equity_fee_2022_12_01` | 2022-12-01 .. 2023-08-27 | 10 bps | 0.1 bps | 0.2 bps | 2.5 bps |
+| BSE | `bse_equity_fee_2023_08_28` | 2023-08-28 .. current | 5 bps | 0.1 bps | 0.2 bps | 1.25 bps |
 
-Sources represented by the rule contract include the Shanghai Stock Exchange, Shenzhen Stock Exchange and Beijing Stock Exchange trading rules, China Securities Depository and Clearing transfer-fee schedules, the 0.002% two-sided regulatory fee collected for the CSRC, the 2023 SSE/SZSE A-share handling-fee reduction from 0.00487% to 0.00341%, and the Ministry of Finance / State Taxation Administration 2023 stamp-tax reduction. The contract stores source descriptions rather than fetching web content during CI.
+The implementation records broker commission, transfer fee, regulatory fee, exchange handling fee, stamp tax, total fees, `fee_venue` and the selected `fee_regime_id` on every fill. The schedule intentionally fails closed outside its certified venue/history instead of extrapolating a current fee backward. In particular, a BSE fee query before the exchange launch on 2021-11-15 is rejected.
 
-The legacy no-date `execution_fees()` helper remains a configured-current compatibility surface for existing callers. Production-realism fills always pass a trade date and therefore use the dated statutory schedule.
+Sources represented by the rule contract include the Shanghai Stock Exchange, Shenzhen Stock Exchange and Beijing Stock Exchange trading rules and fee notices; China Securities Depository and Clearing market fee schedules; the 0.002% two-sided regulatory fee collected for the CSRC; the 2023 SSE/SZSE A-share handling-fee reduction from 0.00487% to 0.00341%; the BSE ordinary-share handling-fee path from 0.5‰ to 0.25‰ and then 0.125‰; and the Ministry of Finance / State Taxation Administration 2023 stamp-tax reduction. ChinaClear's Beijing-market schedule lists A-share transfer fees at 0.01‰ bilaterally and an A-share settlement fee at 0.1‰ that is currently waived; the waived settlement fee is therefore not charged to the investor ledger.
+
+The legacy no-date `execution_fees()` helper remains a configured-current compatibility surface for existing callers. Production-realism fills always pass a trade date and venue and therefore use the dated statutory schedule.
 
 ## Corporate actions and price basis
 
@@ -65,7 +71,7 @@ A share multiplier that would create fractional raw shares also fails closed unl
 
 The deterministic simulator exposes:
 
-- fill ledger, including fee components, rule/cost/fill identities and post-fill cash/position state;
+- fill ledger, including fee components, fee venue, rule/cost/fill identities and post-fill cash/position state;
 - rejection ledger with reason and rule identity;
 - daily cash/market-value/equity ledger;
 - daily total/sellable position ledger;
@@ -95,6 +101,6 @@ Changing the resolved rule-set version, execution engine, cost model, fill model
 
 ## Offline conformance corpus
 
-`tests/test_ashare_market_realism_conformance.py`, `tests/test_ashare_market_rule_binding.py` and `tests/test_ashare_fee_schedule.py` form the blocking, no-network corpus. They cover T+1, sellable quantity, board/odd lots, directional upper/lower limits, suspension vs missing bars, historical regime boundaries, fee boundaries/components, corporate-action NAV continuity, adjusted-price double-count protection, listing lifecycle, execution-profile separation and experiment identity.
+`tests/test_ashare_market_realism_conformance.py`, `tests/test_ashare_market_rule_binding.py` and `tests/test_ashare_fee_schedule.py` form the blocking, no-network corpus. They cover T+1, sellable quantity, board/odd lots, directional upper/lower limits, suspension vs missing bars, historical and venue-specific fee boundaries/components, corporate-action NAV continuity, adjusted-price double-count protection, listing lifecycle, execution-profile separation and experiment identity.
 
 Real Tushare release spot checks can be added as governed data validation, but ordinary PR CI must remain deterministic and must not require vendor credentials or network access.
