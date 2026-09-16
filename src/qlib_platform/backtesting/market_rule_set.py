@@ -31,6 +31,8 @@ class FeeRegime:
     effective_to: str | None
     sell_stamp_tax_bps: float
     transfer_fee_bps: float
+    regulatory_fee_bps: float
+    exchange_handling_fee_bps: float
     source: str
     fixture: str
 
@@ -183,7 +185,9 @@ def production_realism_rule_set() -> MarketRuleSet:
                 "2022-04-28",
                 10.0,
                 0.2,
-                "ChinaClear 2015 unified A-share transfer-fee schedule; stamp tax sell-side 0.1%",
+                0.2,
+                0.487,
+                "ChinaClear transfer-fee schedule; CSRC regulatory fee 0.002%; SSE/SZSE A-share handling fee 0.00487%; sell stamp tax 0.1%",
                 "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries",
             ),
             FeeRegime(
@@ -192,7 +196,9 @@ def production_realism_rule_set() -> MarketRuleSet:
                 "2023-08-27",
                 10.0,
                 0.1,
-                "ChinaClear transfer-fee reduction effective 2022-04-29; stamp tax sell-side 0.1%",
+                0.2,
+                0.487,
+                "ChinaClear transfer-fee reduction effective 2022-04-29; CSRC regulatory fee 0.002%; SSE/SZSE handling fee 0.00487%; sell stamp tax 0.1%",
                 "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries",
             ),
             FeeRegime(
@@ -201,7 +207,9 @@ def production_realism_rule_set() -> MarketRuleSet:
                 None,
                 5.0,
                 0.1,
-                "MOF/STA Announcement No.39 (2023) and ChinaClear transfer-fee schedule",
+                0.2,
+                0.341,
+                "MOF/STA Announcement No.39 (2023); ChinaClear transfer-fee schedule; CSRC regulatory fee 0.002%; SSE/SZSE handling fee reduced to 0.00341%",
                 "tests/test_ashare_market_realism_conformance.py::test_versioned_fee_boundaries",
             ),
         ),
