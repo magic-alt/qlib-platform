@@ -61,11 +61,7 @@ class MarketRuleSet:
 
     def fee_regime_for(self, trade_date: object, venue: str = "SSE_SZSE") -> FeeRegime:
         normalized_venue = str(venue).strip().upper()
-        matches = [
-            regime
-            for regime in self.fee_regimes
-            if regime.contains(trade_date, normalized_venue)
-        ]
+        matches = [regime for regime in self.fee_regimes if regime.contains(trade_date, normalized_venue)]
         if len(matches) != 1:
             date = pd.Timestamp(trade_date).strftime("%Y-%m-%d")
             raise ValueError(
@@ -315,6 +311,20 @@ def resolve_market_rule_set(profile: str | None) -> MarketRuleSet:
     raise ValueError(f"unknown A-share market rule profile: {profile}")
 
 
+def _float_setting(config: Mapping[str, object], key: str, default: float) -> float:
+    value = config.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{key} must be numeric")
+    return float(value)
+
+
+def _int_setting(config: Mapping[str, object], key: str, default: int) -> int:
+    value = config.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(f"{key} must be an integer")
+    return int(value)
+
+
 def execution_contract_from_mapping(
     research: Mapping[str, object] | None,
     *,
@@ -335,10 +345,10 @@ def execution_contract_from_mapping(
             "use deterministic_ashare_simulator_v1 or keep qlib_official_parity_v1"
         )
     broker_cost = {
-        "commissionBps": float(cfg.get("commission_bps", 1.0)),
-        "minCommission": float(cfg.get("min_commission", cfg.get("min_cost", 5.0))),
-        "qlibOpenCost": float(cfg.get("open_cost", 0.00035)),
-        "qlibCloseCost": float(cfg.get("close_cost", 0.00085)),
+        "commissionBps": _float_setting(cfg, "commission_bps", 1.0),
+        "minCommission": _float_setting(cfg, "min_commission", _float_setting(cfg, "min_cost", 5.0)),
+        "qlibOpenCost": _float_setting(cfg, "open_cost", 0.00035),
+        "qlibCloseCost": _float_setting(cfg, "close_cost", 0.00085),
     }
     payload = {
         **rule_set.to_manifest(),
@@ -346,8 +356,8 @@ def execution_contract_from_mapping(
         "executionEngineId": engine_id,
         "brokerCost": broker_cost,
         "dealPrice": str(cfg.get("deal_price", "open")),
-        "tradeUnit": int(cfg.get("trade_unit", 100)),
-        "maxParticipationRate": float(cfg.get("max_participation_rate", 0.05)),
+        "tradeUnit": _int_setting(cfg, "trade_unit", 100),
+        "maxParticipationRate": _float_setting(cfg, "max_participation_rate", 0.05),
     }
     payload["executionContractSha256"] = sha256_json(payload)
     return payload
