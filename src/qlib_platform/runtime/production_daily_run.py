@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 import pandas as pd
 
+from qlib_platform.data import resumable_certified_sync as _resumable_certified_sync
 from qlib_platform.data.audited_daily_sync import (
     CHECKPOINT_CONTRACT_VERSION,
     AuditedResumableDailySyncService,
@@ -17,6 +18,9 @@ from qlib_platform.data.audited_daily_sync import (
 from qlib_platform.data.store import sha256_file
 from qlib_platform.runtime import daily_research_run as base
 from qlib_platform.settings import Settings
+
+# Compatibility re-export for the PR #138 production module surface and tests.
+ResumableCertifiedDailySyncService = _resumable_certified_sync.ResumableCertifiedDailySyncService
 
 DAILY_RUN_CONTRACT_VERSION = "1.1"
 
@@ -60,6 +64,16 @@ def _artifact_hashes(output: Mapping[str, Any]) -> dict[str, str]:
         if path.is_file():
             artifacts[str(path)] = sha256_file(path)
     return artifacts
+
+
+def _is_sha256_hex(value: str) -> bool:
+    if len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
 
 
 def _record_summary(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -152,7 +166,13 @@ class DailyResearchRun(base.DailyResearchRun):
             data_path = Path(str(output.get("data_path") or ""))
             manifest = data_path / "dataset_manifest.json"
             expected = str(output.get("dataset_manifest_sha256") or "")
-            if not manifest.is_file() or not expected or sha256_file(manifest) != expected:
+            # Legacy/test fixtures may carry a symbolic manifest identifier rather
+            # than an actual SHA256. Such records are not trusted for cache reuse;
+            # they are re-verified. A real recorded SHA, however, fails closed if the
+            # immutable manifest is missing or has changed.
+            if not _is_sha256_hex(expected):
+                return False
+            if not manifest.is_file() or sha256_file(manifest) != expected:
                 raise RuntimeError("verified DatasetVersion manifest changed after checkpoint")
         elif name == "feature_materialization":
             feature_root = Path(str(output.get("feature_root") or ""))
@@ -242,12 +262,19 @@ class DailyResearchRun(base.DailyResearchRun):
         research = research if isinstance(research, Mapping) else {}
         universe = self.settings.data.get("universe", {})
         universe = universe if isinstance(universe, Mapping) else {}
+        production = self.settings.data.get("production", {})
+        production = production if isinstance(production, Mapping) else {}
+        daily_run = production.get("daily_run", {})
+        daily_run = daily_run if isinstance(daily_run, Mapping) else {}
+        regression_config = daily_run.get("regression", {})
+        regression_config = regression_config if isinstance(regression_config, Mapping) else {}
         return base._identity(
             {
                 "contract": DAILY_RUN_CONTRACT_VERSION,
                 "target_session": plan.get("target_session"),
                 "mode": plan.get("mode"),
                 "config_sha256": state.get("config_sha256") or plan.get("config_sha256"),
+                "code": dict(state.get("code") or {}),
                 "immutable_input": {
                     "data_release_id": dataset.get("data_release_id"),
                     "dataset_version_id": dataset.get("dataset_version_id"),
@@ -255,9 +282,12 @@ class DailyResearchRun(base.DailyResearchRun):
                 },
                 "universe": dict(universe),
                 "benchmark": research.get("benchmark"),
+                # Deliberately exclude the execution checkpoint hash/command output
+                # paths: those can contain a random SyncPlan ID. Business identity is
+                # derived only from the frozen research policy.
                 "regression": {
                     "enabled": regression_output.get("enabled"),
-                    "input_sha256": regression.get("input_sha256"),
+                    "configuration": dict(regression_config),
                 },
             },
             prefix="dailybiz-",
@@ -280,6 +310,12 @@ class DailyResearchRun(base.DailyResearchRun):
         regression = self._step(state, "regression_backtest")
         regression_output = regression.get("output", {})
         regression_output = regression_output if isinstance(regression_output, Mapping) else {}
+        production = self.settings.data.get("production", {})
+        production = production if isinstance(production, Mapping) else {}
+        daily_run = production.get("daily_run", {})
+        daily_run = daily_run if isinstance(daily_run, Mapping) else {}
+        regression_config = daily_run.get("regression", {})
+        regression_config = regression_config if isinstance(regression_config, Mapping) else {}
         return {
             "target_session": plan.get("target_session"),
             "sync_plan_id": plan.get("plan_id"),
@@ -305,6 +341,7 @@ class DailyResearchRun(base.DailyResearchRun):
             "model_policy": {
                 "automatic_selection": False,
                 "automatic_promotion": False,
+                "regression_configuration": dict(regression_config),
                 "regression_status": regression.get("status"),
                 "regression_input_sha256": regression.get("input_sha256"),
                 "regression_output_sha256": regression.get("output_sha256"),
