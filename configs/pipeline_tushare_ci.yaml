@@ -1,0 +1,25 @@
+extends: pipeline_tushare_dev.yaml
+
+config_schema_version: "1.0"
+environment: ci
+mode: standalone
+project_root: ./artifacts/ci-data
+
+# CI deliberately remains fixture-friendly. Production-only policy ratchets are
+# activated only by environment=prod, so no real TuShare token is required here.
+storage:
+  registry_path: ./artifacts/ci-data/registry/qlib.sqlite
+
+qlib:
+  repo_path: ""
+  dataset_dir: ""
+  versions_root: ./artifacts/ci-data/qlib/versions
+  dataset_name: cn_tushare_ci
+  dataset_version: ci
+  dataset_ref: ci-current
+
+release_store:
+  kind: file
+  root: ./artifacts/ci-data/releases
+  publish_on_sync: false
+  active_keep: 1
