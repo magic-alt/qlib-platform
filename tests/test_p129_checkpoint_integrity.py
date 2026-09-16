@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -107,11 +108,11 @@ def test_sync_checkpoint_records_hashes_and_rejects_artifact_corruption(tmp_path
     assert len(record["input_sha256"]) == 64
     assert len(record["output_sha256"]) == 64
     assert record["artifact_sha256"][str(marker)] == sha256_file(marker)
-    assert service._step_done(state, "market_fetch") is True
+    assert service._verify_checkpoint_record(state, "market_fetch") is True
 
     marker.write_bytes(b"corrupt")
     with pytest.raises(SyncPlanInvalidatedError, match="artifact hash mismatch"):
-        service._step_done(state, "market_fetch")
+        service._verify_checkpoint_record(state, "market_fetch")
 
 
 def test_sync_checkpoint_rejects_semantic_output_tampering(tmp_path: Path):
@@ -125,7 +126,7 @@ def test_sync_checkpoint_rejects_semantic_output_tampering(tmp_path: Path):
 
     state["steps"]["metadata_refresh"]["output"]["rows"] = 11
     with pytest.raises(SyncPlanInvalidatedError, match="output hash mismatch"):
-        service._step_done(state, "metadata_refresh")
+        service._verify_checkpoint_record(state, "metadata_refresh")
 
 
 def test_legacy_sync_checkpoint_is_upgraded_before_reuse(tmp_path: Path):
@@ -145,13 +146,127 @@ def test_legacy_sync_checkpoint_is_upgraded_before_reuse(tmp_path: Path):
     }
     service._save_apply_state(state)
 
-    assert service._step_done(state, "metadata_refresh") is True
+    assert service._verify_checkpoint_record(state, "metadata_refresh") is True
     upgraded = json.loads(service._apply_state_path(plan_id).read_text(encoding="utf-8"))
     record = upgraded["steps"]["metadata_refresh"]
     assert record["attempt"] == 4
     assert record["checkpoint_contract_version"] == CHECKPOINT_CONTRACT_VERSION
     assert len(record["input_sha256"]) == 64
     assert len(record["output_sha256"]) == 64
+
+
+def test_sync_input_change_invalidates_checkpoint_and_downstream_reuse(tmp_path: Path):
+    settings = _settings(tmp_path)
+    _calendar(settings)
+    service = AuditedResumableDailySyncService(settings)
+    plan = _plan(service)
+    plan_id = str(plan["plan_id"])
+    state = service._load_apply_state(plan_id)
+    service._finish_step(state, "market_fetch", {"provider_calls": 1})
+    service._finish_step(state, "factor_reconcile", {"changed_symbol_count": 0})
+
+    state["steps"]["market_fetch"]["status"] = "INVALIDATED"
+    assert service._verify_checkpoint_record(state, "factor_reconcile") is False
+    assert state["steps"]["factor_reconcile"]["status"] == "INVALIDATED"
+    assert state["steps"]["factor_reconcile"]["invalidated_reason"] == "input_sha256_changed"
+
+
+def test_sync_raw_promote_semantic_checkpoint_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    settings = _settings(tmp_path)
+    _calendar(settings)
+    service = AuditedResumableDailySyncService(settings)
+
+    with pytest.raises(SyncPlanInvalidatedError, match="not a mapping"):
+        service._verify_raw_promote_output({"output": []})
+    service._verify_raw_promote_output({"output": {"raw_changes": "legacy"}})
+    service._verify_raw_promote_output(
+        {
+            "output": {
+                "raw_changes": [None, {}, {"dataset": "daily", "trade_date": "20260811"}]
+            }
+        }
+    )
+
+    record = {
+        "output": {
+            "raw_changes": [
+                {
+                    "dataset": "daily",
+                    "trade_date": "20260811",
+                    "new_content_sha256": "expected",
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr(service, "_partition_hash", lambda *_args: "actual")
+    with pytest.raises(SyncPlanInvalidatedError, match="canonical Bronze"):
+        service._verify_raw_promote_output(record)
+    monkeypatch.setattr(service, "_partition_hash", lambda *_args: "expected")
+    service._verify_raw_promote_output(record)
+
+
+def test_sync_checkpoint_artifact_roots_are_hashed(tmp_path: Path):
+    settings = _settings(tmp_path)
+    _calendar(settings)
+    service = AuditedResumableDailySyncService(settings)
+    plan = _plan(service)
+    plan_id = str(plan["plan_id"])
+    stage_root = service._stage_root(plan_id)
+    factor = stage_root / "factor_history" / "factor.parquet"
+    market = stage_root / "market" / "daily" / "20260811.parquet"
+    dividend = stage_root / "dividend" / "incoming.parquet"
+    quality = service.plan_root / plan_id / "quality" / "raw_store.json"
+    for path, content in (
+        (factor, b"factor"),
+        (market, b"market"),
+        (dividend, b"dividend"),
+        (quality, b"quality"),
+    ):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+    factor_artifacts = service._checkpoint_artifacts(plan_id, "factor_reconcile")
+    assert factor_artifacts[str(factor)] == sha256_file(factor)
+    assert factor_artifacts[str(market)] == sha256_file(market)
+    assert service._checkpoint_artifacts(plan_id, "dividend_fetch")[str(dividend)] == sha256_file(dividend)
+    assert service._checkpoint_artifacts(plan_id, "raw_validate")[str(quality)] == sha256_file(quality)
+    assert service._checkpoint_artifacts(plan_id, "metadata_refresh") == {}
+
+
+def test_sync_qlib_publish_artifact_hashes_resolved_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    settings = _settings(tmp_path)
+    _calendar(settings)
+    service = AuditedResumableDailySyncService(settings)
+    plan = _plan(service)
+    manifest = tmp_path / "dataset_manifest.json"
+    manifest.write_text('{"version_id":"v1"}', encoding="utf-8")
+    monkeypatch.setattr(service, "_active_dataset_manifest", lambda: ({}, "v1"))
+    monkeypatch.setattr(
+        "qlib_platform.datasets.dataset_resolver.resolve_dataset",
+        lambda *_args, **_kwargs: SimpleNamespace(manifest_path=manifest),
+    )
+
+    artifacts = service._checkpoint_artifacts(str(plan["plan_id"]), "qlib_publish")
+    assert artifacts[str(manifest)] == sha256_file(manifest)
+
+
+def test_sync_validate_existing_checkpoints_skips_incomplete_records(tmp_path: Path):
+    settings = _settings(tmp_path)
+    _calendar(settings)
+    service = AuditedResumableDailySyncService(settings)
+    plan = _plan(service)
+    state = service._load_apply_state(str(plan["plan_id"]))
+    state["steps"] = {
+        "market_fetch": {"status": "RUNNING"},
+        "factor_reconcile": "invalid-record",
+    }
+    service._certify_record(state, "market_fetch")
+    service._validate_existing_checkpoints(state)
+    assert state["steps"]["market_fetch"]["status"] == "RUNNING"
 
 
 def test_sync_apply_attempt_is_durable_without_repeating_parent_work(
@@ -223,6 +338,54 @@ def test_daily_run_checkpoint_reuse_verifies_output_artifact(tmp_path: Path):
     artifact.write_text("corrupt", encoding="utf-8")
     with pytest.raises(RuntimeError, match="artifact hash mismatch"):
         runner._step_reusable(state, "report", "input")
+
+
+def test_daily_run_dataset_manifest_hash_mismatch_fails_closed(tmp_path: Path):
+    runner = DailyResearchRun(_settings(tmp_path))
+    data_path = tmp_path / "dataset"
+    data_path.mkdir()
+    manifest = data_path / "dataset_manifest.json"
+    manifest.write_text('{"version_id":"v1"}', encoding="utf-8")
+    state: dict[str, object] = {"plan_id": "p", "run_attempt": 1, "steps": {}}
+    runner._finish_step(
+        state,
+        "dataset_verify",
+        status="SUCCEEDED",
+        input_hash="dataset-input",
+        output={
+            "data_path": str(data_path),
+            "dataset_manifest_sha256": "0" * 64,
+        },
+    )
+    with pytest.raises(RuntimeError, match="manifest changed"):
+        runner._step_reusable(state, "dataset_verify", "dataset-input")
+
+
+def test_daily_run_feature_checkpoint_rejects_changed_materialization(tmp_path: Path):
+    runner = DailyResearchRun(_settings(tmp_path))
+    feature_root = tmp_path / "features"
+    instrument_root = tmp_path / "instruments"
+    feature_root.mkdir()
+    instrument_root.mkdir()
+    (feature_root / "a.bin").write_bytes(b"a")
+    (instrument_root / "all.txt").write_text("A\n", encoding="utf-8")
+    state: dict[str, object] = {"plan_id": "p", "run_attempt": 1, "steps": {}}
+    runner._finish_step(
+        state,
+        "feature_materialization",
+        status="SUCCEEDED",
+        input_hash="features-input",
+        output={
+            "feature_root": str(feature_root),
+            "instrument_root": str(instrument_root),
+            "feature_file_count": 1,
+            "instrument_file_count": 1,
+        },
+    )
+    assert runner._step_reusable(state, "feature_materialization", "features-input") is True
+    (feature_root / "unexpected.bin").write_bytes(b"extra")
+    with pytest.raises(RuntimeError, match="feature materialization"):
+        runner._step_reusable(state, "feature_materialization", "features-input")
 
 
 def test_daily_run_legacy_checkpoint_is_not_blindly_reused(tmp_path: Path):
