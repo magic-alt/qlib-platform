@@ -136,7 +136,11 @@ def test_project_workspace_blocks_absolute_and_parent_traversal(tmp_path):
 
 @pytest.mark.parametrize("backend_kind", ["memory", "sqlite"])
 def test_metadata_backend_contract_keeps_bytes_outside_metadata_and_refcounts(tmp_path, backend_kind):
-    store = MemoryMetadataStore() if backend_kind == "memory" else SqliteMetadataStore(tmp_path / "metadata.sqlite")
+    store = (
+        MemoryMetadataStore()
+        if backend_kind == "memory"
+        else SqliteMetadataStore(tmp_path / "metadata.sqlite")
+    )
     object_store = MemoryObjectStore()
     ref = object_store.put("alpha", b"large-bytes-live-in-object-store")
     metadata = ArtifactMetadata(
@@ -217,7 +221,9 @@ def test_executor_resource_governance_fails_closed_on_budget_and_concurrency():
     with pytest.raises(RuntimeError, match="matrix"):
         worker.submit(request)
 
-    allowed = replace(request, matrix_jobs=1, budget=ExecutionBudget(cpu_cores=1, memory_gb=1, runtime_seconds=60))
+    allowed = replace(
+        request, matrix_jobs=1, budget=ExecutionBudget(cpu_cores=1, memory_gb=1, runtime_seconds=60)
+    )
     other = replace(allowed, descriptor_ref="git:research/other@v1")
     worker.submit(allowed)
     with pytest.raises(RuntimeError, match="concurrency"):
