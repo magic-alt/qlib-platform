@@ -1,0 +1,44 @@
+name: PR146 CI Fixture Repair
+
+on:
+  push:
+    branches:
+      - fix/135-research-platform-sre
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Repair legacy production-success fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_p129_end_to_end_coverage.py")
+          text = path.read_text(encoding="utf-8")
+          old = "        path.write_text('{\"status\":\"SUCCEEDED\"}', encoding=\"utf-8\")\n"
+          new = '''        # Production DailyRun fails closed unless the checkpoint proves the\n        # required freshness and raw-quality gates succeeded.\n        path.write_text(\n            json.dumps(\n                {\n                    "status": "SUCCEEDED",\n                    "updated_at_utc": "2026-09-17T02:30:00+00:00",\n                    "steps": {\n                        "freshness_gate": {"status": "SUCCEEDED"},\n                        "raw_validate": {"status": "SUCCEEDED"},\n                        "qlib_publish": {"status": "SUCCEEDED"},\n                    },\n                }\n            ),\n            encoding="utf-8",\n        )\n'''
+          if old not in text:
+              raise SystemExit("expected P129 fixture anchor not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+      - name: Commit minimal fix and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/ci-fix-146.yml
+          git add tests/test_p129_end_to_end_coverage.py
+          git commit -m "test(sre): add production SLO evidence to P129 fixture"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
