@@ -30,6 +30,13 @@ def production_plan(config: str) -> dict[str, object]:
 
 def main() -> None:
     argv = sys.argv[1:]
+    if "run" in argv:
+        from qlib_platform.research.run_cli import main as run_main
+
+        code = run_main(argv)
+        if code:
+            raise SystemExit(code)
+        return
     if "--plan" not in argv:
         from qlib_platform.cli.main import main as legacy_main
 
