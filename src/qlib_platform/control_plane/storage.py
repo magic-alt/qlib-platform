@@ -36,7 +36,9 @@ class ObjectRef:
 
 
 class ObjectStore(Protocol):
-    def put(self, project_id: str, payload: bytes, *, media_type: str = "application/octet-stream") -> ObjectRef: ...
+    def put(
+        self, project_id: str, payload: bytes, *, media_type: str = "application/octet-stream"
+    ) -> ObjectRef: ...
 
     def get(self, project_id: str, ref: ObjectRef) -> bytes: ...
 
@@ -47,7 +49,9 @@ class MemoryObjectStore:
     def __init__(self) -> None:
         self._objects: dict[tuple[str, str], bytes] = {}
 
-    def put(self, project_id: str, payload: bytes, *, media_type: str = "application/octet-stream") -> ObjectRef:
+    def put(
+        self, project_id: str, payload: bytes, *, media_type: str = "application/octet-stream"
+    ) -> ObjectRef:
         project = _safe_component(project_id, "project_id")
         digest = hashlib.sha256(payload).hexdigest()
         self._objects.setdefault((project, digest), bytes(payload))
@@ -73,7 +77,9 @@ class FileSystemObjectStore:
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def put(self, project_id: str, payload: bytes, *, media_type: str = "application/octet-stream") -> ObjectRef:
+    def put(
+        self, project_id: str, payload: bytes, *, media_type: str = "application/octet-stream"
+    ) -> ObjectRef:
         project = _safe_component(project_id, "project_id")
         digest = hashlib.sha256(payload).hexdigest()
         path = self._object_path(project, digest)
