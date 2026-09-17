@@ -100,7 +100,7 @@ def _find_value(payloads: Sequence[Mapping[str, Any]], keys: Sequence[str]) -> A
                 continue
             for key in keys:
                 value = current.get(key)
-                if value not in {None, ""} and not isinstance(value, (Mapping, list, tuple)):
+                if value is not None and value != "" and not isinstance(value, (Mapping, list, tuple)):
                     return value
             stack.extend(value for value in current.values() if isinstance(value, Mapping))
     return None
