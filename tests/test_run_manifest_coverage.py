@@ -344,6 +344,7 @@ def test_reproduction_executes_compares_and_fails_closed(
         (output / run_manifest.RUN_MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, "ok", "")
 
+    monkeypatch.setattr(run_manifest, "project_git_identity", lambda: {})
     monkeypatch.setattr(run_manifest.subprocess, "run", successful_run)
     execution = execute_reproduction(settings, manifest)
     assert execution["status"] == "EXECUTED"
@@ -621,7 +622,12 @@ def test_governed_entrypoint_records_manifest_and_restores_writer(
 ) -> None:
     settings = _settings(tmp_path)
     root = tmp_path / "governed"
-    original_writer = governed_entrypoint.legacy._write_matrix
+    written: list[tuple[Path, dict[str, object]]] = []
+
+    def original_writer(current_root: Path, payload: dict[str, object]) -> None:
+        written.append((current_root, dict(payload)))
+
+    monkeypatch.setattr(governed_entrypoint.legacy, "_write_matrix", original_writer)
     recorded: list[tuple[Path, dict[str, object], list[str]]] = []
 
     class Parser:
@@ -645,6 +651,7 @@ def test_governed_entrypoint_records_manifest_and_restores_writer(
 
     monkeypatch.setattr(governed_entrypoint.governed, "main", fake_main)
     assert governed_entrypoint.main() == 7
+    assert written == [(root, {"status": "FAILED"})]
     assert recorded == [(root, {"status": "FAILED"}, ["run"])]
     assert governed_entrypoint.legacy._write_matrix is original_writer
 
