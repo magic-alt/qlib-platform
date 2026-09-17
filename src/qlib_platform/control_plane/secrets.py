@@ -59,7 +59,9 @@ class MemorySecretProvider:
         try:
             return self._values[(project_id, ref.name, ref.version)]
         except KeyError as exc:
-            raise KeyError(f"secret reference {ref.name!r} is unavailable for project {project_id!r}") from exc
+            raise KeyError(
+                f"secret reference {ref.name!r} is unavailable for project {project_id!r}"
+            ) from exc
 
     def _check_ref(self, ref: SecretRef, project_id: str) -> None:
         if ref.provider != self.provider:
