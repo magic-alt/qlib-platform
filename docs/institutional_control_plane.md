@@ -1,3 +1,10 @@
+---
+status: ACTIVE
+owner: architecture
+applies_to_commit: df8d5f3782842bd38bc36d6c908d9c0207f81fc3
+last_verified: 2026-09-17
+---
+
 # Institutional control plane
 
 Issue #136 adds an **optional** institutional control plane around the existing research engine. It does not replace Qlib and it is not required for standalone research.
