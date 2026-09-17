@@ -82,6 +82,7 @@ nav:
       - Current Governance State: current_state.md
       - Architecture Overview: architecture.md
       - Architecture Boundary: architecture_boundary.md
+      - Institutional Control Plane: institutional_control_plane.md
       - Identity and Lineage: identity_and_lineage.md
       - Standalone Sovereignty: standalone_sovereignty.md
       - Glossary: glossary.md
