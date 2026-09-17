@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/issue135-implementation.yml scripts/issue135_integrate.py scripts/issue135_prevalidate_fix.py scripts/issue135_testfix.py scripts/issue135_docsfix.py
+          git rm -f .github/workflows/issue135-implementation.yml scripts/issue135_integrate.py scripts/issue135_prevalidate_fix.py scripts/issue135_testfix.py scripts/issue135_docsfix.py
           git add -A
           git commit -m "feat(sre): integrate versioned SLO gate and recovery evidence [issue135-integrated]"
           git push origin "HEAD:${GITHUB_REF_NAME}"
