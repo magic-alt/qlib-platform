@@ -1,0 +1,75 @@
+name: Research SRE Game Day
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Deterministic SRE failure scenario
+        required: true
+        type: choice
+        options:
+          - provider-late
+          - provider-429
+          - schema-drift
+          - endpoint-missing
+          - qlib-corrupt
+          - disk-full
+          - process-kill
+          - pointer-crash
+          - alert-destination-unavailable
+          - long-backfill
+
+permissions:
+  contents: read
+
+jobs:
+  game-day:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install test environment
+        run: python -m pip install -c constraints/ci.txt -e '.[dev]'
+      - name: Execute deterministic game-day fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/sre-game-day"
+          python -m qlib_platform \
+            --config configs/pipeline.standalone.yaml \
+            sre game-day \
+            --scenario '${{ inputs.scenario }}' \
+            --output-dir "$output"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "sre-game-day"
+          paths = list(root.glob("game-day-*.json"))
+          if len(paths) != 1:
+              raise SystemExit(f"expected one game-day evidence artifact, got {paths}")
+          payload = json.loads(paths[0].read_text(encoding="utf-8"))
+          audit = payload["audit"]
+          required = [
+              "alert_deduplicated_on_replay",
+              "resolved_event_emitted",
+              "incident_correlation_preserved",
+          ]
+          if not all(audit.get(key) is True for key in required):
+              raise SystemExit(f"game-day audit failed: {audit}")
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload machine-readable evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sre-game-day-${{ inputs.scenario }}
+          path: ${{ runner.temp }}/sre-game-day/*.json
+          if-no-files-found: error
+          retention-days: 30
