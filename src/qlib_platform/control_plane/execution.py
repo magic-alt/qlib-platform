@@ -154,7 +154,11 @@ class MemoryExecutionStore:
 
     def active_count(self, project_id: str) -> int:
         active = {ExecutionStatus.QUEUED, ExecutionStatus.RUNNING}
-        return sum(1 for record in self._records.values() if record.project_id == project_id and record.status in active)
+        return sum(
+            1
+            for record in self._records.values()
+            if record.project_id == project_id and record.status in active
+        )
 
 
 ExecutionHandler = Callable[[ExecutionRequest], ExecutionOutcome]
