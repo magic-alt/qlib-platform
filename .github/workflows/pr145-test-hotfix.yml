@@ -1,0 +1,71 @@
+name: PR145 Test Hotfix
+
+on:
+  push:
+    branches:
+      - fix/134-research-lineage-run-identity
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, '[test-hotfix]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Fix deterministic coverage tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_run_manifest_coverage.py')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    monkeypatch.setattr(run_manifest.subprocess, "run", successful_run)\n    execution = execute_reproduction(settings, manifest)\n'''
+          new = '''    monkeypatch.setattr(run_manifest, "project_git_identity", lambda: {})\n    monkeypatch.setattr(run_manifest.subprocess, "run", successful_run)\n    execution = execute_reproduction(settings, manifest)\n'''
+          if old not in text:
+              raise SystemExit('reproduction patch anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    original_writer = governed_entrypoint.legacy._write_matrix\n    recorded: list[tuple[Path, dict[str, object], list[str]]] = []\n'''
+          new = '''    written: list[tuple[Path, dict[str, object]]] = []\n\n    def original_writer(current_root: Path, payload: dict[str, object]) -> None:\n        written.append((current_root, dict(payload)))\n\n    monkeypatch.setattr(governed_entrypoint.legacy, "_write_matrix", original_writer)\n    recorded: list[tuple[Path, dict[str, object], list[str]]] = []\n'''
+          if old not in text:
+              raise SystemExit('wrapper patch anchor not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    assert governed_entrypoint.main() == 7\n    assert recorded == [(root, {"status": "FAILED"}, ["run"])]\n    assert governed_entrypoint.legacy._write_matrix is original_writer\n'''
+          new = '''    assert governed_entrypoint.main() == 7\n    assert written == [(root, {"status": "FAILED"})]\n    assert recorded == [(root, {"status": "FAILED"}, ["run"])]\n    assert governed_entrypoint.legacy._write_matrix is original_writer\n'''
+          if old not in text:
+              raise SystemExit('wrapper assertion anchor not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Validate focused tests and formatting
+        run: |
+          python -m pip install -c constraints/ci.txt -e '.[dev]'
+          ruff check tests/test_run_manifest_coverage.py
+          ruff format --check tests/test_run_manifest_coverage.py
+          python -m pytest -q \
+            tests/test_run_manifest_coverage.py::test_reproduction_executes_compares_and_fails_closed \
+            tests/test_run_manifest_coverage.py::test_governed_entrypoint_records_manifest_and_restores_writer
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_run_manifest_coverage.py
+          git commit -m "fix(test): isolate replay subprocess and wrapper writer [test-hotfix]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
