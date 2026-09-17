@@ -101,7 +101,9 @@ def load_slo_policy(settings: Settings) -> SloPolicy:
     path = path.resolve()
     payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(payload, Mapping) or payload.get("schema_version") != SLO_POLICY_SCHEMA:
-        raise ValueError(f"unsupported SLO policy schema: {payload.get('schema_version') if isinstance(payload, Mapping) else None}")
+        raise ValueError(
+            f"unsupported SLO policy schema: {payload.get('schema_version') if isinstance(payload, Mapping) else None}"
+        )
     profiles = _mapping(payload.get("profiles"))
     requested_profile = str(sre_cfg.get("profile") or settings.environment or "dev").strip().lower()
     profile = _PROFILE_ALIASES.get(requested_profile, requested_profile)
@@ -200,6 +202,22 @@ def _check(
     }
 
 
+def policy_from_snapshot(settings: Settings, snapshot: Mapping[str, Any] | None) -> SloPolicy:
+    if isinstance(snapshot, Mapping):
+        effective = snapshot.get("effective")
+        version = str(snapshot.get("version") or "")
+        profile = str(snapshot.get("profile") or "")
+        if isinstance(effective, Mapping) and version.startswith("slo-") and profile:
+            return SloPolicy(
+                profile=profile,
+                version=version,
+                source=str(snapshot.get("source") or "bound-run-policy"),
+                source_sha256=str(snapshot.get("source_sha256") or ""),
+                effective=dict(effective),
+            )
+    return load_slo_policy(settings)
+
+
 def evaluate_daily_slo(
     settings: Settings,
     *,
@@ -208,8 +226,9 @@ def evaluate_daily_slo(
     dataset: Mapping[str, Any],
     sync_state: Mapping[str, Any],
     observed: Mapping[str, Any] | None = None,
+    policy: SloPolicy | None = None,
 ) -> dict[str, Any]:
-    policy = load_slo_policy(settings)
+    policy = policy or policy_from_snapshot(settings, _mapping(run_state.get("slo_policy")))
     current = _sync_observed(sync_state)
     current.update(_mapping(observed))
     target = str(plan.get("target_session") or run_state.get("target_session") or "")
@@ -321,9 +340,7 @@ def evaluate_daily_slo(
         )
 
     blocking = [
-        str(item["id"])
-        for item in checks
-        if item["status"] == "FAIL" and item["severity"] == "BLOCKING"
+        str(item["id"]) for item in checks if item["status"] == "FAIL" and item["severity"] == "BLOCKING"
     ]
     degraded = [
         str(item["id"])
@@ -347,16 +364,21 @@ def evaluate_daily_slo(
 
 
 def evaluate_run_completion(settings: Settings, manifest: Mapping[str, Any]) -> dict[str, Any]:
-    policy = load_slo_policy(settings)
+    policy = policy_from_snapshot(settings, _mapping(manifest.get("slo_policy")))
     status = str(manifest.get("status") or "UNKNOWN")
     report = Path(str(manifest.get("report") or ""))
     plan = Path(str(manifest.get("plan") or ""))
     successful = status == "SUCCEEDED"
     artifacts_ok = not successful or (report.is_file() and plan.is_file())
     notification = _step_status(manifest, "notification")
+    notification_ok = notification in {"SUCCEEDED", "SKIPPED"} or (
+        not successful and notification == "BLOCKED"
+    )
     slo_step = _mapping(_mapping(manifest.get("steps")).get("slo_gate"))
     slo_output = _mapping(slo_step.get("output"))
-    policy_bound = bool(slo_output.get("policy_version"))
+    policy_bound = bool(
+        slo_output.get("policy_version") or _mapping(manifest.get("slo_policy")).get("version")
+    )
     checks = [
         _check(
             "research.daily_run_artifacts",
@@ -374,17 +396,19 @@ def evaluate_run_completion(settings: Settings, manifest: Mapping[str, Any]) -> 
             "research.slo_policy_lineage",
             status="PASS" if policy_bound else "FAIL",
             severity="BLOCKING",
-            reason="SLO policy version is bound to the DailyRun" if policy_bound else "SLO policy lineage is missing",
+            reason="SLO policy version is bound to the DailyRun"
+            if policy_bound
+            else "SLO policy lineage is missing",
             action="replay the DailyRun through the SRE-aware entrypoint so policy identity is persisted",
             observed={"policy_version": slo_output.get("policy_version")},
         ),
         _check(
             "platform.notification_delivery",
-            status="PASS" if notification in {"SUCCEEDED", "SKIPPED"} else "FAIL",
+            status="PASS" if notification_ok else "FAIL",
             severity="WARN",
             reason=(
                 "notification path succeeded or was explicitly disabled"
-                if notification in {"SUCCEEDED", "SKIPPED"}
+                if notification_ok
                 else "notification delivery did not complete"
             ),
             action="preserve run state and retry only the notification/delivery path",
@@ -548,11 +572,13 @@ class SreEventStore:
             active[fingerprint] = event
 
         for fingerprint, event in list(active.items()):
-            if event.get("session") != context.get("session") or event.get("provider") != context.get("provider"):
+            if event.get("session") != context.get("session") or event.get("provider") != context.get(
+                "provider"
+            ):
                 continue
             gate = str(event.get("failed_gate") or "")
-            check = current_checks.get(gate)
-            if check is None or check.get("status") != "PASS":
+            current_check = current_checks.get(gate)
+            if current_check is None or current_check.get("status") != "PASS":
                 continue
             appended.append(
                 self.append(
@@ -670,15 +696,21 @@ def collect_sre_status(settings: Settings) -> dict[str, Any]:
     plan_path, plan = _latest_json(settings.paths.state / "daily_sync" / "plans", "plan.json")
     run_path, run = _latest_json(settings.paths.state / "daily_run" / "runs", "manifest.json")
     eval_root = settings.paths.state / "sre" / "evaluations"
-    evaluation_files = [path for path in eval_root.rglob("*.json") if path.is_file()] if eval_root.is_dir() else []
-    evaluation_path = max(evaluation_files, key=lambda path: path.stat().st_mtime_ns) if evaluation_files else None
+    evaluation_files = (
+        [path for path in eval_root.rglob("*.json") if path.is_file()] if eval_root.is_dir() else []
+    )
+    evaluation_path = (
+        max(evaluation_files, key=lambda path: path.stat().st_mtime_ns) if evaluation_files else None
+    )
     evaluation = _safe_json(evaluation_path) if evaluation_path else {}
 
     active_dataset: dict[str, Any] = {}
-    try:
-        registered = DatasetRegistry(settings.registry_path).inspect(settings.qlib_dataset_ref)
-    except (OSError, ValueError):
-        registered = None
+    registered = None
+    if settings.registry_path.is_file():
+        try:
+            registered = DatasetRegistry(settings.registry_path).inspect(settings.qlib_dataset_ref)
+        except (OSError, ValueError):
+            registered = None
     if registered is not None:
         dataset_manifest = _safe_json(registered.manifest_path)
         semantic = _mapping(dataset_manifest.get("semantic_contract"))
@@ -689,14 +721,12 @@ def collect_sre_status(settings: Settings) -> dict[str, Any]:
             "manifest": str(registered.manifest_path),
         }
 
-    capacity = shutil.disk_usage(settings.paths.root if settings.paths.root.exists() else settings.paths.root.parent)
+    capacity = shutil.disk_usage(
+        settings.paths.root if settings.paths.root.exists() else settings.paths.root.parent
+    )
     temp_roots = [settings.paths.state, settings.paths.output]
     orphan_temps = sum(
-        1
-        for root in temp_roots
-        if root.is_dir()
-        for path in root.rglob("*.tmp")
-        if path.is_file()
+        1 for root in temp_roots if root.is_dir() for path in root.rglob("*.tmp") if path.is_file()
     )
     active_alerts: list[dict[str, Any]] = []
     ledger_error = None
@@ -706,7 +736,11 @@ def collect_sre_status(settings: Settings) -> dict[str, Any]:
         ledger_error = str(exc)
 
     missed = _missed_sessions(settings, run)
-    blockers = list(evaluation.get("blocking_reasons", [])) if isinstance(evaluation.get("blocking_reasons"), list) else []
+    blockers = (
+        list(evaluation.get("blocking_reasons", []))
+        if isinstance(evaluation.get("blocking_reasons"), list)
+        else []
+    )
     schedule_cfg = _mapping(policy.effective.get("schedule"))
     if missed and str(schedule_cfg.get("missed_session_severity") or "WARN") == "BLOCKING":
         blockers.append("platform.missed_schedule")
@@ -832,7 +866,11 @@ def run_game_day_fixture(
     }
     resolved_events = store.sync_evaluation(recovered, context=context)
     correlation = next(
-        (event.get("incident_correlation_id") for event in first_events if event.get("event_type") == "ALERT_OPEN"),
+        (
+            event.get("incident_correlation_id")
+            for event in first_events
+            if event.get("event_type") == "ALERT_OPEN"
+        ),
         None,
     )
     resolved_correlation = next(

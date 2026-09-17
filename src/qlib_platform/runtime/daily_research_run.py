@@ -151,7 +151,14 @@ class DailyResearchRun:
         self._save_state(state)
 
     def _block_downstream(self, state: dict[str, Any], after: str, reason: str) -> None:
-        order = ["sync_publish", "dataset_verify", "regression_backtest", "report", "notification"]
+        order = [
+            "sync_publish",
+            "dataset_verify",
+            "slo_gate",
+            "regression_backtest",
+            "report",
+            "notification",
+        ]
         try:
             start = order.index(after) + 1
         except ValueError:
@@ -224,6 +231,22 @@ class DailyResearchRun:
             output=output,
         )
         return output
+
+    def _post_dataset_gate(
+        self,
+        plan: Mapping[str, Any],
+        state: dict[str, Any],
+        dataset: Mapping[str, Any],
+    ) -> tuple[bool, str | None, dict[str, Any]]:
+        return (
+            True,
+            None,
+            {
+                "status": "NOT_CONFIGURED",
+                "allow_downstream": True,
+                "reason": "no post-dataset SLO gate is configured for this runner",
+            },
+        )
 
     def _regression_enabled(self, override: bool | None) -> bool:
         if override is not None:
@@ -500,6 +523,69 @@ class DailyResearchRun:
                     )
                     self._block_downstream(state, "dataset_verify", str(exc))
                     raise
+
+                slo_input = _identity(
+                    {
+                        "target_session": plan["target_session"],
+                        "dataset_version_id": dataset.get("dataset_version_id"),
+                        "dataset_manifest_sha256": dataset.get("dataset_manifest_sha256"),
+                        "slo_policy": state.get("slo_policy"),
+                    },
+                    prefix="slo-",
+                )
+                try:
+                    if self._step_reusable(state, "slo_gate", slo_input):
+                        slo_output = dict(self._step(state, "slo_gate").get("output", {}))
+                        allow_downstream = bool(slo_output.get("allow_downstream", True))
+                        block_reason = str(slo_output.get("block_reason") or "") or None
+                    else:
+                        allow_downstream, block_reason, slo_output = self._post_dataset_gate(
+                            plan, state, dataset
+                        )
+                        slo_output = {
+                            **slo_output,
+                            "allow_downstream": allow_downstream,
+                            "block_reason": block_reason,
+                        }
+                        self._finish_step(
+                            state,
+                            "slo_gate",
+                            status="SUCCEEDED" if allow_downstream else "BLOCKED",
+                            input_hash=slo_input,
+                            output=slo_output,
+                            error=block_reason if not allow_downstream else None,
+                        )
+                except Exception as exc:
+                    self._finish_step(
+                        state,
+                        "slo_gate",
+                        status="FAILED",
+                        input_hash=slo_input,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                    self._block_downstream(state, "slo_gate", str(exc))
+                    raise
+
+                if not allow_downstream:
+                    reason = block_reason or "post-dataset SLO gate blocked downstream research"
+                    state["status"] = "BLOCKED"
+                    state["block_reason"] = reason
+                    state["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
+                    self._block_downstream(state, "slo_gate", reason)
+                    report = self._render_report(plan, state)
+                    manifest = {
+                        **state,
+                        "plan": str(self.sync._plan_path(plan_id)),
+                        "report": str(report),
+                        "dataset": dataset,
+                        "immutable_input": {
+                            "data_release_id": dataset.get("data_release_id"),
+                            "dataset_version_id": dataset.get("dataset_version_id"),
+                            "dataset_manifest_sha256": dataset.get("dataset_manifest_sha256"),
+                        },
+                        "backfill": backfill,
+                    }
+                    return _atomic_json(manifest, self._manifest_path(plan_id))
 
                 regression_enabled = False if backfill else self._regression_enabled(regression)
                 self._run_regression(

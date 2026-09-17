@@ -29,6 +29,7 @@ def _settings(
     environment: str = "dev",
     policy_overrides: dict[str, object] | None = None,
 ) -> Settings:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     config = tmp_path / "pipeline.yaml"
     config.write_text("mode: standalone\n", encoding="utf-8")
     paths = Paths.from_root(tmp_path / "data")
@@ -176,7 +177,7 @@ def test_alert_fingerprint_deduplicates_and_emits_resolved(tmp_path: Path) -> No
         settings,
         plan=_plan(),
         run_state={"run_id": "daily-fixture"},
-        dataset=_dataset(tmp_path),
+        dataset=_dataset(tmp_path, valid_hash=True),
         sync_state=_sync_state(passed=False),
         observed={"required_data_complete": False, "required_quality_passed": True},
     )
@@ -196,7 +197,7 @@ def test_alert_fingerprint_deduplicates_and_emits_resolved(tmp_path: Path) -> No
         settings,
         plan=_plan(),
         run_state={"run_id": "daily-fixture"},
-        dataset=_dataset(tmp_path),
+        dataset=_dataset(tmp_path, valid_hash=True),
         sync_state=_sync_state(),
         observed={"required_data_complete": True, "required_quality_passed": True},
     )
@@ -224,7 +225,9 @@ def test_override_requires_operator_reason_and_future_expiry(tmp_path: Path) -> 
     settings = _settings(tmp_path)
     future = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
     with pytest.raises(ValueError, match="operator"):
-        create_override(settings, gate="platform.capacity", operator="", reason="maintenance", expires_at=future)
+        create_override(
+            settings, gate="platform.capacity", operator="", reason="maintenance", expires_at=future
+        )
     with pytest.raises(ValueError, match="reason"):
         create_override(settings, gate="platform.capacity", operator="alice", reason="", expires_at=future)
     with pytest.raises(ValueError, match="future"):
@@ -352,3 +355,58 @@ def test_game_day_rejects_unknown_scenario(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     with pytest.raises(ValueError, match="unsupported"):
         run_game_day_fixture(settings, scenario="unknown", output=tmp_path / "evidence")
+
+
+def test_base_daily_runner_blocks_regression_when_consumer_gate_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from qlib_platform.runtime import daily_research_run as daily
+
+    settings = _settings(tmp_path)
+
+    class FakeSync:
+        def load_plan(self, plan_id: str):
+            raise AssertionError("load_plan must be patched by the test")
+
+        def _plan_path(self, plan_id: str) -> Path:
+            raise AssertionError("_plan_path must be patched by the test")
+
+        def apply_plan(self, *args, **kwargs):
+            raise AssertionError("apply_plan must be patched by the test")
+
+    monkeypatch.setattr(daily, "PlannedDailySyncService", lambda current: FakeSync())
+    runner = daily.DailyResearchRun(settings)
+    plan = {
+        "plan_id": "plan-fixture",
+        "target_session": "20260916",
+        "config_sha256": "cfg",
+        "status": "PLANNED",
+    }
+    monkeypatch.setattr(runner.sync, "load_plan", lambda plan_id: plan)
+    monkeypatch.setattr(runner.sync, "_plan_path", lambda plan_id: tmp_path / "plan.json")
+    monkeypatch.setattr(runner.sync, "apply_plan", lambda *args, **kwargs: tmp_path / "apply.json")
+    monkeypatch.setattr(daily, "_session_ready", lambda *args, **kwargs: (True, None))
+    monkeypatch.setattr(runner, "_verify_dataset", lambda *args, **kwargs: _dataset(tmp_path))
+    monkeypatch.setattr(
+        runner,
+        "_post_dataset_gate",
+        lambda *args, **kwargs: (
+            False,
+            "data.required_freshness",
+            {"status": "BLOCKED", "policy_version": "slo-fixture"},
+        ),
+    )
+    regression_called = False
+
+    def regression(*args, **kwargs):
+        nonlocal regression_called
+        regression_called = True
+        return {}
+
+    monkeypatch.setattr(runner, "_run_regression", regression)
+    path = runner.execute_plan("plan-fixture")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["status"] == "BLOCKED"
+    assert payload["steps"]["slo_gate"]["status"] == "BLOCKED"
+    assert payload["steps"]["regression_backtest"]["status"] == "BLOCKED"
+    assert regression_called is False
