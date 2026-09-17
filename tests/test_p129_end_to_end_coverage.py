@@ -237,7 +237,22 @@ class _DailyRunSync:
         assert plan_id == self.plan["plan_id"]
         self.apply_calls += 1
         path = self.root / "apply.json"
-        path.write_text('{"status":"SUCCEEDED"}', encoding="utf-8")
+        # Production DailyRun fails closed unless the checkpoint proves the
+        # required freshness and raw-quality gates succeeded.
+        path.write_text(
+            json.dumps(
+                {
+                    "status": "SUCCEEDED",
+                    "updated_at_utc": "2026-09-17T02:30:00+00:00",
+                    "steps": {
+                        "freshness_gate": {"status": "SUCCEEDED"},
+                        "raw_validate": {"status": "SUCCEEDED"},
+                        "qlib_publish": {"status": "SUCCEEDED"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         return path
 
     def _plan_path(self, plan_id: str) -> Path:

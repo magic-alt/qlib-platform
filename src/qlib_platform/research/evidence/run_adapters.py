@@ -367,6 +367,14 @@ def record_daily_run(
         artifacts.append(artifact_record(Path(str(plan_raw)), role="evidence"))
     dataset_meta, dataset_artifacts = _dataset_evidence(str(dataset.get("data_path") or ""))
     artifacts.extend(dataset_artifacts)
+    slo = payload.get("slo", {})
+    slo = slo if isinstance(slo, Mapping) else {}
+    for section in ("pre_research", "completion"):
+        record = slo.get(section, {})
+        record = record if isinstance(record, Mapping) else {}
+        raw_evaluation = record.get("evaluation")
+        if raw_evaluation and Path(str(raw_evaluation)).is_file():
+            artifacts.append(artifact_record(Path(str(raw_evaluation)), role="evidence"))
 
     steps = payload.get("steps", {})
     steps = steps if isinstance(steps, Mapping) else {}
@@ -405,9 +413,12 @@ def record_daily_run(
         "model": lineage.get("model_policy", {}),
         "prediction": {"regression_status": regression.get("status")},
         "portfolio": {"policy": "frozen-regression-baseline"},
-        "market": canonical_business_value(
-            settings.data.get("market_rules", settings.data.get("backtest", {}))
-        ),
+        "market": {
+            "market_rules": canonical_business_value(
+                settings.data.get("market_rules", settings.data.get("backtest", {}))
+            ),
+            "slo_policy": lineage.get("slo_policy", slo.get("policy", {})),
+        },
         "benchmark": lineage.get("benchmark", {}),
     }
     reproduction = frozen_module_command(
@@ -419,7 +430,10 @@ def record_daily_run(
         status=str(payload.get("status") or "FAILED"),
         components=components,
         artifacts=artifacts,
-        gates={"checkpoint_ledger": payload.get("checkpoint_ledger", {})},
+        gates={
+            "checkpoint_ledger": payload.get("checkpoint_ledger", {}),
+            "slo": slo,
+        },
         known_deviations=[
             "daily run is research evidence and does not authorize model promotion or live execution"
         ],

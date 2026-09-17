@@ -19,7 +19,11 @@ def _provider_ready(path: Path) -> bool:
 def collect_status(settings: Settings) -> dict[str, Any]:
     from qlib_platform.auth import local_auth_backend
 
-    registered = DatasetRegistry(settings.registry_path).inspect(settings.qlib_dataset_ref)
+    registered = (
+        DatasetRegistry(settings.registry_path).inspect(settings.qlib_dataset_ref)
+        if settings.registry_path.is_file()
+        else None
+    )
     dataset_path = registered.data_path if registered is not None else settings.qlib_data_uri
     dataset_ready = _provider_ready(dataset_path)
     platform = "not_configured"
@@ -28,6 +32,8 @@ def collect_status(settings: Settings) -> dict[str, Any]:
             platform = "healthy" if settings.platform_release_manifest.is_file() else "unavailable"
         except (FileNotFoundError, ValueError):
             platform = "unavailable"
+    from qlib_platform.runtime.sre import collect_sre_status
+
     return {
         "mode": settings.mode,
         "configuration": "ready",
@@ -44,6 +50,7 @@ def collect_status(settings: Settings) -> dict[str, Any]:
         "unavailableCapabilities": (
             ["lean_validation", "qmt", "oms", "broker_execution"] if platform != "healthy" else []
         ),
+        "sre": collect_sre_status(settings),
     }
 
 
@@ -59,5 +66,10 @@ def render_status(payload: dict[str, Any]) -> str:
         f"Dataset           {dataset['status'].upper()}",
         f"TuShare           {payload['tushare'].upper()}",
         f"Platform          {payload['platform'].upper()}",
+        f"SRE               {payload['sre']['status']}",
+        f"Recent session    {payload['sre'].get('recent_session') or 'N/A'}",
+        f"Active release    {payload['sre'].get('active_release') or 'N/A'}",
+        f"SLO version       {payload['sre']['policy'].get('version') or 'N/A'}",
+        f"SRE blockers      {', '.join(payload['sre'].get('blocking_reasons', [])) or 'none'}",
     ]
     return "\n".join(lines)

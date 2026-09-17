@@ -17,6 +17,14 @@ from qlib_platform.data.audited_daily_sync import (
 )
 from qlib_platform.data.store import sha256_file
 from qlib_platform.runtime import daily_research_run as base
+from qlib_platform.runtime.sre import (
+    SreEventStore,
+    evaluate_daily_slo,
+    evaluate_run_completion,
+    load_slo_policy,
+    policy_from_snapshot,
+    write_slo_evaluation,
+)
 from qlib_platform.settings import Settings
 
 # Compatibility re-export for the PR #138 production module surface and tests.
@@ -104,6 +112,7 @@ class DailyResearchRun(base.DailyResearchRun):
         state.setdefault("config_sha256", str(plan.get("config_sha256") or ""))
         state.setdefault("provider_watermarks", plan.get("watermarks", {}))
         state.setdefault("endpoint_gaps", plan.get("endpoint_gaps", {}))
+        state.setdefault("slo_policy", load_slo_policy(self.settings).snapshot())
         # Keep the persisted state schema at the base runner's 1.0 so PR #138 state
         # remains resumable. The strengthened audit semantics are versioned separately.
         state["daily_run_contract_version"] = DAILY_RUN_CONTRACT_VERSION
@@ -250,6 +259,48 @@ class DailyResearchRun(base.DailyResearchRun):
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
+    def _post_dataset_gate(
+        self,
+        plan: Mapping[str, Any],
+        state: dict[str, Any],
+        dataset: Mapping[str, Any],
+    ) -> tuple[bool, str | None, dict[str, Any]]:
+        policy = policy_from_snapshot(self.settings, state.get("slo_policy"))
+        sync_state = self._sync_apply_state(state)
+        evaluation = evaluate_daily_slo(
+            self.settings,
+            plan=plan,
+            run_state=state,
+            dataset=dataset,
+            sync_state=sync_state,
+            policy=policy,
+        )
+        evaluation_path = write_slo_evaluation(self.settings, evaluation)
+        source = self.settings.data.get("data_source", {})
+        source = source if isinstance(source, Mapping) else {}
+        provider = str(source.get("kind") or source.get("provider") or "unknown")
+        context = {
+            "run_id": state.get("run_id"),
+            "session": plan.get("target_session"),
+            "release": dataset.get("data_release_id"),
+            "provider": provider,
+        }
+        events = SreEventStore(self.settings.paths.state).sync_evaluation(evaluation, context=context)
+        blocking = [str(value) for value in evaluation.get("blocking_reasons", [])]
+        reason = ", ".join(blocking) if blocking else None
+        return (
+            bool(evaluation.get("allow_downstream")),
+            reason,
+            {
+                "status": evaluation.get("status"),
+                "policy_version": policy.version,
+                "profile": policy.profile,
+                "evaluation": str(evaluation_path),
+                "blocking_reasons": blocking,
+                "alert_event_ids": [event.get("event_id") for event in events],
+            },
+        )
+
     def _business_run_id(self, plan: Mapping[str, Any], state: Mapping[str, Any]) -> str:
         dataset = self._step(state, "dataset_verify").get("output", {})
         dataset = dataset if isinstance(dataset, Mapping) else {}
@@ -269,6 +320,7 @@ class DailyResearchRun(base.DailyResearchRun):
         return base._identity(
             {
                 "contract": DAILY_RUN_CONTRACT_VERSION,
+                "slo_policy_version": dict(state.get("slo_policy") or {}).get("version"),
                 "target_session": plan.get("target_session"),
                 "mode": plan.get("mode"),
                 "config_sha256": state.get("config_sha256") or plan.get("config_sha256"),
@@ -319,6 +371,7 @@ class DailyResearchRun(base.DailyResearchRun):
             "sync_plan_id": plan.get("plan_id"),
             "config_sha256": state.get("config_sha256") or plan.get("config_sha256"),
             "code": dict(state.get("code") or {}),
+            "slo_policy": dict(state.get("slo_policy") or {}),
             "provider": {
                 "watermarks_at_plan": state.get("provider_watermarks", {}),
                 "endpoint_gaps_at_plan": state.get("endpoint_gaps", {}),
@@ -417,6 +470,10 @@ class DailyResearchRun(base.DailyResearchRun):
                 + "`\n"
             )
             handle.write(f"- Benchmark: `{lineage['benchmark']['symbol'] or 'N/A'}`\n")
+            handle.write(f"- SLO policy: `{lineage['slo_policy'].get('version') or 'N/A'}`\n")
+            slo_output = self._step(state, "slo_gate").get("output", {})
+            slo_output = slo_output if isinstance(slo_output, Mapping) else {}
+            handle.write(f"- SLO status: `{slo_output.get('status') or 'N/A'}`\n")
             handle.write("- Automatic model selection/promotion: `false/false`\n")
         return path
 
@@ -427,6 +484,34 @@ class DailyResearchRun(base.DailyResearchRun):
         payload["business_run_id"] = self._business_run_id(plan, payload)
         payload["lineage"] = self._lineage(plan, payload)
         payload["checkpoint_ledger"] = self._checkpoint_ledger(plan, payload)
+        completion = evaluate_run_completion(self.settings, payload)
+        completion_path = write_slo_evaluation(self.settings, completion)
+        source = self.settings.data.get("data_source", {})
+        source = source if isinstance(source, Mapping) else {}
+        dataset = payload.get("dataset", {})
+        dataset = dataset if isinstance(dataset, Mapping) else {}
+        events = SreEventStore(self.settings.paths.state).sync_evaluation(
+            completion,
+            context={
+                "run_id": payload.get("run_id"),
+                "session": payload.get("target_session"),
+                "release": dataset.get("data_release_id"),
+                "provider": str(source.get("kind") or source.get("provider") or "unknown"),
+            },
+        )
+        slo_step = self._step(payload, "slo_gate")
+        pre_research = slo_step.get("output", {})
+        payload["slo"] = {
+            "policy": payload.get("slo_policy", {}),
+            "pre_research": dict(pre_research) if isinstance(pre_research, Mapping) else {},
+            "completion": {
+                "status": completion.get("status"),
+                "policy_version": completion.get("policy_version"),
+                "evaluation": str(completion_path),
+                "blocking_reasons": completion.get("blocking_reasons", []),
+                "alert_event_ids": [event.get("event_id") for event in events],
+            },
+        }
         return base._atomic_json(payload, path)
 
     def execute_plan(

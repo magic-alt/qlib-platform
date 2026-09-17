@@ -119,6 +119,7 @@ nav:
       - Operations Runbook: OPERATIONS_RUNBOOK.md
       - Production Config Ratchet: operations/production_config_ratchet.md
       - Daily Research: operations/daily-research.md
+      - Research SRE SLO & Game Day: operations/sre-slo-and-game-day.md
       - Health & Observability: operations/health-and-observability.md
       - Outbox Delivery: operations/outbox.md
       - Recovery: operations/recovery.md

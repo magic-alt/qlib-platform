@@ -1,0 +1,62 @@
+schema_version: qlib-platform.slo-policy.v1
+
+# SLO policy is content-addressed at runtime. The selected profile plus any
+# config-level policy_overrides produce the immutable policy version recorded in
+# DailyRun evidence. Numeric production thresholds intentionally remain unset
+# until calibrated from observed provider/update/runtime distributions.
+profiles:
+  dev:
+    freshness:
+      deadline_minutes: null
+      require_calibrated_deadline: false
+    quality:
+      required_fail_blocks: true
+    artifact_verification:
+      required: false
+    schedule:
+      missed_session_severity: WARN
+    capacity:
+      min_free_bytes: null
+
+  benchmark:
+    freshness:
+      deadline_minutes: null
+      require_calibrated_deadline: false
+    quality:
+      required_fail_blocks: true
+    artifact_verification:
+      required: true
+    schedule:
+      missed_session_severity: BLOCKING
+    capacity:
+      min_free_bytes: null
+
+  prod:
+    freshness:
+      deadline_minutes: null
+      require_calibrated_deadline: true
+    quality:
+      required_fail_blocks: true
+    artifact_verification:
+      required: true
+    schedule:
+      missed_session_severity: BLOCKING
+    capacity:
+      min_free_bytes: null
+
+alerting:
+  severities:
+    - INFO
+    - WARN
+    - BLOCKING
+  dedupe_scope:
+    - provider
+    - session
+    - failed_gate
+  resolved_events: true
+  require_first_action: true
+
+overrides:
+  require_operator: true
+  require_reason: true
+  require_expiry: true

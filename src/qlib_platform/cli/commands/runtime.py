@@ -16,6 +16,37 @@ def register(sub) -> None:
     sub.add_parser("model-status")
     status = sub.add_parser("status")
     status.add_argument("--json", action="store_true", dest="as_json")
+    doctor = sub.add_parser("doctor")
+    doctor.add_argument("--json", action="store_true", dest="as_json")
+    sre = sub.add_parser("sre")
+    sre_sub = sre.add_subparsers(dest="sre_command", required=True)
+    sre_status = sre_sub.add_parser("status")
+    sre_status.add_argument("--json", action="store_true", dest="as_json")
+    sre_override = sre_sub.add_parser("override")
+    sre_override.add_argument("--gate", required=True)
+    sre_override.add_argument("--operator", required=True)
+    sre_override.add_argument("--reason", required=True)
+    sre_override.add_argument("--expires-at", required=True)
+    sre_override.add_argument("--session")
+    sre_override.add_argument("--release")
+    sre_game_day = sre_sub.add_parser("game-day")
+    sre_game_day.add_argument(
+        "--scenario",
+        required=True,
+        choices=[
+            "provider-late",
+            "provider-429",
+            "schema-drift",
+            "endpoint-missing",
+            "qlib-corrupt",
+            "disk-full",
+            "process-kill",
+            "pointer-crash",
+            "alert-destination-unavailable",
+            "long-backfill",
+        ],
+    )
+    sre_game_day.add_argument("--output-dir", required=True)
     health = sub.add_parser("health")
     health.add_argument("kind", choices=["live", "ready", "dependencies"])
     live = sub.add_parser("live-inference")

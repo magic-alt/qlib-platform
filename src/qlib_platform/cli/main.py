@@ -60,6 +60,49 @@ def main() -> None:
         payload = collect_status(status_settings)
         print(json.dumps(payload, ensure_ascii=False) if args.as_json else render_status(payload))
         return
+    if args.command in {"doctor", "sre"}:
+        from qlib_platform.runtime.sre import (
+            collect_sre_status,
+            create_override,
+            render_sre_status,
+            run_game_day_fixture,
+        )
+
+        sre_settings = Settings.load(args.config, create_dirs=False)
+        if args.command == "doctor" or args.sre_command == "status":
+            payload = collect_sre_status(sre_settings)
+            print(json.dumps(payload, ensure_ascii=False) if args.as_json else render_sre_status(payload))
+            return
+        if args.sre_command == "override":
+            scope = {
+                key: value
+                for key, value in {"session": args.session, "release": args.release}.items()
+                if value
+            }
+            override_settings = Settings.load(args.config, create_dirs=True)
+            print(
+                json.dumps(
+                    create_override(
+                        override_settings,
+                        gate=args.gate,
+                        operator=args.operator,
+                        reason=args.reason,
+                        expires_at=args.expires_at,
+                        scope=scope,
+                    ),
+                    ensure_ascii=False,
+                )
+            )
+            return
+        if args.sre_command == "game-day":
+            fixture_settings = Settings.load(args.config, create_dirs=True)
+            path = run_game_day_fixture(
+                fixture_settings,
+                scenario=args.scenario,
+                output=Path(args.output_dir).expanduser().resolve(),
+            )
+            print(json.dumps({"evidence": str(path)}, ensure_ascii=False))
+            return
     if args.command == "health":
         from qlib_platform.runtime.health import dependency_health, live_health, ready_health
 
