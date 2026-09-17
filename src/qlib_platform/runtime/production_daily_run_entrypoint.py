@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from qlib_platform.research.run_adapters import record_daily_run
+from qlib_platform.research.evidence.run_adapters import record_daily_run
 from qlib_platform.runtime import production_daily_run
 
 
@@ -37,11 +37,11 @@ class ManifestDailyResearchRun(_ProductionDailyRun):
 
 def main() -> int:
     original = production_daily_run.DailyResearchRun
-    production_daily_run.DailyResearchRun = ManifestDailyResearchRun
+    setattr(production_daily_run, "DailyResearchRun", ManifestDailyResearchRun)
     try:
         return production_daily_run.main()
     finally:
-        production_daily_run.DailyResearchRun = original
+        setattr(production_daily_run, "DailyResearchRun", original)
 
 
 if __name__ == "__main__":

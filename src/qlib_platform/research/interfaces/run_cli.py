@@ -4,7 +4,7 @@ import argparse
 import json
 from typing import Sequence
 
-from qlib_platform.research.run_manifest import inspect_run, reproduce_run
+from qlib_platform.research.evidence.run_manifest import inspect_run, reproduce_run
 from qlib_platform.runtime.runtime_resources import resource_argument
 from qlib_platform.settings import Settings
 

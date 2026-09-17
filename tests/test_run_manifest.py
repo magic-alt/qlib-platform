@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from qlib_platform.research.run_adapters import (
+from qlib_platform.research.evidence.run_adapters import (
     record_daily_run,
     record_official_parity_run,
     record_quickstart_run,
 )
-from qlib_platform.research.run_manifest import (
+from qlib_platform.research.evidence.run_manifest import (
     RUN_MANIFEST_SCHEMA,
     artifact_record,
     build_run_manifest,
@@ -193,12 +193,16 @@ def test_failed_and_rejected_use_the_same_manifest_schema() -> None:
 
 def test_verify_only_never_falls_back_to_latest(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
-    manifest = build_run_manifest(source_kind="test", status="FAILED", components={
-        **_components(),
-        "code": {},
-        "resolved_config": {},
-        "environment": {},
-    })
+    manifest = build_run_manifest(
+        source_kind="test",
+        status="FAILED",
+        components={
+            **_components(),
+            "code": {},
+            "resolved_config": {},
+            "environment": {},
+        },
+    )
     write_run_manifest(manifest, local_root=tmp_path / "run", store=store_root(settings))
     result = reproduce_run(settings, manifest["run_id"], execute=False)
     assert result["mode"] == "verify-only"
@@ -259,7 +263,15 @@ def test_quickstart_official_and_daily_use_same_manifest_contract(tmp_path: Path
     official_root = tmp_path / "official"
     official_root.mkdir()
     (official_root / "plan.json").write_text(
-        json.dumps({"dataset": {"provider_uri": str(dataset_root), "dataset_version_id": "dv1", "data_release_id": "dr1"}}),
+        json.dumps(
+            {
+                "dataset": {
+                    "provider_uri": str(dataset_root),
+                    "dataset_version_id": "dv1",
+                    "data_release_id": "dr1",
+                }
+            }
+        ),
         encoding="utf-8",
     )
     (official_root / "parity_report.json").write_text(
@@ -301,7 +313,11 @@ def test_quickstart_official_and_daily_use_same_manifest_contract(tmp_path: Path
                     "data_release_id": "dr1",
                     "dataset_version_id": "dv1",
                 },
-                "dataset": {"data_path": str(dataset_root), "dataset_version_id": "dv1", "data_release_id": "dr1"},
+                "dataset": {
+                    "data_path": str(dataset_root),
+                    "dataset_version_id": "dv1",
+                    "data_release_id": "dr1",
+                },
                 "lineage": {
                     "target_session": "20260916",
                     "provider": {"watermarks_at_plan": {"daily": "20260916"}},
@@ -317,12 +333,15 @@ def test_quickstart_official_and_daily_use_same_manifest_contract(tmp_path: Path
     )
     daily_archive = record_daily_run(settings, daily_manifest, argv=["--resume", "plan-fixture"])
 
-    manifests = [json.loads(path.read_text(encoding="utf-8")) for path in (
-        quick_archive, official_archive, daily_archive
-    )]
+    manifests = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (quick_archive, official_archive, daily_archive)
+    ]
     assert {item["run_schema_version"] for item in manifests} == {RUN_MANIFEST_SCHEMA}
     assert {item["data"]["dataset_version_id"] for item in manifests} == {"dv1"}
     assert {item["data"]["data_release_id"] for item in manifests} == {"dr1"}
     assert {item["source_kind"] for item in manifests} == {
-        "governed-quickstart", "official-parity", "production-daily-run"
+        "governed-quickstart",
+        "official-parity",
+        "production-daily-run",
     }

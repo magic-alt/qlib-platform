@@ -22,10 +22,29 @@ RUN_MANIFEST_STORE = "run_manifests"
 
 _SECRET_MARKERS = ("token", "secret", "password", "credential", "api_key", "apikey")
 _NON_SEMANTIC_KEYS = {
-    "title", "display_title", "displayName", "description", "notes", "comment", "comments",
-    "dashboard", "dashboardError", "log_level", "logLevel", "verbose", "verbose_child_output",
-    "output", "output_dir", "localPath", "path", "createdAtUtc", "created_at_utc",
-    "startedAtUtc", "finishedAtUtc", "updatedAtUtc", "updated_at_utc",
+    "title",
+    "display_title",
+    "displayName",
+    "description",
+    "notes",
+    "comment",
+    "comments",
+    "dashboard",
+    "dashboardError",
+    "log_level",
+    "logLevel",
+    "verbose",
+    "verbose_child_output",
+    "output",
+    "output_dir",
+    "localPath",
+    "path",
+    "createdAtUtc",
+    "created_at_utc",
+    "startedAtUtc",
+    "finishedAtUtc",
+    "updatedAtUtc",
+    "updated_at_utc",
 }
 _VOLATILE_MANIFEST_KEYS = {"created_at_utc", "manifest_digest", "local_path", "uri"}
 _BUSINESS_OUTPUT_ROLES = {"model", "prediction", "selection", "portfolio", "backtest"}
@@ -120,7 +139,7 @@ def config_identity(settings: Settings) -> dict[str, Any]:
 
 
 def project_git_identity() -> dict[str, Any]:
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[4]
     payload = dict(git_revision(root))
     payload["dirty_policy"] = "clean-required-for-deterministic-replay"
     return payload
@@ -247,10 +266,24 @@ def build_run_manifest(
     definition = {
         "run_schema_version": RUN_MANIFEST_SCHEMA,
         "source_kind": source_kind,
-        **{key: components.get(key, {}) for key in (
-            "code", "resolved_config", "environment", "data", "universe", "feature", "label",
-            "split", "model", "prediction", "portfolio", "market", "benchmark"
-        )},
+        **{
+            key: components.get(key, {})
+            for key in (
+                "code",
+                "resolved_config",
+                "environment",
+                "data",
+                "universe",
+                "feature",
+                "label",
+                "split",
+                "model",
+                "prediction",
+                "portfolio",
+                "market",
+                "benchmark",
+            )
+        },
         "stage_identities": stage_ids,
     }
     definition_id = f"rundef-{canonical_business_sha256(definition)[:32]}"
@@ -259,9 +292,12 @@ def build_run_manifest(
         for item in normalized_artifacts
         if item.get("role") in _BUSINESS_OUTPUT_ROLES
     ]
-    run_id = "run-" + canonical_business_sha256(
-        {"run_definition_id": definition_id, "business_outputs": business_outputs}
-    )[:32]
+    run_id = (
+        "run-"
+        + canonical_business_sha256(
+            {"run_definition_id": definition_id, "business_outputs": business_outputs}
+        )[:32]
+    )
     manifest: dict[str, Any] = {
         "run_schema_version": RUN_MANIFEST_SCHEMA,
         "run_id": run_id,
@@ -270,10 +306,24 @@ def build_run_manifest(
         "source_kind": source_kind,
         "status": status,
         "created_at_utc": created_at_utc or _utc_now(),
-        **{key: components.get(key, {}) for key in (
-            "code", "resolved_config", "environment", "data", "universe", "feature", "label",
-            "split", "model", "prediction", "portfolio", "market", "benchmark"
-        )},
+        **{
+            key: components.get(key, {})
+            for key in (
+                "code",
+                "resolved_config",
+                "environment",
+                "data",
+                "universe",
+                "feature",
+                "label",
+                "split",
+                "model",
+                "prediction",
+                "portfolio",
+                "market",
+                "benchmark",
+            )
+        },
         "stage_identities": stage_ids,
         "artifacts": normalized_artifacts,
         "gates": canonical_business_value(dict(gates or {})),
@@ -307,7 +357,9 @@ def write_run_manifest(manifest: Mapping[str, Any], *, local_root: Path, store: 
     archive.parent.mkdir(parents=True, exist_ok=True)
     if archive.is_file():
         existing = json.loads(archive.read_text(encoding="utf-8"))
-        if not isinstance(existing, Mapping) or existing.get("manifest_digest") != payload.get("manifest_digest"):
+        if not isinstance(existing, Mapping) or existing.get("manifest_digest") != payload.get(
+            "manifest_digest"
+        ):
             raise ValueError(f"immutable run manifest collision: {run_id}")
         return archive
     temporary = archive.with_suffix(".json.tmp")
@@ -362,7 +414,9 @@ def verify_run_manifest(path: str | Path) -> dict[str, Any]:
             continue
         metadata = canonical_business_value(item.get("semantic_metadata", {}))
         if _sha256_json(metadata) != item.get("semantic_sha256"):
-            errors.append({"location": str(artifact), "error": "artifact semantic metadata checksum mismatch"})
+            errors.append(
+                {"location": str(artifact), "error": "artifact semantic metadata checksum mismatch"}
+            )
             continue
         verified.append(str(artifact))
     return {
@@ -400,9 +454,11 @@ def verify_runtime_context(settings: Settings, manifest: Mapping[str, Any]) -> d
     expected_env_hash = str(expected_env.get("fingerprint") or "")
     if expected_env_hash and current_env["fingerprint"] != expected_env_hash:
         errors.append({"location": "environment", "error": "dependency environment fingerprint mismatch"})
-    return {"passed": not errors, "errors": errors, "current": {
-        "resolved_config": current_config, "code": current_code, "environment": current_env
-    }}
+    return {
+        "passed": not errors,
+        "errors": errors,
+        "current": {"resolved_config": current_config, "code": current_code, "environment": current_env},
+    }
 
 
 def compare_run_manifests(original: Mapping[str, Any], reproduced: Mapping[str, Any]) -> dict[str, Any]:
@@ -418,11 +474,13 @@ def compare_run_manifests(original: Mapping[str, Any], reproduced: Mapping[str, 
             }
     original_artifacts = {
         (str(item.get("role")), str(item.get("name"))): str(item.get("content_sha256"))
-        for item in original.get("artifacts", []) if isinstance(item, Mapping)
+        for item in original.get("artifacts", [])
+        if isinstance(item, Mapping)
     }
     reproduced_artifacts = {
         (str(item.get("role")), str(item.get("name"))): str(item.get("content_sha256"))
-        for item in reproduced.get("artifacts", []) if isinstance(item, Mapping)
+        for item in reproduced.get("artifacts", [])
+        if isinstance(item, Mapping)
     }
     artifact_diff = []
     for key in sorted(set(original_artifacts) | set(reproduced_artifacts)):
@@ -502,12 +560,11 @@ def execute_reproduction(settings: Settings, manifest: Mapping[str, Any]) -> dic
     if not isinstance(raw, list) or not raw:
         raise ValueError("run manifest has no executable reproduction command")
     output = settings.paths.output / "reproductions" / str(manifest["run_id"])
-    command = [
-        str(item).replace("{python}", sys.executable).replace("{output}", str(output))
-        for item in raw
-    ]
-    repository = Path(__file__).resolve().parents[3]
-    cwd = Path(str(contract.get("working_directory") or "{repository}").replace("{repository}", str(repository)))
+    command = [str(item).replace("{python}", sys.executable).replace("{output}", str(output)) for item in raw]
+    repository = Path(__file__).resolve().parents[4]
+    cwd = Path(
+        str(contract.get("working_directory") or "{repository}").replace("{repository}", str(repository))
+    )
     completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
     reproduced_path = output / RUN_MANIFEST_FILE
     diff = None
@@ -534,10 +591,14 @@ def reproduce_run(settings: Settings, run_id: str, *, execute: bool) -> dict[str
         return {"mode": "verify-only", "verification": verification, "runtime_context": runtime}
     if not verification["passed"] or not runtime["passed"]:
         return {
-            "mode": "execute", "status": "VERIFY_FAILED",
-            "verification": verification, "runtime_context": runtime,
+            "mode": "execute",
+            "status": "VERIFY_FAILED",
+            "verification": verification,
+            "runtime_context": runtime,
         }
     return {
-        "mode": "execute", "verification": verification, "runtime_context": runtime,
+        "mode": "execute",
+        "verification": verification,
+        "runtime_context": runtime,
         "execution": execute_reproduction(settings, manifest),
     }

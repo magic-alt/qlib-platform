@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from qlib_platform.research.run_adapters import record_official_parity_run
+from qlib_platform.research.evidence.run_adapters import record_official_parity_run
 from qlib_platform.research.workflow import official_parity
 from qlib_platform.settings import Settings
 

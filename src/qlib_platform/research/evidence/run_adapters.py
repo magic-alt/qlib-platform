@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from qlib_platform.research.run_manifest import (
+from qlib_platform.research.evidence.run_manifest import (
     artifact_record,
     build_run_manifest,
     canonical_business_value,
@@ -51,11 +51,17 @@ def _artifact_from_manifest(path: Path) -> tuple[list[dict[str, Any]], list[dict
     payload = _load_json(path)
     if not payload:
         return [], []
-    artifacts = [artifact_record(path, role="manifest", semantic_metadata={
-        "schemaVersion": payload.get("schemaVersion") or payload.get("schema_version"),
-        "runId": payload.get("runId") or payload.get("run_id"),
-        "status": payload.get("status"),
-    })]
+    artifacts = [
+        artifact_record(
+            path,
+            role="manifest",
+            semantic_metadata={
+                "schemaVersion": payload.get("schemaVersion") or payload.get("schema_version"),
+                "runId": payload.get("runId") or payload.get("run_id"),
+                "status": payload.get("status"),
+            },
+        )
+    ]
     for item in payload.get("artifacts", []):
         if not isinstance(item, Mapping):
             continue
@@ -125,11 +131,17 @@ def record_quickstart_run(
     artifacts: list[dict[str, Any]] = []
     matrix_path = root / "research_matrix.json"
     if matrix_path.is_file():
-        artifacts.append(artifact_record(matrix_path, role="evidence", semantic_metadata={
-            "schemaVersion": plan.get("schemaVersion"),
-            "researchId": plan.get("researchId"),
-            "status": plan.get("status"),
-        }))
+        artifacts.append(
+            artifact_record(
+                matrix_path,
+                role="evidence",
+                semantic_metadata={
+                    "schemaVersion": plan.get("schemaVersion"),
+                    "researchId": plan.get("researchId"),
+                    "status": plan.get("status"),
+                },
+            )
+        )
     state_path = root / "run_state.json"
     if state_path.is_file():
         artifacts.append(artifact_record(state_path, role="evidence"))
@@ -210,9 +222,7 @@ def record_quickstart_run(
         },
         "portfolio": dict(portfolio),
         "market": market
-        or canonical_business_value(
-            settings.data.get("market_rules", settings.data.get("backtest", {}))
-        ),
+        or canonical_business_value(settings.data.get("market_rules", settings.data.get("backtest", {}))),
         "benchmark": {"identity": portfolio.get("benchmark")},
     }
     immutable_dataset = str(components["data"].get("dataset_version_id") or "") or None

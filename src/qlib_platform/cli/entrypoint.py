@@ -31,7 +31,7 @@ def production_plan(config: str) -> dict[str, object]:
 def main() -> None:
     argv = sys.argv[1:]
     if "run" in argv:
-        from qlib_platform.research.run_cli import main as run_main
+        from qlib_platform.research.interfaces.run_cli import main as run_main
 
         code = run_main(argv)
         if code:

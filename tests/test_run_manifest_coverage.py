@@ -10,13 +10,13 @@ from typing import Any
 import pytest
 
 import qlib_platform.cli.entrypoint as cli_entrypoint
-import qlib_platform.research.run_adapters as run_adapters
-import qlib_platform.research.run_cli as run_cli
-import qlib_platform.research.run_manifest as run_manifest
+import qlib_platform.research.evidence.run_adapters as run_adapters
+import qlib_platform.research.interfaces.run_cli as run_cli
+import qlib_platform.research.evidence.run_manifest as run_manifest
 import qlib_platform.research.workflow.governed_entrypoint as governed_entrypoint
 import qlib_platform.research.workflow.official_parity_entrypoint as parity_entrypoint
 import qlib_platform.runtime.production_daily_run_entrypoint as daily_entrypoint
-from qlib_platform.research.run_manifest import (
+from qlib_platform.research.evidence.run_manifest import (
     artifact_record,
     build_run_manifest,
     compare_run_manifests,
@@ -93,9 +93,7 @@ def _write_dataset(root: Path) -> None:
 
 
 def _recompute_digest(payload: dict[str, Any]) -> None:
-    payload["manifest_digest"] = run_manifest._sha256_json(
-        run_manifest._manifest_digest_payload(payload)
-    )
+    payload["manifest_digest"] = run_manifest._sha256_json(run_manifest._manifest_digest_payload(payload))
 
 
 def test_identity_helpers_cover_secret_lists_paths_packages_and_artifact_roles(
@@ -399,12 +397,7 @@ def test_inspect_and_run_cli_status_codes(
     monkeypatch.setattr(run_cli.Settings, "load", lambda *args, **kwargs: settings)
     assert run_cli.main(["--config", "ignored", "run", "inspect", manifest["run_id"]]) == 0
     assert manifest["run_id"] in capsys.readouterr().out
-    assert (
-        run_cli.main(
-            ["--config", "ignored", "run", "reproduce", manifest["run_id"], "--verify-only"]
-        )
-        == 0
-    )
+    assert run_cli.main(["--config", "ignored", "run", "reproduce", manifest["run_id"], "--verify-only"]) == 0
 
     monkeypatch.setattr(
         run_cli,
@@ -414,12 +407,7 @@ def test_inspect_and_run_cli_status_codes(
             "runtime_context": {"passed": True},
         },
     )
-    assert (
-        run_cli.main(
-            ["--config", "ignored", "run", "reproduce", manifest["run_id"], "--verify-only"]
-        )
-        == 2
-    )
+    assert run_cli.main(["--config", "ignored", "run", "reproduce", manifest["run_id"], "--verify-only"]) == 2
     monkeypatch.setattr(
         run_cli,
         "reproduce_run",
@@ -429,12 +417,7 @@ def test_inspect_and_run_cli_status_codes(
             "execution": {"status": "EXECUTION_FAILED"},
         },
     )
-    assert (
-        run_cli.main(
-            ["--config", "ignored", "run", "reproduce", manifest["run_id"], "--execute"]
-        )
-        == 2
-    )
+    assert run_cli.main(["--config", "ignored", "run", "reproduce", manifest["run_id"], "--execute"]) == 2
 
 
 def test_adapter_helpers_and_quickstart_nested_artifacts(tmp_path: Path) -> None:
@@ -626,9 +609,7 @@ def test_official_and_daily_adapters_cover_optional_artifacts_and_regression_chi
         ),
         encoding="utf-8",
     )
-    daily_archive = run_adapters.record_daily_run(
-        settings, daily_manifest, argv=["--resume", "plan-1"]
-    )
+    daily_archive = run_adapters.record_daily_run(settings, daily_manifest, argv=["--resume", "plan-1"])
     daily_payload = json.loads(daily_archive.read_text(encoding="utf-8"))
     assert daily_payload["status"] == "SUCCEEDED"
     assert daily_payload["prediction"]["regression_status"] == "SUCCEEDED"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from qlib_platform.research.run_adapters import record_quickstart_run
+from qlib_platform.research.evidence.run_adapters import record_quickstart_run
 from qlib_platform.research.workflow import governed_quickstart as governed
 from qlib_platform.research.workflow import quickstart as legacy
 from qlib_platform.settings import Settings
