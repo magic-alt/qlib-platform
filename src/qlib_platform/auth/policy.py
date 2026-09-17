@@ -13,6 +13,8 @@ _PROJECT_ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "owner": frozenset({"read", "write", "run", "manage", "share"}),
     "maintainer": frozenset({"read", "write", "run", "share"}),
     "researcher": frozenset({"read", "write", "run"}),
+    "operator": frozenset({"read", "run"}),
+    "approver": frozenset({"read"}),
     "viewer": frozenset({"read"}),
 }
 
@@ -50,7 +52,9 @@ class ResearchAccessPolicy:
     """Deny-by-default RBAC/resource-scope policy for research management only.
 
     Model-promotion authority and broker/execution permissions are intentionally outside this
-    policy. Even a global ``admin`` Principal cannot acquire those permissions here.
+    policy. Even a global ``admin`` Principal cannot acquire those permissions here. Institutional
+    control-plane actions use their own explicit action policy rather than overloading research
+    read/write permissions.
     """
 
     def __init__(self, facts: ResearchAccessFacts):
