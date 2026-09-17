@@ -80,6 +80,8 @@ Local data / Qlib provider / DataRelease
        research + audit artifacts
 ```
 
+Standalone/local research remains the default. For team deployments, an **optional institutional control plane** adds project isolation, RBAC/approval, secret references, entitlement checks, content-addressed object/metadata backends, resource quotas and scheduler-neutral execution. It dispatches versioned research descriptors to the same Research Engine; it does not duplicate Qlib logic and it does not acquire broker/OMS/live-order authority. See [Institutional Control Plane](docs/institutional_control_plane.md).
+
 Detailed ownership and identity rules live in [Architecture](docs/architecture.md), [Architecture Boundary](docs/architecture_boundary.md) and [Identity and Lineage](docs/identity_and_lineage.md).
 
 ---
@@ -312,6 +314,7 @@ Normal standalone users should not need them.
 | **Backtesting** | Qlib research backtest, simulated fills, strategy audit and reports |
 | **Portfolio construction** | TopK dropout, rank buffer and target-portfolio generation |
 | **Artifact lineage** | immutable manifests, PredictionSnapshots, validation results and portable evidence |
+| **Institutional control plane (optional)** | project isolation, RBAC/approval, secret refs, entitlement, object/metadata backends and idempotent executors |
 | **Operations** | health checks, runtime probes, recovery and observability |
 
 ### Installation profiles
@@ -338,7 +341,7 @@ Normal standalone users should not need them.
 | `configs/pipeline_tushare_dev.yaml` | TuShare development | No | Yes |
 | `configs/pipeline_lean_mysql.yaml` | migration compatibility | legacy source | No |
 
-`pipeline.standalone.yaml` is the normal local profile. Other YAML profiles are advanced overrides, not required onboarding configuration.
+`pipeline.standalone.yaml` is the normal local profile. Other YAML profiles are advanced overrides, not required onboarding configuration. The optional `qlib_platform.control_plane` library layer is orthogonal to these profiles and is not required for standalone Qlib execution.
 
 ---
 
@@ -349,6 +352,7 @@ Normal standalone users should not need them.
 | [Local Research Quickstart](docs/local_research_quickstart.md) | zero-config local data → Alpha158 → model → backtest → walk-forward |
 | [CLI Reference](docs/cli_reference.md) | exact primitive syntax and side effects |
 | [Architecture](docs/architecture.md) | system layers and failure model |
+| [Institutional Control Plane](docs/institutional_control_plane.md) | optional multi-user isolation, backends, executors and approval/audit contracts |
 | [Identity and Lineage](docs/identity_and_lineage.md) | immutable identities and parent/child relationships |
 | [Configuration](docs/configuration.md) | optional profiles, environment variables and extras |
 | [Current State](docs/current_state.md) | active governed research state |
