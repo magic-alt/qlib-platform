@@ -52,7 +52,7 @@ def redact_secrets(value: Any, path: str = "config") -> tuple[Any, list[str]]:
         for raw_key, item in value.items():
             key = str(raw_key)
             current = f"{path}.{key}"
-            if _sensitive(key) and item not in {None, ""}:
+            if _sensitive(key) and item is not None and item != "":
                 reference = f"config:{current}"
                 out[key] = {"secretReference": reference}
                 refs.append(reference)
@@ -466,8 +466,8 @@ def frozen_module_command(
     if output_flag:
         frozen = _replace_argument(frozen, output_flag, "{output}")
     return {
-        "command": [sys.executable, "-m", module, *frozen],
-        "working_directory": str(Path.cwd().resolve()),
+        "command": ["{python}", "-m", module, *frozen],
+        "working_directory": "{repository}",
         "mutable_alias_resolution": "forbidden",
     }
 
@@ -502,8 +502,12 @@ def execute_reproduction(settings: Settings, manifest: Mapping[str, Any]) -> dic
     if not isinstance(raw, list) or not raw:
         raise ValueError("run manifest has no executable reproduction command")
     output = settings.paths.output / "reproductions" / str(manifest["run_id"])
-    command = [str(item).replace("{output}", str(output)) for item in raw]
-    cwd = Path(str(contract.get("working_directory") or Path.cwd()))
+    command = [
+        str(item).replace("{python}", sys.executable).replace("{output}", str(output))
+        for item in raw
+    ]
+    repository = Path(__file__).resolve().parents[3]
+    cwd = Path(str(contract.get("working_directory") or "{repository}").replace("{repository}", str(repository)))
     completed = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
     reproduced_path = output / RUN_MANIFEST_FILE
     diff = None
