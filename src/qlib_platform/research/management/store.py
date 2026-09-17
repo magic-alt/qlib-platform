@@ -7,7 +7,7 @@ from pathlib import Path
 
 from qlib_platform.auth.policy import RESEARCH_PERMISSIONS, RESEARCH_RESOURCE_KINDS
 
-_PROJECT_ROLES = frozenset({"owner", "maintainer", "researcher", "viewer"})
+_PROJECT_ROLES = frozenset({"owner", "maintainer", "researcher", "operator", "approver", "viewer"})
 
 
 def _utc_now() -> str:
