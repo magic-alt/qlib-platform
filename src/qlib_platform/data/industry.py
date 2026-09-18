@@ -12,17 +12,25 @@ from qlib_platform.settings import Settings
 from qlib_platform.data.symbols import ts_to_qlib
 
 
+def _ashare_instrument(value: object) -> str | None:
+    try:
+        return ts_to_qlib(str(value))
+    except ValueError:
+        return None
+
+
 def build_sw2021_industry_intervals(members: pd.DataFrame, *, coverage_end: str) -> pd.DataFrame:
     required = {"l1_code", "l1_name", "ts_code", "in_date", "out_date"}
     missing = required - set(members.columns)
     if missing:
         raise ValueError(f"SW2021 member data is missing fields: {sorted(missing)}")
     frame = members.copy()
+    frame["instrument"] = frame["ts_code"].map(_ashare_instrument)
+    frame = frame.loc[frame["instrument"].notna()].copy()
     frame["effective_from"] = pd.to_datetime(frame["in_date"], errors="raise").dt.normalize()
     terminal = pd.Timestamp(coverage_end).normalize()
     frame["effective_to"] = pd.to_datetime(frame["out_date"], errors="coerce").dt.normalize()
     frame["effective_to"] = frame["effective_to"].fillna(terminal).clip(upper=terminal)
-    frame["instrument"] = frame["ts_code"].astype(str).map(ts_to_qlib)
     frame["industry_code"] = frame["l1_code"].astype(str).str.split(".").str[0]
     frame["industry_name"] = frame["l1_name"].astype(str)
     frame["taxonomy"] = "SW2021"

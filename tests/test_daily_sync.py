@@ -10,7 +10,9 @@ import pytest
 from qlib_platform.data.sources import FetchResult
 from qlib_platform.data.corporate_actions import CorporateActionStore
 import qlib_platform.data.daily_sync as daily_sync
+import qlib_platform.data.normalize as normalize
 import qlib_platform.datasets.qlib_export as qlib_export
+import qlib_platform.datasets.lakehouse as lakehouse
 from qlib_platform.data.daily_sync import DailySyncService, SingleInstanceLock
 from qlib_platform.data.ingestion import Extractor
 from qlib_platform.data.kline_export import build_kline
@@ -159,6 +161,37 @@ def test_market_dates_backfills_recent_raw_gap_beyond_lookback(tmp_path: Path):
         "20260810",
         "20260811",
     ]
+
+
+def test_pit_rebuild_curates_full_window_once(tmp_path: Path, monkeypatch):
+    settings = _settings(tmp_path)
+    service = DailySyncService(settings, extractor=_Extractor())
+    calls = []
+    monkeypatch.setattr(service, "_qlib_last_date", lambda: None)
+
+    def build_all(*_args, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(normalize, "build_all_curated", build_all)
+    monkeypatch.setattr(
+        normalize,
+        "build_curated_day",
+        lambda *_args, **_kwargs: pytest.fail("PIT rebuild must use bulk curation"),
+    )
+    monkeypatch.setattr(normalize, "export_full_staging", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(lakehouse, "freeze_pipeline_layers", lambda *_args, **_kwargs: [{"version_id": "v1"}])
+    monkeypatch.setattr(qlib_export, "dump_full", lambda *_args, **_kwargs: settings.qlib_data_uri)
+
+    result = service._publish_qlib(
+        [],
+        set(),
+        force_full=True,
+        pit_changed=True,
+        sync_context={},
+    )
+
+    assert calls == [{"force": True}]
+    assert result["mode"] == "full"
 
 
 def test_dividend_failure_does_not_promote_market_data(tmp_path: Path):

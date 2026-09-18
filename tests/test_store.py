@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from qlib_platform.data.quality import assert_quality, validate_raw_store
+from qlib_platform.data.quality import assert_quality, validate_raw_day, validate_raw_store
 from qlib_platform.data.store import PartitionStore, frame_content_sha256
 
 
@@ -114,3 +114,77 @@ def test_raw_store_integrity_rejects_missing_date_and_tampered_manifest(tmp_path
     failures = {result.name for result in report.results if not result.passed}
     assert "daily_calendar_coverage" in failures
     assert "daily_20260810_row_count" in failures
+
+
+def _coverage_result(report, name: str):
+    return next(result for result in report.results if result.name == name)
+
+
+def test_raw_day_excludes_pre_bse_predecessor_rows_from_daily_basic_coverage():
+    trade_date = "20211112"
+    daily = pd.concat(
+        [
+            _raw_frame("daily", trade_date),
+            _raw_frame("daily", trade_date).assign(ts_code="920001.BJ"),
+        ],
+        ignore_index=True,
+    )
+    frames = {
+        "daily": daily,
+        "adj_factor": pd.DataFrame(
+            {"ts_code": daily["ts_code"], "trade_date": trade_date, "adj_factor": 1.0}
+        ),
+        "daily_basic": _raw_frame("daily_basic", trade_date),
+    }
+
+    report = validate_raw_day(frames, trade_date)
+
+    assert _coverage_result(report, "daily_basic_coverage_vs_daily").passed
+
+
+def test_raw_day_requires_bse_daily_basic_coverage_from_exchange_launch():
+    trade_date = "20211115"
+    daily = pd.concat(
+        [
+            _raw_frame("daily", trade_date),
+            _raw_frame("daily", trade_date).assign(ts_code="920001.BJ"),
+        ],
+        ignore_index=True,
+    )
+    frames = {
+        "daily": daily,
+        "adj_factor": pd.DataFrame(
+            {"ts_code": daily["ts_code"], "trade_date": trade_date, "adj_factor": 1.0}
+        ),
+        "daily_basic": _raw_frame("daily_basic", trade_date),
+    }
+
+    report = validate_raw_day(frames, trade_date)
+
+    assert not _coverage_result(report, "daily_basic_coverage_vs_daily").passed
+
+
+def test_raw_day_pre_bse_exception_does_not_hide_missing_sse_szse_coverage():
+    trade_date = "20211112"
+    codes = [f"{value:06d}.SZ" for value in range(100)] + ["920001.BJ"]
+    daily = pd.DataFrame(
+        {
+            "ts_code": codes,
+            "trade_date": trade_date,
+            "open": 10.0,
+            "high": 10.5,
+            "low": 9.5,
+            "close": 10.2,
+            "vol": 100.0,
+            "amount": 1000.0,
+        }
+    )
+    frames = {
+        "daily": daily,
+        "adj_factor": pd.DataFrame({"ts_code": codes, "trade_date": trade_date, "adj_factor": 1.0}),
+        "daily_basic": pd.DataFrame({"ts_code": codes[:97], "trade_date": trade_date}),
+    }
+
+    report = validate_raw_day(frames, trade_date)
+
+    assert not _coverage_result(report, "daily_basic_coverage_vs_daily").passed
