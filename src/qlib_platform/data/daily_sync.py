@@ -486,9 +486,10 @@ class DailySyncService:
         from qlib_platform.datasets.qlib_export import dump_full, dump_update_and_fix
         from qlib_platform.datasets.lakehouse import freeze_pipeline_layers
 
+        full_curated_ready = False
         if pit_changed:
-            for trade_date in self.store.list_dates("daily"):
-                build_curated_day(self.settings, trade_date, force=True)
+            build_all_curated(self.settings, force=True)
+            full_curated_ready = True
         else:
             for trade_date in changed_dates:
                 if self.store.exists("daily", trade_date):
@@ -506,7 +507,8 @@ class DailySyncService:
             from qlib_platform.datasets.dataset_registry import DatasetRegistry
             from qlib_platform.releases import publish_local_research_release
 
-            build_all_curated(self.settings)
+            if not full_curated_ready:
+                build_all_curated(self.settings)
             export_full_staging(self.settings, force=True)
             snapshots = freeze_pipeline_layers(
                 self.settings,
@@ -551,7 +553,8 @@ class DailySyncService:
                 "data_release_id": release.data_release_id,
             }
         if force_full or last_date is None:
-            build_all_curated(self.settings)
+            if not full_curated_ready:
+                build_all_curated(self.settings)
             export_full_staging(self.settings, force=True)
             snapshots = freeze_pipeline_layers(
                 self.settings,

@@ -95,7 +95,14 @@ def validate_raw_day(
         for name, threshold in (("adj_factor", min_adj_coverage), ("daily_basic", min_basic_coverage)):
             other = frames.get(name, pd.DataFrame())
             other_codes = set(other["ts_code"].astype(str)) if "ts_code" in other else set()
-            coverage = len(daily_codes & other_codes) / max(1, len(daily_codes))
+            comparable_daily_codes = daily_codes
+            if name == "daily_basic" and trade_date < "20211115":
+                # TuShare exposes predecessor-market history with a .BJ suffix before
+                # the Beijing Stock Exchange opened, while daily_basic has no matching
+                # observations for those rows. They are not part of the comparable
+                # daily_basic population before the BSE effective date.
+                comparable_daily_codes = {code for code in daily_codes if not code.endswith(".BJ")}
+            coverage = len(comparable_daily_codes & other_codes) / max(1, len(comparable_daily_codes))
             results.append(
                 QualityResult(
                     f"{name}_coverage_vs_daily",

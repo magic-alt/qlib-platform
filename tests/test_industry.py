@@ -38,3 +38,28 @@ def test_sw2021_membership_is_converted_to_non_overlapping_pit_intervals():
 def test_sw2021_membership_fails_closed_on_missing_identity_columns():
     with pytest.raises(ValueError, match="missing fields"):
         build_sw2021_industry_intervals(pd.DataFrame([{"ts_code": "600000.SH"}]), coverage_end="2026-08-24")
+
+
+def test_sw2021_membership_ignores_non_ashare_constituents():
+    members = pd.DataFrame(
+        [
+            {
+                "l1_code": "801010.SI",
+                "l1_name": "Agriculture",
+                "ts_code": "600000.SH",
+                "in_date": "20200101",
+                "out_date": None,
+            },
+            {
+                "l1_code": "801010.SI",
+                "l1_name": "Agriculture",
+                "ts_code": "T00018.SH",
+                "in_date": "20200101",
+                "out_date": None,
+            },
+        ]
+    )
+
+    result = build_sw2021_industry_intervals(members, coverage_end="2026-09-16")
+
+    assert result["instrument"].tolist() == ["SH600000"]

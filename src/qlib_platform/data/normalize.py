@@ -121,6 +121,7 @@ def build_curated_day(
     *,
     master: pd.DataFrame | None = None,
     pit_fundamentals: pd.DataFrame | None = None,
+    pit_fundamentals_sha256: str | None = None,
     universe_membership: pd.DataFrame | None = None,
 ) -> Path:
     trade_date = _normalize_trade_date(trade_date)
@@ -209,7 +210,7 @@ def build_curated_day(
         "pit_fundamentals": {
             "path": str(pit_fundamentals_path(settings)),
             "sha256": (
-                sha256_file(pit_fundamentals_path(settings))
+                pit_fundamentals_sha256 or sha256_file(pit_fundamentals_path(settings))
                 if pit_fundamentals_path(settings).exists()
                 else None
             ),
@@ -229,7 +230,13 @@ def build_curated_day(
     return out_path
 
 
-def build_all_curated(settings: Settings, start_date: str | None = None, end_date: str | None = None) -> None:
+def build_all_curated(
+    settings: Settings,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    force: bool = False,
+) -> None:
     raw = PartitionStore(settings.paths.raw)
     master_path = settings.paths.metadata / "stock_master.parquet"
     if not master_path.is_file():
@@ -237,25 +244,44 @@ def build_all_curated(settings: Settings, start_date: str | None = None, end_dat
     master = pd.read_parquet(master_path)
     fundamentals_path = pit_fundamentals_path(settings)
     pit_fundamentals = pd.read_parquet(fundamentals_path) if fundamentals_path.is_file() else None
+    pit_fundamentals_sha256 = sha256_file(fundamentals_path) if fundamentals_path.is_file() else None
+    pit_groups = None
+    empty_pit_fundamentals = None
+    if pit_fundamentals is not None:
+        pit_fundamentals = pit_fundamentals.copy()
+        pit_fundamentals["trade_date"] = pd.to_datetime(
+            pit_fundamentals["trade_date"], errors="raise"
+        ).dt.strftime("%Y%m%d")
+        pit_groups = pit_fundamentals.groupby("trade_date", sort=False)
+        empty_pit_fundamentals = pit_fundamentals.iloc[0:0]
     configured = configured_universe(settings)
     universe_membership = (
         pd.read_parquet(configured[2])
         if configured is not None and not settings.uses_tushare_source() and configured[2].is_file()
         else None
     )
-    start = _normalize_trade_date(start_date) if start_date else None
+    start = _normalize_trade_date(start_date or str(settings.data["start_date"]))
     end = _normalize_trade_date(end_date) if end_date else None
     for trade_date in raw.list_dates("daily"):
         if start and trade_date < start:
             continue
         if end and trade_date > end:
             continue
+        daily_pit_fundamentals = None
+        if pit_groups is not None:
+            daily_pit_fundamentals = (
+                pit_groups.get_group(trade_date)
+                if trade_date in pit_groups.indices
+                else empty_pit_fundamentals
+            )
         build_curated_day(
             settings,
             trade_date,
             master=master,
-            pit_fundamentals=pit_fundamentals,
+            pit_fundamentals=daily_pit_fundamentals,
+            pit_fundamentals_sha256=pit_fundamentals_sha256,
             universe_membership=universe_membership,
+            force=force,
         )
 
 
@@ -490,8 +516,11 @@ def export_full_staging(settings: Settings, force: bool = False) -> Path:
     raw_by_symbol = stage / ".curated_by_symbol"
     source_sql = glob.replace("'", "''")
     target_sql = str(raw_by_symbol).replace("\\", "/").replace("'", "''")
+    start = pd.Timestamp(settings.data["start_date"]).strftime("%Y-%m-%d")
     con.execute(
-        f"COPY (SELECT * FROM read_parquet('{source_sql}')) TO '{target_sql}' (FORMAT PARQUET, PARTITION_BY (symbol))"
+        f"COPY (SELECT * FROM read_parquet('{source_sql}', union_by_name=true) "
+        f"WHERE TRY_STRPTIME(CAST(trade_date AS VARCHAR), '%Y%m%d') >= DATE '{start}') "
+        f"TO '{target_sql}' (FORMAT PARQUET, PARTITION_BY (symbol))"
     )
     symbols = sorted(path.name.split("=", 1)[1] for path in raw_by_symbol.glob("symbol=*"))
 
