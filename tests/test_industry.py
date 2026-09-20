@@ -63,3 +63,28 @@ def test_sw2021_membership_ignores_non_ashare_constituents():
     result = build_sw2021_industry_intervals(members, coverage_end="2026-09-16")
 
     assert result["instrument"].tolist() == ["SH600000"]
+
+
+def test_sw2021_membership_ignores_constituents_effective_after_coverage_end():
+    members = pd.DataFrame(
+        [
+            {
+                "l1_code": "801010.SI",
+                "l1_name": "Agriculture",
+                "ts_code": "600000.SH",
+                "in_date": "20200101",
+                "out_date": None,
+            },
+            {
+                "l1_code": "801020.SI",
+                "l1_name": "Mining",
+                "ts_code": "600001.SH",
+                "in_date": "20260918",
+                "out_date": None,
+            },
+        ]
+    )
+
+    result = build_sw2021_industry_intervals(members, coverage_end="2026-09-17")
+
+    assert result["instrument"].tolist() == ["SH600000"]

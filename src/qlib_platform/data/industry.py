@@ -29,6 +29,7 @@ def build_sw2021_industry_intervals(members: pd.DataFrame, *, coverage_end: str)
     frame = frame.loc[frame["instrument"].notna()].copy()
     frame["effective_from"] = pd.to_datetime(frame["in_date"], errors="raise").dt.normalize()
     terminal = pd.Timestamp(coverage_end).normalize()
+    frame = frame.loc[frame["effective_from"] <= terminal].copy()
     frame["effective_to"] = pd.to_datetime(frame["out_date"], errors="coerce").dt.normalize()
     frame["effective_to"] = frame["effective_to"].fillna(terminal).clip(upper=terminal)
     frame["industry_code"] = frame["l1_code"].astype(str).str.split(".").str[0]
